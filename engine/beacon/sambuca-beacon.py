@@ -210,7 +210,35 @@ def main() -> int:
     Handler.key = key
     bind = os.environ.get("SAMBUCA_BEACON_BIND") or _lan_address()
 
-    httpd = ThreadingHTTPServer((bind, PORT), Handler)
+    # REFUSE IF SOMETHING IS ALREADY THERE, checked by connecting rather than
+    # by trusting bind() to fail.
+    #
+    # This cost real time to learn. ThreadingHTTPServer sets allow_reuse_address,
+    # which on Windows behaves like SO_REUSEPORT: a second process binds the
+    # same port QUITE HAPPILY and connections go to whichever the kernel feels
+    # like. A stale beacon from an earlier boot then answers with an old key and
+    # an old progress file, and nothing anywhere reports a conflict — the new
+    # one prints "listening" and is simply never spoken to.
+    #
+    # On Linux bind() would fail properly, but a beacon that behaves differently
+    # on the platform it is developed on is a beacon whose failure mode is
+    # discovered late.
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.settimeout(0.5)
+    try:
+        if probe.connect_ex(("127.0.0.1" if bind == "0.0.0.0" else bind, PORT)) == 0:
+            print(f"sambuca-beacon: port {PORT} is already in use; refusing to "
+                  f"start a second one", file=sys.stderr)
+            return 1
+    finally:
+        probe.close()
+
+    try:
+        httpd = ThreadingHTTPServer((bind, PORT), Handler)
+    except OSError as exc:
+        print(f"sambuca-beacon: cannot listen on {bind}:{PORT}: {exc}",
+              file=sys.stderr)
+        return 1
     httpd.daemon_threads = True
     # A slow or dead client must not wedge the one thing an owner is watching.
     httpd.timeout = 10

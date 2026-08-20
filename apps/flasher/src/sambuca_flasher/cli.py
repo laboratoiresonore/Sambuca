@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -133,6 +134,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="also open the search in your browser")
     p_boot.add_argument("--list-vendors", action="store_true")
 
+    p_watch = sub.add_parser(
+        "watch",
+        help="watch an appliance build itself, before its own setup page exists")
+    p_watch.add_argument("--file", type=Path,
+                         help="the sambuca-watch-*.json saved by `write`")
+    p_watch.add_argument("--host", default="",
+                         help="override the address to look for")
+    p_watch.add_argument("--once", action="store_true",
+                         help="print the current stage and exit")
+
     p_hand = sub.add_parser(
         "handover",
         help="check what your appliance is running, trust it, and bookmark it")
@@ -173,6 +184,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_write_pi(args)
         if args.command == "provision-pi":
             return _cmd_provision_pi(args)
+        if args.command == "watch":
+            return _cmd_watch(args)
         if args.command == "handover":
             return _cmd_handover(args)
         if args.command == "verify-sheet":
@@ -288,6 +301,16 @@ def _cmd_write(args) -> int:
     staging.mkdir(parents=True, exist_ok=True)
     (staging / "provision.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     (staging / "preseed.cfg").write_text(preseed, encoding="utf-8")
+
+    # KEEP THIS SIDE OF THE PAIRING KEY, or the beacon is unreachable by the
+    # only thing meant to reach it. provision.json is shredded off the boot
+    # partition during install; the appliance holds its copy root-only. Without
+    # a copy here, `watch` would have nothing to authenticate with — a beacon
+    # nobody can talk to is the same as no beacon.
+    #
+    # Written beside the recovery document rather than into the payload, which
+    # is a staging tree that gets copied onto a stick and then deleted.
+    _write_watch_file(args.output_dir, payload, config)
 
     # The disk recovery key, for the installer to enrol as a second LUKS
     # keyslot. Written with NO trailing newline and no encoding surprises:
@@ -783,6 +806,98 @@ def _ask_for_iso(reason: str):
         _say("  Check it finished downloading, then try again.")
         return None
     return Path(iso)
+
+
+def _write_watch_file(output_dir: Path, payload: dict, config) -> Path:
+    """Save what `watch` needs: where the appliance is, and its pairing key.
+
+    NOT A SECRET WORTH CEREMONY, and not nothing either. It authorises reading
+    install progress - stage names and timings - and nothing else: the beacon
+    has no control surface and publishes only an allowlist of plain-language
+    fields. Still 0600 where the platform honours it, because it is a
+    credential and habits matter more than this one file does.
+    """
+    watch = output_dir / f"sambuca-watch-{payload.get('fingerprint', 'unknown')}.json"
+    watch.write_text(json.dumps({
+        "schema": 1,
+        "domain": config.domain,
+        "hostname": config.hostname,
+        "beacon_key": payload.get("beacon_key", ""),
+        "note": ("Run: sambuca-flasher watch   -- shows install progress while "
+                 "the appliance is building itself. Delete this once it is up."),
+    }, indent=2), encoding="utf-8")
+    try:
+        os.chmod(watch, 0o600)
+    except OSError:
+        # Windows and some filesystems do not honour this. Not fatal, and not
+        # worth failing a write over.
+        pass
+    return watch
+
+
+def _cmd_watch(args) -> int:
+    """Watch an appliance build itself, before it can serve its own setup page.
+
+    THE GAP THIS FILLS. Caddy serves /setup, and Caddy starts in the LAST
+    provisioning phase. Everything before it - disk, base system, Docker, GPU,
+    storage, network - happens with nothing to watch, and that is precisely the
+    window where somebody decides it has hung and pulls the power mid-partition.
+    """
+    from . import beaconclient
+
+    src = _find_watch_file(getattr(args, "file", None))
+    if src is None:
+        _say()
+        _say("  No watch file found.")
+        _say()
+        _say("  `write` saves one next to the recovery document, named")
+        _say("  sambuca-watch-<fingerprint>.json. Point at it directly with:")
+        _say("    sambuca-flasher watch --file <path>")
+        return 1
+
+    try:
+        cfg = json.loads(Path(src).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        _say(f"\n  Could not read {src}: {exc}")
+        return 1
+
+    host = (getattr(args, "host", None) or cfg.get("domain") or "sambuca.local")
+    key = cfg.get("beacon_key", "")
+    if not key:
+        _say("\n  That watch file has no pairing key in it.")
+        return 1
+
+    _say()
+    _say("=" * 68)
+    _say("  WATCHING YOUR APPLIANCE BUILD ITSELF")
+    _say("=" * 68)
+    _say()
+    _say(f"  Looking for {host} on this network...")
+    _say()
+
+    rc = beaconclient.follow(host, key, say=_say,
+                             once=bool(getattr(args, "once", False)))
+    return rc
+
+
+def _find_watch_file(explicit):
+    """The most recent watch file, or the one asked for.
+
+    Most recent rather than "the only one": somebody who builds a second
+    appliance should watch THAT one without having to name a file, and picking
+    an older one silently would be worse than asking.
+    """
+    if explicit:
+        p = Path(explicit)
+        return p if p.is_file() else None
+
+    seen = []
+    for d in (Path.cwd(), Path.home() / "Desktop", Path.home()):
+        if d.is_dir():
+            seen.extend(d.glob("sambuca-watch-*.json"))
+    if not seen:
+        return None
+    return max(seen, key=lambda p: p.stat().st_mtime)
 
 
 def _cmd_handover(args) -> int:

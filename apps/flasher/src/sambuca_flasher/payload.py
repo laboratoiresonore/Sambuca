@@ -156,6 +156,23 @@ def build_provision_payload(
         "parity_disks": config.parity_disks,
         # Verification material, not the secret itself.
         "backup_seed_hash": keys.backup_seed_hash,
+        # THE INSTALL BEACON'S PAIRING KEY, minted per card.
+        #
+        # It exists so the beacon can be AUTHENTICATED rather than open. An
+        # unauthenticated progress endpoint would be simpler and is what most
+        # installers ship — it would also announce to every device on the
+        # network, a guest phone included, that this machine is mid-install and
+        # therefore in its least-defended state.
+        #
+        # The owner types nothing: the flasher generates it, writes it here,
+        # and keeps a copy to talk to the beacon with. first-boot copies it to
+        # a root-only file and shreds this whole payload from the unencrypted
+        # boot partition afterwards.
+        #
+        # Fresh per card, deliberately. A key reused across installs would let
+        # a machine provisioned last year read the progress of one being built
+        # today.
+        "beacon_key": secrets.token_urlsafe(32),
         # Not the key itself — a flag saying one SHOULD exist, so first-boot can
         # distinguish "interactive install, none expected" from "enrolment
         # silently failed", instead of treating both as normal.

@@ -28,6 +28,9 @@ SB_TAG="first-boot"
 _SB_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=engine/lib/common.sh
 source "${_SB_SELF_DIR}/lib/common.sh"
+# shellcheck source=engine/lib/beacon.sh
+SB_BEACON_SCRIPT="${_SB_SELF_DIR}/beacon/sambuca-beacon.py"
+source "${_SB_SELF_DIR}/lib/beacon.sh"
 sb_trap_err
 
 PHASE_DIR="${_SB_SELF_DIR}/provision"
@@ -121,6 +124,7 @@ ingest_payload() {
           "SAMBUCA_DOMAIN="         + ((.domain        // "sambuca.local") | q),
           "SAMBUCA_ACME_EMAIL="     + ((.acme_email    // "") | q),
           "SAMBUCA_TS_AUTHKEY="     + ((.tailscale_authkey // "") | q),
+          "SAMBUCA_BEACON_PAIRING_KEY=" + ((.beacon_key // "") | q),
           "SAMBUCA_TS_TAGS="        + ((.tailscale_tags // "tag:sambuca") | q),
           "SAMBUCA_BACKUP_SEED_HASH=" + ((.backup_seed_hash // "") | q),
           "SAMBUCA_BUNDLES="        + (((.bundles // ["ai","cloud","office","comms"]) | join(",")) | q),
@@ -367,6 +371,14 @@ main() {
     [[ -z $FROM ]] && started_at_phase=1
 
     local f name rc=0
+    # THE BEACON GOES UP BEFORE THE PHASES AND COMES DOWN AFTER THEM, WHATEVER
+    # HAPPENS. Its entire purpose is the stretch where nothing else can be
+    # watched, so it must outlive a phase FAILING — an owner staring at a
+    # stalled install is exactly who needs to see "phase 20 failed" rather than
+    # a machine that has gone quiet. Hence the stop in both exits below rather
+    # than only on success.
+    sb_beacon_start "${SAMBUCA_BEACON_PAIRING_KEY:-}"
+
     for f in "$PHASE_DIR"/[0-9][0-9]-*.sh; do
         [[ -e $f ]] || continue
         name="$(basename -- "$f" .sh)"
@@ -377,9 +389,17 @@ main() {
     done
 
     if ((rc != 0)); then
+        # Leave it up for a short grace period so the failure is READ, not just
+        # written. Then kill it: a listener that outlives provisioning is a
+        # service nobody remembers is running.
         err "provisioning INCOMPLETE"
+        sleep 30
+        sb_beacon_stop
         return 1
     fi
+
+    # Caddy is up and serving /setup by now, so the scaffolding comes down.
+    sb_beacon_stop
 
     ok "provisioning complete"
     [[ -r "${SB_LIB}/completion-report.txt" ]] && cat -- "${SB_LIB}/completion-report.txt"
