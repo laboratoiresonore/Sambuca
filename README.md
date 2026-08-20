@@ -270,10 +270,15 @@ Sambuca is designed to completely obliterate that barrier. It is a turn-key inst
 
 **How it works:**
 
-1. Download the Sambuca app on your Mac or Windows machine.
-2. Plug in a blank USB stick and hit “Flash.”
-3. Plug that USB stick into a dedicated machine—an old discarded laptop, an office PC, or a high-end dual-GPU rig—and turn it on.
+1. Download the Sambuca app on your Mac, Windows or Linux machine.
+2. It writes a USB stick, using **[Raspberry Pi Imager](https://www.raspberrypi.com/software/)** to do the writing — the same tool millions of people already use, which handles the download, the checksum, the verification and the permissions prompt. Sambuca supplies the image list and adds its own configuration to the stick afterwards.
+3. Plug that stick into a dedicated machine — an old laptop, an office PC, or a gaming rig — and turn it on.
 4. Walk away.
+
+> [!NOTE]
+> **Step 2 is not yet as guided as it should be.** Sambuca launches the Imager
+> and tells you what to expect, but does not yet pre-select everything for you.
+> The gap is written down in [REDO.md](REDO.md) rather than glossed over.
 
 The Sambuca installer takes over entirely. It automatically wipes and encrypts the drive, installs a headless Linux OS, profiles your exact hardware, and downloads the smartest open-weights AI model your machine can physically run. It configures a beautiful, one-click graphical dashboard, installs free replacements for predatory cloud services, and wires up a private mesh network so you can access it securely from anywhere on Earth.
 
@@ -288,6 +293,8 @@ It does the work of a senior systems administrator in twenty minutes, completely
 
 Under the hood, Sambuca orchestrates a robust, open-source stack that prioritizes privacy, efficiency, and zero-trust security:
 
+* **The Writer:** **Raspberry Pi Imager**, not ours. Sambuca publishes an image list it reads (`--repo`, its documented extension point) and lets it handle device selection, download, SHA-256 verification, writing, readback and elevation on all three platforms. Sambuca previously implemented all of that itself; it took five attempts to complete one Windows raw write, and the code is now deleted. **They write, we provision.**
+* **The Manifest:** Everything that can change without the code changing is [fetched live from GitHub](manifest/sambuca-manifest.json) — image URLs and checksums, which hardware has actually been tested, dependency install commands, tier thresholds, links. A downloaded binary is frozen the day it is built; this one corrects itself, and carries a bundled fallback for when there is no network.
 * **The Base OS:** A minimal, headless Debian 12 environment with military-grade LUKS disk encryption.
 * **The Hardware Profiler:** A dynamic auto-scaling daemon that detects your CPU, RAM, and GPU VRAM on first boot, automatically pulling the optimal quantized models to prevent out-of-memory crashes.
 * **The AI Engine:** Ollama as the local inference backend, paired with **Odysseus** as the web frontend. The model set is chosen per hardware tier from a catalogue held as data, not code — see [`engine/profiles/`](engine/profiles/).
@@ -678,6 +685,13 @@ though it were finished and it is not:
 | The verb catalogue and its linter | **Built, in CI, mutation-tested** against five injected regressions. |
 | **The Steward runtime** — the thing that selects and executes verbs | **Not built.** This is the largest gap on this page. |
 | Odysseus integration for chat, pictures and the Steward | **Not built.** Blocked on publishing Odysseus. |
+
+**The shipped binaries did not work until now, and that is worth stating
+plainly.** `v0.1.0-preview1` compiled, started, printed its version and passed
+every check in CI — and could not flash anything, because the engine was never
+bundled into it. None of the checks touched the engine. `preview2` never
+published at all. Both faults are now guarded by tests that fail the build, and
+the full list of what remains wrong is in [REDO.md](REDO.md).
 
 Two further things are outstanding:
 
