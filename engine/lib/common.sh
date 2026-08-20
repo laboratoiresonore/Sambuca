@@ -126,13 +126,57 @@ sb_retry() {
 
 # sb_atomic_write <path> [mode] — content on stdin. Never leaves a torn file.
 sb_atomic_write() {
+    # WAS SILENTLY FAILING. Every step here was unchecked: cat, chmod and mv
+    # could all fail and the function still returned 0. A profile that never
+    # landed reported success, and the caller carried on as though it had —
+    # which is the same silent-success shape this project already documents as
+    # a failure mode elsewhere (a checkin that exits 0 on a failed push masks
+    # itself from every exit-code monitor watching it).
+    #
+    # It also left litter. A failed mv — target is a directory, permission
+    # denied, disk full — abandoned the temp file next to the target, so a
+    # config directory slowly filled with .tmp.XXXXXX copies of things that
+    # never got written.
     local path="$1" mode="${2:-0644}"
     local dir; dir="$(dirname -- "$path")"
-    mkdir -p -- "$dir"
-    local tmp; tmp="$(mktemp -- "${path}.tmp.XXXXXX")"
-    cat >"$tmp"
-    chmod "$mode" -- "$tmp"
-    mv -f -- "$tmp" "$path"
+
+    # REFUSE A DIRECTORY TARGET. `mv file dir` does not fail — it moves the
+    # file INTO the directory, keeping its temp name. So writing a profile to
+    # a directory path returned 0 and produced a randomly-named file inside it:
+    # apparent success, real content, and a path nothing will ever look at.
+    # Found by testing the failure branch and discovering there was not one.
+    if [[ -d $path ]]; then
+        err "refusing to write $path: it is a directory, not a file"
+        return 1
+    fi
+
+    mkdir -p -- "$dir" || { err "cannot create $dir"; return 1; }
+
+    local tmp
+    tmp="$(mktemp -- "${path}.tmp.XXXXXX")" || { err "cannot create a temp file beside $path"; return 1; }
+
+    # Remove the temp on ANY exit from here, successful or not. Cleared once
+    # the rename has taken ownership of it.
+    local _sb_aw_tmp="$tmp"
+    trap 'rm -f -- "$_sb_aw_tmp" 2>/dev/null' RETURN
+
+    if ! cat >"$tmp"; then
+        err "failed writing content for $path"
+        return 1
+    fi
+    if ! chmod "$mode" -- "$tmp"; then
+        err "failed setting mode $mode on $path"
+        return 1
+    fi
+    if ! mv -f -- "$tmp" "$path"; then
+        err "failed installing $path (is it a directory, or read-only?)"
+        return 1
+    fi
+
+    # The rename succeeded, so the temp path no longer exists; stop the trap
+    # from reporting on a file that is now the target.
+    _sb_aw_tmp=""
+    return 0
 }
 
 # sb_secret <bytes> — URL-safe random secret, no shell-hostile characters.

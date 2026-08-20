@@ -176,7 +176,19 @@ if [ -f "$PROBE" ]; then
     if command -v bash >/dev/null 2>&1; then
         log "running hardware-detect.sh under bash"
         PROFILE=/tmp/sambuca-profile.env
-        bash "$PROBE" --print --no-lock >"$PROFILE" 2>>"$LOG" || log "hardware-detect exited $?"
+
+        # WRITE IT WHERE THE APPLIANCE LOOKS, not only into the log. --print
+        # alone left a supported machine with no /etc/sambuca/profile.env, so
+        # nothing downhill had a tier, a model choice or a memory ceiling to
+        # read — the profile existed purely as text in a file on the card.
+        mkdir -p /etc/sambuca 2>/dev/null
+        if bash "$PROBE" --no-lock --output-dir /etc/sambuca >>"$LOG" 2>&1; then
+            log "profile written to /etc/sambuca/profile.env"
+            cp /etc/sambuca/profile.env "$PROFILE" 2>/dev/null
+        else
+            log "hardware-detect exited $? — falling back to print-only"
+            bash "$PROBE" --print --no-lock >"$PROFILE" 2>>"$LOG" || true
+        fi
 
         # THE VERDICT GOES FIRST. Whoever reads this file has taken the card
         # out of a machine with no screen, because something needs explaining.

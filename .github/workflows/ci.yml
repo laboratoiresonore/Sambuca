@@ -58,6 +58,12 @@ jobs:
       # asserted: a disruptive verb that stops confirming fails the build.
       - run: python tools/steward-lint.py
 
+      # sb_atomic_write silently returned 0 on every failure, and
+      # writing to a directory path 'succeeded' by moving the temp file
+      # inside it. Both are the kind of fault that only shows up as a
+      # missing config file weeks later.
+      - run: bash tests/test-atomic-write.sh
+
   compose:
     name: compose config
     runs-on: ubuntu-latest
