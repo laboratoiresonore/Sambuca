@@ -185,9 +185,20 @@ jobs:
           # so the exit code is not the signal — the message is. This proves
           # its imports resolve frozen and that it fails with guidance rather
           # than a traceback.
-          "$BIN" handover --domain sambuca-nothing-here.invalid 2>&1 \
-            | grep -q "Nothing answered yet" \
-            || { echo "FAIL: handover does not run in the frozen binary"; exit 1; }
+          # CAPTURED, NOT PIPED. The two checks above failed on Windows purely
+          # because of the `| grep -q` form — grep exits at the first match and
+          # closes the pipe under the binary's feet. Rewriting them to capture
+          # first made them pass unchanged. This one was left in the old shape
+          # and is the only Windows failure remaining, which is a strong hint
+          # it is the same shell artefact rather than a third real bug.
+          out=$("$BIN" handover --domain sambuca-nothing-here.invalid 2>&1 || true)
+          if ! printf '%s' "$out" | grep -q "Nothing answered yet"; then
+            echo "FAIL: handover did not report an unreachable appliance."
+            echo "      What it actually printed:"
+            printf '%s\n' "$out" | sed 's/^/      | /'
+            echo "      (empty above means it produced nothing - a different fault)"
+            exit 1
+          fi
 
           echo "the frozen binary works, engine and manifest included"
 
