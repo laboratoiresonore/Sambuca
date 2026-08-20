@@ -129,6 +129,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="also open the search in your browser")
     p_boot.add_argument("--list-vendors", action="store_true")
 
+    sub.add_parser(
+        "verify-sheet",
+        help="prove a printed recovery sheet is readable and is this machine's")
+
     p_cfg = sub.add_parser("example-config", help="print a commented example configuration")
     p_cfg.add_argument("--output", type=Path)
 
@@ -157,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_write_pi(args)
         if args.command == "provision-pi":
             return _cmd_provision_pi(args)
+        if args.command == "verify-sheet":
+            return _cmd_verify_sheet(args)
         if args.command == "derive-backup-key":
             return _cmd_derive()
         if args.command == "derive-recovery-key":
@@ -372,10 +378,82 @@ def _cmd_write(args) -> int:
     # a perfect-looking file beside a useless sheet.
     # KeyMaterial is frozen, deliberately — the secrets in it must not be
     # mutable after generation. So the path is passed, not attached.
+    # PRINT FIRST. Asking somebody to read words off a sheet that has not
+    # been printed is nonsense, and the previous order did exactly that.
+    if not _offer_to_print(pdf_path):
+        _say()
+        _say("  The sheet is not printed, so it cannot be checked yet.")
+        _say("  Once you have printed it, run:  sambuca-flasher verify-sheet")
+        return 0
+
     if not _verify_recovery_sheet(keys, pdf_path):
         print()
         print("  The sheet is UNVERIFIED. Everything else is done, but please")
         print("  check it against the document before you rely on it.")
+    return 0
+
+
+def _cmd_verify_sheet(args) -> int:
+    """Prove a printed recovery sheet is readable and belongs to this machine.
+
+    NEEDS NOTHING THAT WAS STORED, which is what makes it possible at all.
+    Sambuca keeps no copy of the seed phrase by design. This leans on two
+    things that travel with the sheet itself:
+
+      BIP-39 CHECKSUM - a mistyped or misprinted word fails it. That catches a
+      smudged glyph, a line the printer ate, a zero read as an O.
+
+      FINGERPRINT - derived from the phrase and printed on the sheet. Matching
+      it proves this is THIS machine's sheet, not a previous install's. It is
+      explicitly non-secret and exists for exactly this comparison.
+
+    Runnable any time, on any machine, years later. A recovery document you
+    cannot test is one you are only guessing about.
+    """
+    from .keys import _require_bip39, seed_fingerprint
+
+    _require_bip39()
+    from mnemonic import Mnemonic
+
+    _say()
+    _say("=" * 68)
+    _say("  CHECK A RECOVERY SHEET")
+    _say("=" * 68)
+    _say()
+    _say("  Type the 24 words from the sheet, separated by spaces.")
+    _say("  Nothing is sent anywhere and nothing is stored.")
+    _say()
+
+    try:
+        phrase = input("  words: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return 1
+
+    words = phrase.split()
+    if len(words) != 24:
+        _say()
+        _say(f"  That is {len(words)} words, not 24.")
+        return 1
+
+    if not Mnemonic("english").check(" ".join(words)):
+        _say()
+        _say("  THOSE WORDS DO NOT FORM A VALID PHRASE.")
+        _say()
+        _say("  Seed phrases carry their own checksum, so at least one word is")
+        _say("  wrong - misread, mistyped, or badly printed. Look for a smudge,")
+        _say("  a 0 read as an O, or a line the printer cut off.")
+        _say()
+        _say("  DO NOT rely on this sheet until it checks out.")
+        return 1
+
+    _say()
+    _say("  The phrase is valid.")
+    _say()
+    _say(f"  Fingerprint from what you typed:  {seed_fingerprint(' '.join(words))}")
+    _say()
+    _say("  Compare that with the fingerprint printed on the sheet.")
+    _say("    MATCHES     readable, and it is that machine's sheet.")
+    _say("    DIFFERENT   valid words, but a DIFFERENT machine's sheet.")
     return 0
 
 
@@ -708,6 +786,67 @@ def _ask_yes(question: str, *, default: bool = True) -> bool:
         return default
     return answer.startswith("y")
 
+
+
+def _offer_to_print(pdf_path) -> bool:
+    """Get the recovery sheet onto paper before anyone is asked to read it.
+
+    A PDF in a folder is not a recovery document. It lives on the machine whose
+    disk it exists to unlock, under a name nobody will recognise in eight
+    months. If the APPLIANCE fails, the file is fine; if this computer fails,
+    the only copy of the seed phrase goes with it.
+
+    The job is never sent silently. The file holds a disk passphrase, and an
+    unprompted print could land on a shared office device or pass through a
+    print-to-PDF driver that writes a second copy nobody is tracking. The owner
+    chooses the printer in their own dialogue.
+
+    Returns whether paper exists, according to the only authority on that
+    question: the person standing next to the printer.
+    """
+    from . import printing
+
+    _say()
+    _say("=" * 68)
+    _say("  PRINT THE RECOVERY SHEET")
+    _say("=" * 68)
+    _say()
+    _say(f"  {pdf_path}")
+    _say()
+    _say("  This is the only way back in if the password is lost. Right now it")
+    _say("  is a file on THIS computer - the one it cannot help you with if")
+    _say("  this computer is what breaks.")
+    _say()
+
+    if not printing.can_print():
+        _say("  No way to print was found. Copy the file to a USB stick or")
+        _say("  another machine, print it there, then delete both copies.")
+        printing.open_folder(pdf_path)
+        return False
+
+    if not _ask_yes("  Open the print dialogue now?"):
+        _say()
+        _say("  Skipped. The file is still there, and still the only copy.")
+        printing.open_folder(pdf_path)
+        return False
+
+    if not printing.open_print_dialog(pdf_path):
+        _say("  Could not open a print dialogue. Opening the folder instead.")
+        printing.open_folder(pdf_path)
+        return False
+
+    _say("  Opened. Choose your printer and print it.")
+    _say()
+    # NOTHING reliably reports whether a page came out - not on any platform.
+    # A silently failed job (no paper, wrong printer, driver asleep) is the
+    # likeliest outcome nobody checks, so ask the human.
+    if _ask_yes("  Did a page actually come out of the printer?"):
+        return True
+
+    _say()
+    _say("  Then it has not printed. Try again, or copy the file elsewhere.")
+    printing.open_folder(pdf_path)
+    return False
 
 
 def _verify_recovery_sheet(keys, pdf_path=None, *, sample: int = 3) -> bool:
