@@ -31,6 +31,20 @@ jobs:
             dash -n "$f" || exit 1
           done
 
+  update-guard:
+    name: update guard refuses poisoned updates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: feed it deliberately malicious updates
+        # The guard decides whether an update may be applied to an appliance
+        # UNATTENDED. A guard that has never been shown an attack is an
+        # assumption, not a control, and a silently broken one looks exactly
+        # like a working one until the day it matters.
+        run: bash tests/test-update-guard.sh
+
   compose:
     name: compose config
     runs-on: ubuntu-latest

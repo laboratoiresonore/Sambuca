@@ -48,8 +48,19 @@ lint-python: ## ruff the flasher
 	@echo "python: clean"
 
 .PHONY: test
-test: ## Run the flasher test suite
+test: test-flasher test-guard ## Run every test suite
+
+.PHONY: test-flasher
+test-flasher: ## Run the flasher test suite
 	@cd $(FLASHER_DIR) && python -m pytest -q
+
+.PHONY: test-guard
+test-guard: ## Feed the update guard poisoned updates and assert it refuses them
+	@bash tests/test-update-guard.sh
+
+.PHONY: scan-images
+scan-images: ## Scan the running images for fixable HIGH/CRITICAL vulnerabilities
+	@bash tools/scan-images.sh --json $(BUILD_DIR)/vuln-report.json
 
 .PHONY: check
 check: lint test ## Everything CI runs

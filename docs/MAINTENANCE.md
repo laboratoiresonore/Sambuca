@@ -96,6 +96,10 @@ without it.
 delete one, and two machines flashed a month apart then run different software.
 
 - **Watched by:** `tools/verify-images.py`, daily in CI, and `make verify-images`.
+- **Scanned by:** the `image-scan` workflow daily, and `make scan-images` /
+  `tools/scan-images.sh` on the appliance itself. Fixable HIGH/CRITICAL only —
+  a base image always carries unfixable CVEs, and a report with no available
+  action is a report everybody learns to skip.
 - **Policy and digests:** [IMAGES.md](IMAGES.md).
 - **Fails:** loudly at pull time, or *silently* if a tag is repointed to a newer
   incompatible version — which is why pinning to digests before a release tag is
@@ -170,10 +174,24 @@ establishes: no container is ever given the CA private key, for any reason.**
 | `laboratoiresonore/Sambuca` availability | loudly | nightly timer, `gitops-state.json` |
 | GitHub Actions versions | loudly, with deprecation warnings first | CI (`actions/checkout@v4` and `setup-python@v5` already warn about Node 20) |
 
-The planned update-control hardening — diff size limits, secret scanning,
-egress review, rollback exercised in CI — is specified in
-[design/NEXT-STAGE.md](design/NEXT-STAGE.md) and is the most urgent unbuilt
-security work, because the appliance is *already* pulling updates unattended.
+**Update control is now built and tested.** `engine/maintenance/update-guard.sh`
+decides whether an incoming update may be applied unattended, and holds it for a
+human if it: touches more than 200 files or adds more than 6000 lines; adds a
+binary outside `assets/brand/`; introduces anything shaped like a private key or
+an API token; **contacts a host this repository has never used** (the
+highest-signal supply-chain check available); touches the installer, the storage
+or firewall phases, the backup path, CI, or the guard itself; or changes a
+pinned image digest.
+
+It is a **separate, side-effect-free script on purpose**: `tests/test-update-guard.sh`
+feeds it fourteen deliberately poisoned updates on every push and asserts it
+refuses each one. A guard nobody has shown an attack to is an assumption, not a
+control — and that test immediately earned its keep by catching a bug where
+`grep -qE "-----BEGIN..."` parsed the pattern as command-line options, silently
+disabling the private-key check.
+
+`gitops-sync.sh` **fails closed** if the guard is missing: absent checks must
+never read as "nothing objectionable found".
 
 ---
 

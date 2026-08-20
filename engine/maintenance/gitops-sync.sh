@@ -48,15 +48,10 @@ COMPOSE_DIR="${SAMBUCA_INSTALL_ROOT}/compose"
 DRY=0
 [[ ${1:-} == "--check" ]] && DRY=1
 
-# Changes to these paths are never applied unattended. They alter how the
-# machine boots, who can reach it, or what holds its secrets — decisions that
-# require a human who knows what changed and why.
-FORBIDDEN_PATHS=(
-    "engine/autoinstall/"       # disk layout, LUKS, partitioning
-    "engine/provision/40-"      # storage pool: can destroy data
-    "engine/provision/50-"      # firewall + tailscale: can strand the machine
-    "engine/maintenance/backup" # the recovery path itself
-)
+# The forbidden-path list now lives in update-guard.sh, alongside every other
+# check and the test suite that proves each one fires. Keeping a second copy
+# here would give two lists that drift apart — and the one that drifts is
+# always the one nobody is testing.
 
 cd "$SAMBUCA_INSTALL_ROOT" || die "install root ${SAMBUCA_INSTALL_ROOT} is not a directory"
 git rev-parse --git-dir >/dev/null 2>&1 || die "${SAMBUCA_INSTALL_ROOT} is not a git checkout"
@@ -103,27 +98,30 @@ if [[ $SAMBUCA_GITOPS_REQUIRE_SIGNED == 1 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Change review.
+# 3. Change review, delegated to update-guard.sh.
+#
+# Separate on purpose: a guard you cannot test is a guard you do not have.
+# It takes two revisions, takes no action, and returns a verdict — so CI feeds
+# it deliberately poisoned updates on every push (tests/test-update-guard.sh)
+# and asserts it refuses them. Inline checks inside this script would be read
+# once and trusted forever.
 # ---------------------------------------------------------------------------
 changed="$(git diff --name-only "${current}..${incoming}")"
-log "$(printf '%s' "$changed" | wc -l) file(s) changed"
+log "$(printf '%s' "$changed" | grep -c . || true) file(s) changed"
 
-blocked=""
-while IFS= read -r file; do
-    [[ -z $file ]] && continue
-    for forbidden in "${FORBIDDEN_PATHS[@]}"; do
-        [[ $file == "$forbidden"* ]] && blocked="${blocked}${file}"$'\n'
-    done
-done <<<"$changed"
+GUARD="${_SB_SELF_DIR}/update-guard.sh"
+if [[ ! -r $GUARD ]]; then
+    # Fail CLOSED. A missing guard means every check is absent, which must never
+    # read as "nothing objectionable found".
+    die "update-guard.sh is missing — refusing to apply an unreviewed update"
+fi
 
-if [[ -n $blocked ]]; then
+if ! "$GUARD" "$current" "$incoming" --json "${SB_LIB}/update-verdict.json"; then
     err "═══════════════════════════════════════════════════════════════"
-    err " UPDATE HELD — it touches paths that require human review:"
-    printf '%s' "$blocked" | while read -r f; do [[ -n $f ]] && err "   ${f}"; done
+    err " UPDATE HELD. Nothing has been applied and nothing changed."
     err ""
-    err " Review, then apply deliberately:"
-    err "   cd ${SAMBUCA_INSTALL_ROOT} && git log -p ${current:0:12}..${incoming:0:12}"
-    err "   sambuca-gitops apply --force"
+    err "   Review it:  cd ${SAMBUCA_INSTALL_ROOT} && git log -p ${current:0:12}..${incoming:0:12}"
+    err "   Then apply: sambuca-gitops apply --force"
     err "═══════════════════════════════════════════════════════════════"
     printf '{"last_check":"%s","status":"held","from":"%s","to":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$current" "$incoming" \
