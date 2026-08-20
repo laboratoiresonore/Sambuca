@@ -35,12 +35,26 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# Where the OS list lives once published. Overridable so a developer can point
-# at a local copy without editing code.
-DEFAULT_REPO = os.environ.get(
-    "SAMBUCA_OS_LIST",
-    "https://raw.githubusercontent.com/laboratoiresonore/Sambuca/main/os-list/sambuca-os-list.json",
+# NOT A CONSTANT. The OS-list location, the install commands and the download
+# page all come from the manifest, which is fetched live. A URL baked into a
+# binary is wrong the day it moves, and nobody redownloads a flasher.
+_FALLBACK_REPO = (
+    "https://raw.githubusercontent.com/laboratoiresonore/Sambuca"
+    "/main/os-list/sambuca-os-list.json"
 )
+
+
+def default_repo() -> str:
+    """Where rpi-imager should fetch the Sambuca image list from."""
+    override = os.environ.get("SAMBUCA_OS_LIST")
+    if override:
+        return override
+    try:
+        from . import manifest
+
+        return manifest.os_list_url() or _FALLBACK_REPO
+    except Exception:  # noqa: BLE001 - never block a launch on the manifest
+        return _FALLBACK_REPO
 
 _WINDOWS_PATHS = (
     r"C:\Program Files\Raspberry Pi Ltd\Imager\rpi-imager.exe",
@@ -122,14 +136,26 @@ def try_install() -> bool:
     manager's exit code is not taken as proof, for the same reason a write's
     exit code is not taken as proof that the right bytes landed.
     """
-    system = platform.system()
-    if system == "Windows":
-        cmd = ["winget", "install", "--id", "RaspberryPiFoundation.RaspberryPiImager",
-               "--accept-package-agreements", "--accept-source-agreements"]
-    elif system == "Darwin":
-        cmd = ["brew", "install", "--cask", "raspberry-pi-imager"]
-    else:
-        cmd = ["sudo", "apt-get", "install", "-y", "rpi-imager"]
+    # The command is DATA, from the manifest. winget ids in particular get
+    # renamed, and a rename should not require every user to fetch a new binary.
+    cmd: list[str] = []
+    try:
+        from . import manifest
+
+        cmd = manifest.install_command("rpi_imager")
+    except Exception:  # noqa: BLE001
+        cmd = []
+
+    if not cmd:
+        system = platform.system()
+        if system == "Windows":
+            cmd = ["winget", "install", "--id",
+                   "RaspberryPiFoundation.RaspberryPiImager",
+                   "--accept-package-agreements", "--accept-source-agreements"]
+        elif system == "Darwin":
+            cmd = ["brew", "install", "--cask", "raspberry-pi-imager"]
+        else:
+            cmd = ["sudo", "apt-get", "install", "-y", "rpi-imager"]
 
     if not shutil.which(cmd[0]):
         return False
@@ -142,7 +168,32 @@ def try_install() -> bool:
     return find_imager() is not None
 
 
-def launch(repo: str = DEFAULT_REPO, *, wait: bool = True) -> int:
+def already_running() -> bool:
+    """Is an instance of rpi-imager already up?
+
+    It is single-instance: launching a second one does nothing at all. Without
+    this check the wrapper reports success, no window appears, and the person
+    is left staring at a desktop wondering what happened — which happened
+    twice during testing before it was handled.
+    """
+    system = platform.system()
+    try:
+        if system == "Windows":
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                 "@(Get-Process rpi-imager -ErrorAction SilentlyContinue).Count"],
+                capture_output=True, text=True, timeout=20, check=False,
+            ).stdout.strip()
+            return out.isdigit() and int(out) > 0
+
+        out = subprocess.run(["pgrep", "-x", "rpi-imager"],
+                             capture_output=True, text=True, timeout=20, check=False)
+        return out.returncode == 0
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def launch(repo: str | None = None, *, wait: bool = True) -> int:
     """Start Raspberry Pi Imager against the Sambuca OS list.
 
     `--repo` is rpi-imager's documented mechanism for a custom image list, so
@@ -154,9 +205,18 @@ def launch(repo: str = DEFAULT_REPO, *, wait: bool = True) -> int:
     Windows raises the UAC prompt itself. That is one more thing this module
     does not have to get right.
     """
+    repo = repo or default_repo()
+
     exe = find_imager()
     if exe is None:
         raise ImagerNotFound(install_hint())
+
+    if already_running():
+        raise RuntimeError(
+            "Raspberry Pi Imager is already open.\n"
+            "  It only allows one window, so a second one will not start.\n"
+            "  Close that window and try again."
+        )
 
     args = [str(exe), "--repo", repo]
 

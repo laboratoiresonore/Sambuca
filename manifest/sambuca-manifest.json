@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "updated": "2026-08-20",
+
+  "_comment": [
+    "THE SINGLE SOURCE OF TRUTH FOR THE INSTALLER, FETCHED LIVE.",
+    "",
+    "Everything the flasher needs to know that can change without the code",
+    "changing lives here: which images to offer, their checksums, which",
+    "hardware has actually been tested, where dependencies come from, the tier",
+    "thresholds, and every link the app shows a human.",
+    "",
+    "WHY. A downloaded binary is frozen the day it is built. When an image is",
+    "reissued, a checksum rotates, a dependency moves or a board is finally",
+    "tested, a hardcoded binary is wrong until every user downloads a new one —",
+    "and most never will. Fetching this at startup means the app corrects",
+    "itself; the binary only carries a fallback copy for offline use.",
+    "",
+    "os-list/sambuca-os-list.json is GENERATED from this file, so the image",
+    "facts exist in exactly one place. Do not hand-edit that file."
+  ],
+
+  "links": {
+    "home": "https://github.com/laboratoiresonore/Sambuca",
+    "issues": "https://github.com/laboratoiresonore/Sambuca/issues",
+    "releases": "https://github.com/laboratoiresonore/Sambuca/releases",
+    "os_list": "https://raw.githubusercontent.com/laboratoiresonore/Sambuca/main/os-list/sambuca-os-list.json",
+    "engine_archive": "https://github.com/laboratoiresonore/Sambuca/archive/refs/heads/main.tar.gz"
+  },
+
+  "dependencies": {
+    "rpi_imager": {
+      "name": "Raspberry Pi Imager",
+      "reason": "Writes the card. Sambuca does not implement image writing; this tool does it correctly on all three platforms and handles elevation itself.",
+      "minimum_version": "1.8.0",
+      "download": "https://www.raspberrypi.com/software/",
+      "install": {
+        "windows": ["winget", "install", "--id", "RaspberryPiFoundation.RaspberryPiImager", "--accept-package-agreements", "--accept-source-agreements"],
+        "darwin": ["brew", "install", "--cask", "raspberry-pi-imager"],
+        "linux": ["sudo", "apt-get", "install", "-y", "rpi-imager"]
+      }
+    }
+  },
+
+  "tested_devices": [
+    {
+      "name": "Raspberry Pi Zero 2 W",
+      "tags": ["pi3-64bit", "pi3-32bit"],
+      "icon": "https://downloads.raspberrypi.com/imager/icons/RPi_Zero_2_W.png",
+      "description": "Raspberry Pi Zero 2 W - the only board tested so far",
+      "matching_type": "inclusive",
+      "default": true,
+      "tested_on": "2026-08-20",
+      "status": "card written and verified; first boot not yet confirmed",
+      "note": "512 MB of memory, below Sambuca's 4 GB floor. This is the arm64 test rig, not an appliance."
+    }
+  ],
+
+  "images": [
+    {
+      "id": "raspios-lite-arm64",
+      "name": "Sambuca - Raspberry Pi OS Lite (64-bit)",
+      "description": "Raspberry Pi OS Lite, arm64, with Sambuca first-boot provisioning added after writing.",
+      "url": "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz",
+      "release_date": "2026-06-18",
+      "image_download_size": 524875608,
+      "extract_size": 2977955840,
+      "extract_sha256": "e235fd24fc5f039c08daba7d3abc04aecc7313f979d16d2a3fdad29dd44c33a9",
+      "download_sha256": "acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3",
+      "init_format": "systemd",
+      "devices": ["pi3-64bit", "pi3-32bit"],
+      "verified": "extract_sha256 measured locally on 2026-08-20 by decompressing the verified download and hashing it; it matches the digest produced by a real write to a card."
+    }
+  ],
+
+  "tiers": {
+    "_comment": "Mirrors engine/hardware-detect.sh. Served live so a threshold can be corrected without reissuing binaries. The ENGINE on the target machine remains authoritative; these values are what the estimator shows before you commit hardware.",
+    "min_ram_mb": 3500,
+    "tier1_vram_mb": 24000,
+    "tier2_vram_mb": 11500,
+    "tier3_cpu_cores": 8,
+    "tier3_ram_mb": 24000,
+    "immich_gpu_min_vram_mb": 20000,
+    "image_min_vram_mb": 6000
+  }
+}
