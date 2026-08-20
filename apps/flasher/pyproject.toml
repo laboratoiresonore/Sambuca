@@ -18,6 +18,11 @@ dependencies = [
     "mnemonic>=0.21",   # BIP-39. Do not hand-roll the wordlist.
     "reportlab>=4.0",   # recovery PDF
     "passlib>=1.7",     # SHA-512 crypt on Windows/macOS and Python >= 3.13
+    # The AEAD for the recovery vault. Declared explicitly because it was
+    # importable on the dev machine only via paramiko — nothing to do with
+    # Sambuca — which is the third time today something "worked" locally for an
+    # unrelated reason. The other two broke CI.
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]
@@ -40,3 +45,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: exercises the real KDF parameters (~1 GiB, several seconds)",
+]

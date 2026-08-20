@@ -134,6 +134,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="also open the search in your browser")
     p_boot.add_argument("--list-vendors", action="store_true")
 
+    p_vault = sub.add_parser(
+        "open-vault",
+        help="recover your secrets by answering your three questions")
+    p_vault.add_argument("--file", type=Path,
+                         help="a vault file, if it is not in the usual place")
+
     p_watch = sub.add_parser(
         "watch",
         help="watch an appliance build itself, before its own setup page exists")
@@ -184,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_write_pi(args)
         if args.command == "provision-pi":
             return _cmd_provision_pi(args)
+        if args.command == "open-vault":
+            return _cmd_open_vault(args)
         if args.command == "watch":
             return _cmd_watch(args)
         if args.command == "handover":
@@ -454,6 +462,12 @@ def _cmd_write(args) -> int:
         print()
         print("  The sheet is UNVERIFIED. Everything else is done, but please")
         print("  check it against the document before you rely on it.")
+
+    # OFFERED LAST, AND ONLY AFTER THE SHEET. The paper is the primary path and
+    # this is a second one — offering it earlier would invite somebody to take
+    # it INSTEAD of printing, swapping a durable artefact for a file that dies
+    # with this laptop. That is the precise failure it exists to prevent.
+    _offer_vault(keys, args.output_dir)
     return 0
 
 
@@ -909,6 +923,195 @@ def _find_watch_file(explicit):
     if not seen:
         return None
     return max(seen, key=lambda p: p.stat().st_mtime)
+
+
+def _offer_vault(keys, output_dir) -> None:
+    """Offer a second way back in, for when the paper is gone.
+
+    THE SHEET STAYS PRIMARY. This is offered AFTER it has been printed and
+    checked, never instead — an owner who accepts this and skips the printing
+    has swapped a durable artefact for one that dies with a laptop.
+
+    Opt-in, because it is a genuine trade and not a free upgrade: the vault is
+    a second complete copy of every secret on the machine.
+    """
+    from . import vault
+
+    _say()
+    _say("-" * 68)
+    _say("  A SECOND WAY BACK IN  (optional)")
+    _say("-" * 68)
+    _say()
+    _say("  The printed sheet is your way back in if the password is ever")
+    _say("  lost. Paper gets lost too.")
+    _say()
+    _say("  Sambuca can keep an encrypted copy on this computer, locked behind")
+    _say("  three questions only you can answer. No account, nothing uploaded,")
+    _say("  no company involved - just a file you can copy anywhere.")
+    _say()
+    _say("  BE CLEAR ABOUT THE TRADE:")
+    _say("    This is a SECOND COMPLETE COPY of every secret on the appliance.")
+    _say("    Someone who steals this computer AND guesses your three answers")
+    _say("    has your disk. It is deliberately slow to try answers against -")
+    _say("    seconds each, not thousandths - but the answers still have to be")
+    _say("    things a stranger could not look up.")
+    _say()
+    _say("  Not 'mother's maiden name'. That is a public record.")
+    _say()
+
+    if not _ask_yes("  Set one up?"):
+        _say()
+        _say("  Skipped. The printed sheet remains your way back in - which is")
+        _say("  the design, not a consolation.")
+        return
+
+    questions, answers = [], []
+    _say()
+    _say("  Three questions, in your own words. Good ones are specific, will")
+    _say("  never change, and are not on anybody's social media.")
+    _say()
+    _say("  For example: 'what did we call the car that broke down in France?'")
+    _say()
+
+    for i in range(1, vault.QUESTION_COUNT + 1):
+        try:
+            q = input(f"  Question {i}: ").strip()
+            a = input(f"  Answer {i}:   ").strip()
+        except (EOFError, KeyboardInterrupt):
+            _say("\n  Cancelled. Nothing was written.")
+            return
+        if not q or not a:
+            _say("\n  Both are needed. Nothing was written.")
+            return
+        questions.append(q)
+        answers.append(a)
+
+    verdict = vault.check_answers(questions, answers)
+    if not verdict.ok:
+        _say()
+        _say(f"  {verdict.reason}")
+        _say("  Nothing was written. Run this again when you have three you")
+        _say("  are happy with.")
+        return
+
+    _say()
+    _say("  Encrypting. This deliberately takes a few seconds - that slowness")
+    _say("  is what makes guessing the answers expensive.")
+
+    path = vault.default_path(keys.fingerprint)
+    try:
+        vault.create(path, {
+            "seed_phrase": keys.seed_phrase,
+            "root_passphrase": keys.root_passphrase,
+            "luks_recovery_key": keys.luks_recovery_key,
+            "fingerprint": keys.fingerprint,
+        }, questions, answers, fingerprint=keys.fingerprint)
+    except vault.VaultError as exc:
+        _say()
+        _say(f"  Could not write it: {exc}")
+        _say("  The printed sheet is unaffected.")
+        return
+
+    # PROVE IT OPENS, NOW, WHILE THE ANSWERS ARE STILL IN THEIR HEAD. An
+    # untested vault is a hypothesis, and it gets tested for the first time on
+    # the day everything else has already failed.
+    try:
+        vault.open_vault(path, answers)
+    except vault.VaultError:
+        _say()
+        _say("  WARNING: the vault was written but did not open with those")
+        _say("  answers. Do not rely on it. The printed sheet is your way in.")
+        return
+
+    _say()
+    _say(f"  Done, and checked:  {path}")
+    _say()
+    _say("  COPY THAT FILE SOMEWHERE ELSE. On this computer alone it dies with")
+    _say("  this computer, which is the failure it exists to prevent. A USB")
+    _say("  stick in a drawer is enough.")
+    _say()
+    _say("  To use it:  sambuca-flasher open-vault")
+
+
+def _cmd_open_vault(args) -> int:
+    """Recover the secrets from a vault, by answering its three questions."""
+    from . import vault
+
+    path = getattr(args, "file", None)
+    if path:
+        path = Path(path)
+    else:
+        d = Path.home() / ".sambuca" / "vault"
+        found = sorted(d.glob("recovery-*.json")) if d.is_dir() else []
+        if not found:
+            _say()
+            _say("  No vault found on this computer.")
+            _say(f"  Looked in: {d}")
+            _say()
+            _say("  If you copied one to a USB stick, point at it:")
+            _say("    sambuca-flasher open-vault --file <path>")
+            return 1
+        # Newest, so somebody with two appliances gets the recent one rather
+        # than a silent guess at the older.
+        path = max(found, key=lambda p: p.stat().st_mtime)
+
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        _say(f"\n  Cannot read a vault at {path}")
+        return 1
+
+    questions = doc.get("questions", [])
+    _say()
+    _say("=" * 68)
+    _say("  OPEN THE RECOVERY VAULT")
+    _say("=" * 68)
+    _say()
+    _say(f"  {path}")
+    _say()
+    _say("  Answer the three questions you chose. Capitals, accents and")
+    _say("  punctuation do not matter.")
+    _say()
+
+    answers = []
+    for i, q in enumerate(questions, 1):
+        try:
+            answers.append(input(f"  {i}. {q}\n     ").strip())
+        except (EOFError, KeyboardInterrupt):
+            return 1
+
+    _say()
+    _say("  Checking. This takes a few seconds on purpose.")
+
+    try:
+        payload = vault.open_vault(path, answers)
+    except vault.WrongAnswers as exc:
+        _say()
+        _say(f"  {exc}")
+        return 1
+    except vault.VaultError as exc:
+        _say(f"\n  {exc}")
+        return 1
+
+    _say()
+    _say("-" * 68)
+    _say("  YOUR RECOVERY DETAILS")
+    _say("-" * 68)
+    _say()
+    _say(f"  Machine fingerprint:  {payload.get('fingerprint', '?')}")
+    _say()
+    _say("  Seed phrase (24 words):")
+    words = str(payload.get("seed_phrase", "")).split()
+    for row in range(0, len(words), 4):
+        _say("      " + "  ".join(f"{row + j + 1:2d}. {w:<10}"
+                                   for j, w in enumerate(words[row:row + 4])))
+    _say()
+    _say(f"  Root passphrase:      {payload.get('root_passphrase', '')}")
+    _say(f"  Disk recovery key:    {payload.get('luks_recovery_key', '')}")
+    _say()
+    _say("  ON SCREEN AND NOWHERE ELSE. Nothing here was written to a file.")
+    _say("  Write it down now, then clear this window.")
+    return 0
 
 
 def _cmd_handover(args) -> int:
