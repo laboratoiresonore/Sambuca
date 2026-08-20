@@ -24,7 +24,7 @@ from pathlib import Path
 
 from . import __version__
 from .devices import DeviceError, RemovableDevice, list_removable_devices
-from .keys import derive_backup_password, generate_key_material
+from .keys import derive_backup_password, derive_luks_recovery_key, generate_key_material
 from .payload import ApplianceConfig, build_provision_payload, config_from_dict, render_preseed
 from .recovery_pdf import write_recovery_pdf
 from .writer import inject_payload, write_image
@@ -60,6 +60,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("derive-backup-key",
                    help="recover the backup repository password from a seed phrase")
 
+    sub.add_parser("derive-recovery-key",
+                   help="recover the DISK recovery key from a seed phrase "
+                        "(use when the root passphrase is lost)")
+
     p_cfg = sub.add_parser("example-config", help="print a commented example configuration")
     p_cfg.add_argument("--output", type=Path)
 
@@ -72,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_write(args)
         if args.command == "derive-backup-key":
             return _cmd_derive()
+        if args.command == "derive-recovery-key":
+            return _cmd_derive_recovery()
         if args.command == "example-config":
             return _cmd_example(args)
     except DeviceError as exc:
@@ -138,7 +144,23 @@ def _cmd_write(args) -> int:
     staging.mkdir(parents=True, exist_ok=True)
     (staging / "provision.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     (staging / "preseed.cfg").write_text(preseed, encoding="utf-8")
-    for script in ("abort-countdown.sh", "disk-select.sh", "late-command.sh"):
+
+    # The disk recovery key, for the installer to enrol as a second LUKS
+    # keyslot. Written with NO trailing newline and no encoding surprises:
+    # cryptsetup would otherwise enrol a passphrase containing the newline,
+    # which nobody could ever type. The installer normalises it again as a
+    # belt-and-braces check — see enroll-recovery-key.sh.
+    if config.unattended:
+        (staging / "luks-recovery.key").write_bytes(
+            keys.luks_recovery_key.encode("ascii"))
+    else:
+        # Interactive mode puts no secret on the stick, so there is nothing for
+        # the installer to enrol. The owner enrols it from the running system.
+        print("      interactive mode: recovery keyslot must be enrolled after "
+              "install\n                        (sambuca-recovery enrol)")
+
+    for script in ("abort-countdown.sh", "disk-select.sh", "late-command.sh",
+                   "enroll-recovery-key.sh"):
         src = repo_root / "engine" / "autoinstall" / script
         if src.is_file():
             (staging / script).write_bytes(src.read_bytes())
@@ -207,6 +229,36 @@ def _cmd_derive() -> int:
     print("\nrestic repository password:\n")
     print(f"  {password}\n")
     print("Use it with:  restic -r <repository> snapshots")
+    return 0
+
+
+def _cmd_derive_recovery() -> int:
+    """Recompute the disk recovery key from the seed phrase.
+
+    This is the "I forgot the master password" path. It runs entirely offline,
+    on this machine, and needs nothing from the appliance.
+    """
+    print("Recover the DISK RECOVERY KEY from your 24-word seed phrase.")
+    print("Use this when the root passphrase is lost and the machine will not unlock.")
+    print("Nothing is transmitted; this runs entirely on this machine.\n")
+    phrase = input("seed phrase (24 words): ").strip()
+    try:
+        key = derive_luks_recovery_key(phrase)
+    except ValueError as exc:
+        print(f"\nerror: {exc}", file=sys.stderr)
+        print("BIP-39 has a checksum, so a single wrong or transposed word is "
+              "detected. Check the word order against the numbers on the sheet.",
+              file=sys.stderr)
+        return 1
+
+    print("\ndisk recovery key:\n")
+    print(f"  {key}\n")
+    print("At the machine's passphrase prompt, type it EXACTLY as shown, dashes")
+    print("included. It is case-sensitive and unlocks the disk on its own.")
+    print("\nOnce you are in, set a new root passphrase you will remember:")
+    print("  sudo cryptsetup luksChangeKey <device>   # e.g. /dev/nvme0n1p3")
+    print("\nIf it is rejected, this machine may predate recovery keyslots, or the")
+    print("installer could not enrol one. Check: sudo cryptsetup luksDump <device>")
     return 0
 
 

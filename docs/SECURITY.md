@@ -99,7 +99,8 @@ If you add a second, less-trusted operator account, do **not** put it in the
 | Secret | Generated | Stored | On the USB? |
 |---|---|---|---|
 | 24-word seed phrase | flasher, offline | **paper only** | no (SHA-256 only) |
-| Root / LUKS passphrase | flasher, offline | paper; LUKS key slot | yes in unattended mode, no in interactive |
+| Root / LUKS passphrase | flasher, offline | paper; LUKS keyslot 0 | yes in unattended mode, no in interactive |
+| Disk recovery key | derived from the seed | paper; LUKS keyslot 1 | yes in unattended mode (enrolled, then never needed again) |
 | Backup repository password | derived from the seed | `/etc/sambuca/secrets/`, 0600 | no |
 | Service passwords, tokens, cookie secrets | on-device, `openssl rand` | `/etc/sambuca/secrets/`, 0600 | no |
 | Tailscale auth key | your tailnet admin console | payload, then cleared after use | yes — use a **single-use, tagged, expiring** key |
@@ -115,6 +116,48 @@ from under an initialised database is data loss, and it is the classic
 idempotency bug in provisioning scripts.
 
 ---
+
+## The disk has two independent keys
+
+A single key that only exists on one sheet of paper is a single point of failure
+for every file the owner has. So the disk is opened by either of two secrets,
+neither derivable from the other:
+
+| Slot | Secret | Where it comes from |
+|---|---|---|
+| 0 | root passphrase | random, printed on the recovery sheet |
+| 1 | disk recovery key | HKDF from the 24-word seed, also printed |
+
+Slot 1 is enrolled by `engine/autoinstall/enroll-recovery-key.sh`, which runs in
+the **installer** rather than in the installed system — the only moment the disk
+passphrase is legitimately available (from debconf) without persisting it
+anywhere. Enrolment failure is non-fatal: the machine installs with one keyslot,
+and both the completion report and the MOTD say so in plain language until it is
+fixed with `sambuca-recovery enrol`.
+
+Recompute the key from the seed on any computer, offline:
+
+```bash
+sambuca-flasher derive-recovery-key
+```
+
+**Test it before you need it.** A keyslot that exists is not a keyslot that
+works — a stray newline in a key file or a transcription error off the printed
+sheet produces a slot that looks perfect in `luksDump` and opens nothing. This
+is exactly why `cryptsetup` reading a key file byte-for-byte is called out in
+the enrolment script: a trailing `\n` enrols a passphrase no human can type.
+
+```bash
+sambuca-recovery verify
+```
+
+That tests the key against the real disk without unlocking it or changing a
+byte. Do it while the sheet is still in front of you.
+
+**What this does NOT protect against:** losing the sheet. Both secrets are on
+it. That is the deliberate trade — the alternative is an escrow service, which
+means someone else holds a key to your disk, which is the arrangement this
+appliance exists to escape.
 
 ## Network exposure
 

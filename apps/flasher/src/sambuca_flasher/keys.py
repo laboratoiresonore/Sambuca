@@ -63,6 +63,7 @@ class KeyMaterial:
 
     seed_phrase: str          # 24 BIP-39 words, space separated
     root_passphrase: str      # 32 characters, typed by a human
+    luks_recovery_key: str    # derived from the seed; a SECOND way into the disk
     backup_password: str      # derived from the seed; never printed on paper
     backup_seed_hash: str     # sha256 of the seed, for verification only
     fingerprint: str          # short, non-secret; identifies this key set
@@ -73,6 +74,7 @@ class KeyMaterial:
             "fingerprint": self.fingerprint,
             "seed_phrase": f"<24 words, {len(self.seed_phrase.split())} present>",
             "root_passphrase": f"<{len(self.root_passphrase)} chars>",
+            "luks_recovery_key": "<derived, not shown>",
             "backup_password": "<derived, not shown>",
             "backup_seed_hash": self.backup_seed_hash[:16] + "...",
         }
@@ -156,6 +158,46 @@ def derive_backup_password(seed_phrase: str, *, passphrase: str = "") -> str:
     return derived.hex()
 
 
+def derive_luks_recovery_key(seed_phrase: str, *, passphrase: str = "") -> str:
+    """
+    Derive the LUKS RECOVERY KEY from the seed phrase.
+
+    WHY THIS EXISTS: without it, the root passphrase is the only thing that
+    opens the disk. Lose that one string and the machine is not "locked out" —
+    it is permanently unrecoverable, along with every photo and document on it.
+    An appliance aimed at non-technical owners cannot have a single point of
+    failure that is a 32-character string on a sheet of paper.
+
+    This key is enrolled into a SECOND LUKS keyslot during installation (see
+    engine/autoinstall/enroll-recovery-key.sh), so either secret opens the disk
+    independently. Neither can be derived from the other.
+
+    ENCODING: base32 of 20 derived bytes — 160 bits, in an alphabet (A-Z, 2-7)
+    that already excludes 0/1/8/9 and every glyph pair that gets misread off
+    paper. Printed and typed in groups of four. This is the string somebody
+    types, one character at a time, at a console at the worst possible moment;
+    hex would be 40 error-prone characters of a-f0-9.
+    """
+    import base64
+
+    normalised = unicodedata.normalize("NFKD", seed_phrase.strip())
+    mnemo = Mnemonic("english")
+    if not mnemo.check(normalised):
+        raise ValueError("seed phrase failed BIP-39 checksum validation")
+
+    bip39_seed = Mnemonic.to_seed(normalised, passphrase=passphrase)
+    derived = _hkdf_sha256(
+        ikm=bip39_seed,
+        salt=b"sambuca-luks-salt-v1",
+        # A DIFFERENT info string from the backup key. Sharing one would mean
+        # that disclosing a backup password also hands over the disk.
+        info=b"sambuca/luks/recovery-key/v1",
+        length=20,
+    )
+    raw = base64.b32encode(derived).decode("ascii").rstrip("=")
+    return "-".join(raw[i : i + 4] for i in range(0, len(raw), 4))
+
+
 def seed_fingerprint(seed_phrase: str) -> str:
     """Short non-secret identifier, printed on the recovery document.
 
@@ -179,6 +221,7 @@ def generate_key_material() -> KeyMaterial:
     return KeyMaterial(
         seed_phrase=phrase,
         root_passphrase=generate_root_passphrase(),
+        luks_recovery_key=derive_luks_recovery_key(phrase),
         backup_password=derive_backup_password(phrase),
         backup_seed_hash=seed_hash(phrase),
         fingerprint=seed_fingerprint(phrase),

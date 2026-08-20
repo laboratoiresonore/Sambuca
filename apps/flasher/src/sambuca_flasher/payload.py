@@ -156,6 +156,10 @@ def build_provision_payload(
         "parity_disks": config.parity_disks,
         # Verification material, not the secret itself.
         "backup_seed_hash": keys.backup_seed_hash,
+        # Not the key itself — a flag saying one SHOULD exist, so first-boot can
+        # distinguish "interactive install, none expected" from "enrolment
+        # silently failed", instead of treating both as normal.
+        "expect_recovery_keyslot": config.unattended,
         # first-boot.sh shreds this file from the unencrypted boot partition.
         "shred_after_install": True,
     }
@@ -183,6 +187,8 @@ def _assert_no_secrets(payload: dict, keys: KeyMaterial) -> None:
         leaks.append("root passphrase")
     if keys.backup_password in blob:
         leaks.append("backup password")
+    if keys.luks_recovery_key in blob:
+        leaks.append("LUKS recovery key")
     for word in keys.seed_phrase.split()[:4]:
         if f'"{word} ' in blob:
             leaks.append("seed phrase fragment")

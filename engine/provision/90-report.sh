@@ -118,6 +118,36 @@ OUTSTANDING — ONE ATTENDED STEP
 EOF
 fi
 
+keyslots="$(lsblk -rno NAME,FSTYPE 2>/dev/null | awk '$2=="crypto_LUKS"{print "/dev/"$1; exit}')"
+if [[ -n $keyslots ]]; then
+    n="$(cryptsetup luksDump "$keyslots" 2>/dev/null \
+        | grep -cE '^[[:space:]]+[0-9]+: luks2|^Key Slot [0-9]+: ENABLED' || echo 0)"
+    if [[ $n -lt 2 ]]; then
+cat <<EOF
+⚠  THIS DISK HAS ONLY ONE KEY
+
+  The recovery keyslot was not enrolled, so the root passphrase is the only
+  thing that opens this disk. If it is lost, every file here is gone
+  permanently — there is no reset and no support line.
+
+  Fix it now, it takes ten seconds:
+      sambuca-recovery enrol        (the key is on your recovery sheet)
+      sambuca-recovery verify       (prove it actually works)
+
+EOF
+    else
+cat <<EOF
+RECOVERY
+  This disk has ${n} keyslots: the root passphrase AND the seed-derived
+  recovery key on your sheet. Either one opens it; losing one is survivable.
+
+  Test it now, while the sheet is in front of you:
+      sambuca-recovery verify
+
+EOF
+    fi
+fi
+
 if [[ -f "${SB_LIB}/reboot-required" ]]; then
 cat <<EOF
 REBOOT REQUIRED

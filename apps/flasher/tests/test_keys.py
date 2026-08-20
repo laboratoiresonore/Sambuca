@@ -17,6 +17,7 @@ from sambuca_flasher.keys import (
     KeyMaterial,
     _hkdf_sha256,
     derive_backup_password,
+    derive_luks_recovery_key,
     generate_key_material,
     generate_root_passphrase,
     generate_seed_phrase,
@@ -185,6 +186,61 @@ def test_disk_cannot_be_both_data_and_parity():
 def test_unknown_bundle_rejected():
     problems = ApplianceConfig(bundles=("ai", "crypto-mining")).validate()
     assert any("crypto-mining" in p for p in problems)
+
+
+# ------------------------------------------------------- disk recovery key
+
+
+def test_recovery_key_is_deterministic_and_distinct():
+    """The recovery key is the difference between 'forgot the password' and
+    'lost every file forever'. It must reproduce exactly from the seed, and it
+    must NOT be derivable from the backup password — otherwise disclosing a
+    backup repository password also hands over the disk."""
+    phrase = generate_seed_phrase()
+    key = derive_luks_recovery_key(phrase)
+    assert key == derive_luks_recovery_key(phrase)
+    assert key.replace("-", "") not in derive_backup_password(phrase)
+    assert derive_backup_password(phrase) not in key
+
+
+def test_recovery_key_differs_per_seed():
+    assert derive_luks_recovery_key(generate_seed_phrase()) != \
+           derive_luks_recovery_key(generate_seed_phrase())
+
+
+def test_recovery_key_is_typeable_at_a_console():
+    """Base32 groups only. This string gets read off paper and typed one
+    character at a time, at a passphrase prompt, by someone having a bad day."""
+    key = derive_luks_recovery_key(generate_seed_phrase())
+    body = key.replace("-", "")
+    assert len(body) == 32
+    assert set(body) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
+    # No glyph pairs that get confused in print.
+    assert not (set(body) & set("018"))
+    assert key.count("-") == 7
+
+
+def test_recovery_key_rejects_a_bad_seed():
+    with pytest.raises(ValueError, match="checksum"):
+        derive_luks_recovery_key("not a real seed phrase " * 6)
+
+
+def test_recovery_key_is_stable_for_a_known_seed():
+    """PINNED. A change here means every already-installed machine's printed
+    sheet no longer opens its own disk. Bump the info string to v2 and keep v1
+    working — never edit this expectation."""
+    known = (
+        "abandon abandon abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon abandon abandon art"
+    )
+    assert derive_luks_recovery_key(known) == "HRYN-PASO-SYUS-VNQF-OIIB-TDJ5-DBTU-HSFS"
+
+
+def test_payload_never_contains_the_recovery_key():
+    keys = generate_key_material()
+    payload = build_provision_payload(ApplianceConfig(hostname="testbox"), keys)
+    assert keys.luks_recovery_key not in str(payload)
 
 
 def test_key_material_is_frozen():

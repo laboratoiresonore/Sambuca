@@ -75,6 +75,7 @@ ln -sf "$INSTALL_ROOT/engine/hardware-detect.sh"           /usr/local/bin/sambuc
 ln -sf "$INSTALL_ROOT/engine/maintenance/backup.sh"        /usr/local/bin/sambuca-backup
 ln -sf "$INSTALL_ROOT/engine/maintenance/gitops-sync.sh"   /usr/local/bin/sambuca-gitops
 ln -sf "$INSTALL_ROOT/engine/maintenance/snapraid-sync.sh" /usr/local/bin/sambuca-snapraid
+ln -sf "$INSTALL_ROOT/engine/maintenance/recovery-key.sh"  /usr/local/bin/sambuca-recovery
 
 # ---------------------------------------------------------------------------
 # 4. TPM enrolment is deferred, on purpose.

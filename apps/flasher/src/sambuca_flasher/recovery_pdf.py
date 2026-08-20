@@ -174,7 +174,26 @@ def _page_one(c: canvas.Canvas, keys: KeyMaterial, config: ApplianceConfig) -> N
     c.drawString(_MARGIN, y,
                  "Spaces above are for reading only — type the characters with no spaces.")
     c.setFillGray(0)
-    y -= 10 * mm
+    y -= 9 * mm
+
+    # --- disk recovery key -------------------------------------------------
+    # The second way in. Without it, forgetting the passphrase above destroys
+    # every file on the machine — so it is printed here, on the same sheet,
+    # rather than being something the owner has to know to go and derive.
+    c.setFont(_HEAD, 13)
+    c.drawString(_MARGIN, y, "3.  DISK RECOVERY KEY")
+    y -= 5 * mm
+    c.setFont(_BODY, 9)
+    c.drawString(_MARGIN, y,
+                 "Also opens the disk, on its own, if the passphrase above is lost. "
+                 "Type it exactly, dashes included.")
+    y -= 9 * mm
+
+    c.setLineWidth(0.8)
+    c.rect(_MARGIN, y - 3 * mm, w - 2 * _MARGIN, 11 * mm)
+    c.setFont(_MONO, 12)
+    c.drawString(_MARGIN + 4 * mm, y + 1 * mm, keys.luks_recovery_key)
+    y -= 15 * mm
 
     # --- the honest USB warning -------------------------------------------
     if config.unattended:
@@ -232,9 +251,15 @@ def _page_two(
 
     y = section("IF THE MACHINE WILL NOT BOOT", y)
     y = line("1. At the passphrase prompt, type the ROOT PASSPHRASE from page 1.", y)
-    y = line("2. If the disk is intact but the system is broken, boot the installer", y)
-    y = line("   USB in rescue mode and unlock with the same passphrase.", y)
-    y = line("3. Log in as:", y)
+    y = line("2. If that is lost, type the DISK RECOVERY KEY instead. It opens the", y)
+    y = line("   disk on its own. Then set a passphrase you will remember:", y)
+    y = line("   sudo cryptsetup luksChangeKey <device>", y, mono=True, indent=6 * mm)
+    y = line("3. Lost the sheet but still have the 24 words? Recompute the key on", y)
+    y = line("   any computer, offline:", y)
+    y = line("   sambuca-flasher derive-recovery-key", y, mono=True, indent=6 * mm)
+    y = line("4. If the disk is intact but the system is broken, boot the installer", y)
+    y = line("   USB in rescue mode and unlock with either secret.", y)
+    y = line("5. Log in as:", y)
     y = line(f"   {config.admin_user}   (password = the root passphrase)", y, mono=True)
     y -= 3 * mm
 
