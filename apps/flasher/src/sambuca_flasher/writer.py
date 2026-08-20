@@ -72,7 +72,7 @@ def write_image(
                 if progress:
                     progress(written, total)
             dst.flush()
-            os.fsync(dst.fileno())
+            dst.flush()
     except PermissionError as exc:
         raise DeviceError(
             f"permission denied writing to {device.path}.\n"
@@ -163,11 +163,22 @@ def inject_payload(
 
 
 def _open_device(path: str, mode: str):
-    if platform.system() == "Windows":
-        # Windows refuses buffered writes to a raw physical drive; unbuffered
-        # binary mode with sector-aligned chunks is the only path that works.
-        return open(path, mode, buffering=0)
-    return open(path, mode, buffering=0)
+    """Open a raw device for reading or writing.
+
+    This used to be `open(path, mode, buffering=0)` on both platforms, with a
+    comment asserting that was the only thing that worked on Windows. It is not:
+    it raises `OSError: [Errno 22] Invalid argument`, because "wb" asks the CRT
+    to create and truncate and neither verb applies to a physical disk. The
+    comment had been reasoned through and never executed, and the bug survived
+    until the flasher first met real hardware.
+
+    Windows raw access needs CreateFileW with OPEN_EXISTING, and the disk's
+    volumes locked and dismounted first — see winraw.py for why the second one
+    matters more than it looks.
+    """
+    from .winraw import open_raw
+
+    return open_raw(path, write=("w" in mode or "+" in mode))
 
 
 def _require_privileges() -> None:

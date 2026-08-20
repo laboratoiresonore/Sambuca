@@ -67,6 +67,39 @@ def main(argv: list[str] | None = None) -> int:
     p_write.add_argument("--dry-run", action="store_true",
                          help="generate keys, payload and PDF; do not touch any device")
 
+    p_pi = sub.add_parser(
+        "write-pi",
+        help="write a Raspberry Pi OS card with sambuca first-boot provisioning")
+    p_pi.add_argument("--image", type=Path, required=True,
+                      help="Raspberry Pi OS image (.img or .img.xz)")
+    p_pi.add_argument("--device", help="target device path (from `list`)")
+    p_pi.add_argument("--hostname", default="sambuca")
+    p_pi.add_argument("--engine", type=Path,
+                      help="engine directory to stage onto the card "
+                           "(default: the engine/ beside this repo)")
+    p_pi.add_argument("--wifi-ssid",
+                      help="note the network name on the card. NO KEY IS WRITTEN.")
+    p_pi.add_argument("--no-ssh", action="store_true")
+    p_pi.add_argument("--no-probe", action="store_true",
+                      help="do not run hardware-detect.sh on first boot")
+    p_pi.add_argument("--no-verify", action="store_true",
+                      help="skip the readback pass (not recommended)")
+    p_pi.add_argument("--dry-run", action="store_true",
+                      help="stage and report; do not touch any device")
+
+    p_prov = sub.add_parser(
+        "provision-pi",
+        help="add sambuca first-boot provisioning to an already-written Pi card")
+    p_prov.add_argument("--device", help="target device path (from `list`)")
+    p_prov.add_argument("--boot", type=Path,
+                        help="path to the mounted FAT32 boot partition, if you "
+                             "already know it")
+    p_prov.add_argument("--hostname", default="sambuca")
+    p_prov.add_argument("--engine", type=Path)
+    p_prov.add_argument("--wifi-ssid")
+    p_prov.add_argument("--no-ssh", action="store_true")
+    p_prov.add_argument("--no-probe", action="store_true")
+
     sub.add_parser("derive-backup-key",
                    help="recover the backup repository password from a seed phrase")
 
@@ -101,6 +134,10 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_list(args)
         if args.command == "write":
             return _cmd_write(args)
+        if args.command == "write-pi":
+            return _cmd_write_pi(args)
+        if args.command == "provision-pi":
+            return _cmd_provision_pi(args)
         if args.command == "derive-backup-key":
             return _cmd_derive()
         if args.command == "derive-recovery-key":
@@ -504,3 +541,199 @@ def _progress(done: int, total: int) -> None:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def _stage_engine(engine_dir: Path, into: Path) -> int:
+    """Copy the parts of the engine a Pi actually needs onto the card.
+
+    Not the whole tree. The FAT partition is ~512 MiB and shared with the
+    firmware, and the x86 provisioning phases are meaningless here — the Pi
+    image is already an installed system. What matters on first boot is the
+    profiler and the data it reads.
+    """
+    import shutil
+
+    into.mkdir(parents=True, exist_ok=True)
+    count = 0
+
+    probe = engine_dir / "hardware-detect.sh"
+    if not probe.is_file():
+        raise DeviceError(f"no hardware-detect.sh under {engine_dir}")
+    shutil.copy2(probe, into / probe.name)
+    count += 1
+
+    for sub in ("lib", "profiles"):
+        src = engine_dir / sub
+        if src.is_dir():
+            dst = into / sub
+            shutil.rmtree(dst, ignore_errors=True)
+            shutil.copytree(src, dst)
+            count += sum(1 for f in dst.rglob("*") if f.is_file())
+
+    # Written with LF endings or the Pi's /bin/sh will not run them. This is the
+    # same CRLF trap that made the x86 abort countdown unrunnable.
+    for f in into.rglob("*"):
+        if f.is_file() and f.suffix in (".sh", ".env"):
+            data = f.read_bytes()
+            if b"\r\n" in data:
+                f.write_bytes(data.replace(b"\r\n", b"\n"))
+
+    return count
+
+
+def _cmd_write_pi(args) -> int:
+    from . import pi
+
+    image = args.image
+    kind = pi.identify_image(image)
+    print(f"\nimage: {image.name}")
+    print(f"       {kind.label}")
+
+    if kind.kind == "iso":
+        print("\nerror: that is an x86 installer ISO. A Raspberry Pi cannot boot it.",
+              file=sys.stderr)
+        print("       Fetch a Raspberry Pi OS image (.img.xz) instead.", file=sys.stderr)
+        return 1
+
+    size = pi.expanded_size(image, kind)
+    if size:
+        print(f"       expands to {size / 1024**3:.2f} GiB")
+
+    # --- engine ---
+    engine_dir = args.engine or (Path(__file__).resolve().parents[4] / "engine")
+    if not engine_dir.is_dir():
+        print(f"\nerror: engine not found at {engine_dir}", file=sys.stderr)
+        print("       pass --engine <path>", file=sys.stderr)
+        return 1
+
+    import tempfile
+
+    staging = Path(tempfile.mkdtemp(prefix="sambuca-pi-"))
+    staged = _stage_engine(engine_dir, staging / "sambuca")
+    print(f"\nstaged {staged} engine file(s) from {engine_dir}")
+
+    if args.dry_run:
+        print("\ndry run: no device was touched.")
+        print(f"  staging: {staging}")
+        print("  firstrun.sh preview:")
+        for line in pi.render_firstrun(
+                hostname=args.hostname,
+                run_probe=not args.no_probe,
+                enable_ssh=not args.no_ssh).splitlines()[:12]:
+            print(f"    {line}")
+        return 0
+
+    # --- device ---
+    device = _resolve_device(args.device)
+    if device is None:
+        return 1
+    if not _confirm_destruction(device):
+        print("aborted — nothing was written.")
+        return 1
+
+    # --- write ---
+    print(f"\nwriting {image.name} -> {device.path}")
+
+    known_total = size or 0
+
+    def show(done: int, total: int) -> None:
+        # A percentage ONLY when the real total is known. expanded_size()
+        # returns None when the xz binary is not on PATH, and the previous
+        # `total or written` fallback divided the count by itself, so every
+        # line read "100.0%" from the first chunk onwards. A progress bar that
+        # is always complete is worse than no percentage at all.
+        mib = done / 1024**2
+        if known_total:
+            print(f"\r  {mib:7.0f} / {known_total / 1024**2:.0f} MiB "
+                  f"{done / known_total * 100:5.1f}%", end="", flush=True)
+        else:
+            print(f"\r  {mib:7.0f} MiB written", end="", flush=True)
+
+    written = pi.write_raspios(image, device, progress=show, verify=not args.no_verify)
+    print(f"\n  sha256 (uncompressed): {written[:32]}...")
+    if not args.no_verify:
+        print("  readback verified")
+
+    # --- provision ---
+    print("\nlocating the boot partition")
+    boot = pi.find_boot_partition(device)
+    if boot is None:
+        print("\nerror: the card was written, but its FAT32 boot partition did not "
+              "appear.", file=sys.stderr)
+        print("       Re-insert the card and run:  sambuca-flasher provision-pi",
+              file=sys.stderr)
+        return 1
+    print(f"  {boot}")
+
+    actions = pi.provision_boot_partition(
+        boot,
+        payload_dir=staging / "sambuca",
+        hostname=args.hostname,
+        enable_ssh=not args.no_ssh,
+        run_probe=not args.no_probe,
+        wifi_ssid=args.wifi_ssid,
+    )
+    for a in actions:
+        print(f"  {a}")
+
+    print("\nDone. Put the card in the Pi and power it on.")
+    print("The first boot writes its results BACK ONTO THE CARD:")
+    print("  put the card in a reader and read  sambuca-firstboot.log")
+    print("No network, monitor or keyboard needed to find out what happened.")
+    return 0
+
+
+def _cmd_provision_pi(args) -> int:
+    """Provision an already-written card, without rewriting 2.77 GiB.
+
+    This exists because the write and the provisioning genuinely can fail
+    independently: the image lands and verifies, and then Windows declines to
+    surface the boot partition. Re-imaging the whole card to retry a handful of
+    small file writes would be absurd, and an error message that names a
+    command which does not exist is worse than no suggestion at all.
+    """
+    import tempfile
+
+    from . import pi
+
+    boot = args.boot
+    if boot is None:
+        device = _resolve_device(args.device)
+        if device is None:
+            return 1
+        print(f"\nlocating the boot partition on {device.path}")
+        boot = pi.find_boot_partition(device)
+
+    if boot is None or not Path(boot).is_dir():
+        print("\nerror: could not find the FAT32 boot partition.", file=sys.stderr)
+        print("       Re-insert the card, then pass it explicitly:", file=sys.stderr)
+        print("         sambuca-flasher provision-pi --boot E:\\", file=sys.stderr)
+        return 1
+
+    boot = Path(boot)
+    print(f"  {boot}")
+
+    engine_dir = args.engine or (Path(__file__).resolve().parents[4] / "engine")
+    if not engine_dir.is_dir():
+        print(f"\nerror: engine not found at {engine_dir}", file=sys.stderr)
+        return 1
+
+    staging = Path(tempfile.mkdtemp(prefix="sambuca-pi-"))
+    staged = _stage_engine(engine_dir, staging / "sambuca")
+    print(f"staged {staged} engine file(s)")
+
+    actions = pi.provision_boot_partition(
+        boot,
+        payload_dir=staging / "sambuca",
+        hostname=args.hostname,
+        enable_ssh=not args.no_ssh,
+        run_probe=not args.no_probe,
+        wifi_ssid=args.wifi_ssid,
+    )
+    for a in actions:
+        print(f"  {a}")
+
+    print("\nDone. Put the card in the Pi and power it on.")
+    print("The first boot writes its results BACK ONTO THE CARD:")
+    print("  put the card in a reader and read  sambuca-firstboot.log")
+    return 0
