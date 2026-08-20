@@ -82,6 +82,11 @@ def follow(host: str, key: str, *, say, once: bool = False,
            poll: float = _POLL, patience: float = 1800.0) -> int:
     """Print each stage as it changes, until provisioning ends.
 
+    `say` takes EXACTLY ONE STRING. It used to be called with no arguments
+    for blank lines, which quietly required a sink with an optional
+    parameter — fine for cli._say, a TypeError for list.append or print-to-
+    file. A callback contract that only some callables satisfy is a trap.
+
     Only on CHANGE. A line every three seconds would bury the one thing that
     matters — that it moved — under a wall of identical text.
     """
@@ -102,7 +107,7 @@ def follow(host: str, key: str, *, say, once: bool = False,
                 return 1
             if not ever_answered and (time.monotonic() - started) > patience:
                 # GIVE UP HONESTLY, and say where the real answer lives.
-                say()
+                say("")
                 say("  Still nothing after 30 minutes.")
                 say("  Either it cannot reach this network, or it never booted.")
                 say("  The card records what happened: put it in a reader and")
@@ -118,7 +123,7 @@ def follow(host: str, key: str, *, say, once: bool = False,
         if step != last_step:
             last_step = step
             total = doc.get("steps_total") or "?"
-            say()
+            say("")
             say(f"  [{step} of {total}]  {doc.get('title', '')}")
             if doc.get("what"):
                 say(f"      {doc['what']}")
@@ -131,11 +136,11 @@ def follow(host: str, key: str, *, say, once: bool = False,
             return 0
 
         if state in ("done", "complete", "finished"):
-            say()
+            say("")
             say("  Finished. Now run:  sambuca-flasher handover")
             return 0
         if state == "failed":
-            say()
+            say("")
             say("  That stage failed. The card records the detail:")
             say("  put it in a reader and read sambuca-firstboot.log")
             return 1

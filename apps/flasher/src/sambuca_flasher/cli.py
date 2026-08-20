@@ -420,6 +420,16 @@ def _cmd_write(args) -> int:
     print("  Print it, then delete the file. Boot the target machine from this USB.")
     print("  You get 30 seconds at the console to abort before any disk is touched.")
 
+    # NAME THE NEXT COMMAND. The install takes 20-40 minutes on a machine with
+    # no screen, and its own setup page is served by Caddy — which does not
+    # start until the LAST phase. Without this line the owner has nothing to
+    # watch for most of the wait, which is precisely when somebody decides it
+    # has hung and pulls the power mid-partition.
+    print("\n  Once it is booting, come back here and run:")
+    print("\n      sambuca-flasher watch")
+    print("\n  That shows each step as it happens - it reads a small file this")
+    print("  command just saved next to the recovery document.")
+
     # VERIFY THE SHEET WHILE IT IS STILL IN THEIR HAND.
     #
     # An untested recovery key is a hypothesis, and it gets tested for the
