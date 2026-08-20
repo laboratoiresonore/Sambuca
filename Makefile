@@ -43,8 +43,9 @@ lint-compose: ## Validate the compose chain renders
 	@echo "compose: valid"
 
 .PHONY: lint-python
-lint-python: ## ruff the flasher
+lint-python: ## ruff the flasher and the tools
 	@cd $(FLASHER_DIR) && ruff check src tests
+	@ruff check tools
 	@echo "python: clean"
 
 .PHONY: test
