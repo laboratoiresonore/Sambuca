@@ -652,12 +652,14 @@ def _cmd_write_pi(args) -> int:
     tool that does, which handles device selection, download, checksum
     verification, writing, readback and elevation on all three platforms.
 
-    NOT FINISHED. Per the rule in CLAUDE.md — do it for them, or guide them
-    through every step — this should pre-select the device and OS, pre-fill
-    Customisation, warn before the UAC prompt, and provision automatically when
-    the write completes. None of that is built yet, so this says so plainly
-    rather than dropping someone into an unfamiliar window with no context.
-    See REDO.md section 0.
+    THE RULE (CLAUDE.md, axis 1): do it for them, or guide them through every
+    step. Here that means installing the Imager if it is missing, filling in its
+    Customisation screen in advance, naming the drives that are attached so the
+    destructive choice is an informed one, warning before the permission prompt,
+    provisioning the card automatically afterwards, and saying what happens next.
+
+    STILL DONE BY HAND: choosing the device and the OS entry inside the Imager
+    (REDO G2).
     """
     import tempfile
 
@@ -684,21 +686,65 @@ def _cmd_write_pi(args) -> int:
         print(f"  staging: {staging}")
         return 0
 
-    print()
-    print("Sambuca uses Raspberry Pi Imager to write cards.")
-    print("It handles the writing, the checksum and the verification.")
-    print()
-
+    # ---- G1: get the tool. Do not tell them to go and get it. -----------
     if imager.find_imager() is None:
-        print(imager.install_hint(), file=sys.stderr)
-        return 1
+        print("\nRaspberry Pi Imager does the writing, and it is not installed.")
+        print("Installing it now. This takes a minute.\n")
+        if not imager.try_install():
+            print(imager.install_hint(), file=sys.stderr)
+            return 1
+        print("  installed.\n")
 
-    print("What happens next:")
-    print("  1. Windows will ask permission to run Raspberry Pi Imager.")
-    print("     That prompt is expected — it needs it to write to a card.")
-    print("  2. Choose your device, then the Sambuca image, then your card.")
-    print("     ONLY the card you pick is erased. Check the size matches.")
-    print("  3. When it finishes, come back here.")
+    # ---- G3: answer the Customisation screen before they see it ---------
+    from . import customisation as cust
+
+    if cust.supported():
+        tz, kb = cust.detect_locale()
+        ok, changed = cust.apply(cust.Customisation(
+            hostname=args.hostname,
+            timezone=tz,
+            keyboard=kb,
+            ssh_enabled=not args.no_ssh,
+            ssh_username="sambuca",
+        ))
+        if ok:
+            print("Filled in the Imager's Customisation screen for you:")
+            for line in changed:
+                print(f"    {line}")
+            print()
+            print("  Your password and wi-fi key are NOT set here. The Imager")
+            print("  asks you for those itself, and Sambuca never stores them.")
+            print()
+
+    # ---- G5: the one choice that stays yours ----------------------------
+    # Storage is the destructive step, so it gets the MOST words, not the
+    # fewest. Naming what is attached, by size and label, is the difference
+    # between picking a card and picking a backup drive.
+    print("When the Imager asks for STORAGE, this is what is plugged in now:")
+    print()
+    try:
+        drives = list_removable_devices(allow_large=True)
+    except DeviceError:
+        drives = []
+
+    if drives:
+        for d in drives:
+            print(f"    {d.size_human:>10}   {d.label}")
+        print()
+        if len(drives) == 1:
+            print("  That is the only removable drive attached, so it is almost")
+            print("  certainly your card. Check the size looks right anyway.")
+        else:
+            print(f"  {len(drives)} removable drives are attached. Match the SIZE to")
+            print("  your card. EVERYTHING on the one you choose is erased.")
+    else:
+        print("    (nothing detected — insert your card before continuing)")
+    print()
+
+    # ---- G6: warn before the prompt, not after --------------------------
+    print("Next, your computer will ask permission to run the Imager.")
+    print("That prompt is expected: writing to a card needs it.")
+    print("Sambuca waits here until you close the Imager window.")
     print()
 
     try:
@@ -707,9 +753,30 @@ def _cmd_write_pi(args) -> int:
         print(f"\nerror: {exc}", file=sys.stderr)
         return 1
 
+    # ---- G7: provisioning follows automatically -------------------------
     print()
-    print("Imager finished. Adding Sambuca's provisioning to the card...")
-    return _cmd_provision_pi(args)
+    print("Imager finished. Adding Sambuca's own configuration to the card...")
+    rc = _cmd_provision_pi(args)
+    if rc != 0:
+        return rc
+
+    # ---- G8: close the loop ---------------------------------------------
+    print()
+    print("=" * 68)
+    print("  DONE — what happens next")
+    print("=" * 68)
+    print("  1. Put the card in the Raspberry Pi and switch it on.")
+    print("  2. It configures itself and reboots once. Give it a few minutes.")
+    print("  3. It writes what it found BACK ONTO THE CARD.")
+    print()
+    print("  To read that: switch the Pi off, put the card back in this")
+    print("  computer, and open  sambuca-firstboot.log  on the drive that")
+    print("  appears.")
+    print()
+    print("  The Pi needs no screen, keyboard or network for you to find out")
+    print("  whether it worked.")
+    print("=" * 68)
+    return 0
 
 
 def _cmd_provision_pi(args) -> int:

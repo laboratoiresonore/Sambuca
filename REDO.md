@@ -72,15 +72,15 @@ abandon" — the duty of care does not transfer with the work.**
 
 | # | What |
 |---|---|
-| **G1** | Auto-install rpi-imager when missing, using the manifest's install command. |
+| ~~**G1**~~ **DONE** | Auto-install rpi-imager when missing, using the manifest's install command. |
 | **G2** | Pre-select device and OS so those two screens are already answered. |
 | ~~**G3**~~ **DONE** | Pre-fill the non-secret Customisation fields via the verified registry key. |
 | ~~**G4**~~ **DONE** | Never write the owner's password or wifi key. Ever. |
-| **G5** | Guide the Storage step explicitly — the one choice that must stay human, so it gets the most words, not the fewest. |
-| **G6** | Warn before the UAC prompt appears. |
-| **G7** | Detect completion and provision automatically; no second command. |
-| **G8** | Close the loop: what the card does next, and where to read the result. |
-| **G9** | Record the rule in `CLAUDE.md` under axis 1, so the next wrapper does not repeat this. |
+| ~~**G5**~~ **DONE** | Guide the Storage step explicitly — the one choice that must stay human, so it gets the most words, not the fewest. |
+| ~~**G6**~~ **DONE** | Warn before the UAC prompt appears. |
+| ~~**G7**~~ **DONE** | Detect completion and provision automatically; no second command. |
+| ~~**G8**~~ **DONE** | Close the loop: what the card does next, and where to read the result. |
+| ~~**G9**~~ **DONE** | Record the rule in `CLAUDE.md` under axis 1, so the next wrapper does not repeat this. |
 
 **Acceptance:** someone who has never seen Raspberry Pi Imager goes from opening
 Sambuca to a provisioned card without reading documentation, without typing a
