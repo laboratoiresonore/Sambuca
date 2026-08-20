@@ -8,6 +8,12 @@ name: build-flasher
 # macOS. That is the whole reason this lives in CI rather than on a developer's
 # machine — nobody has all three.
 #
+# NO INTEL-MAC BUILD. macos-13 was the last Intel runner and is being retired;
+# in practice the job sat queued rather than failing, which is worse than not
+# offering it. Intel Mac users run the flasher from source (`pip install
+# ./apps/flasher`) — and note the flasher runs on the OPERATOR's machine, which
+# is independent of the x86-64 hardware sambuca installs onto.
+#
 # These are UNSIGNED. macOS Gatekeeper will refuse to open the app on a normal
 # download, and SmartScreen will warn on Windows. Signing needs an Apple
 # Developer account and a Windows code-signing certificate, neither of which
@@ -39,9 +45,6 @@ jobs:
           - os: macos-latest
             label: macos-arm64
             binary: sambuca-flasher
-          - os: macos-13
-            label: macos-x64          # Intel Macs are still the ones that can RUN sambuca
-            binary: sambuca-flasher
           - os: ubuntu-latest
             label: linux-x64
             binary: sambuca-flasher
@@ -69,7 +72,7 @@ jobs:
             --collect-all mnemonic \
             --collect-all reportlab \
             --console \
-            apps/flasher/src/sambuca_flasher/__main__.py
+            apps/flasher/entrypoint.py
 
       - name: prove the binary actually runs
         shell: bash
