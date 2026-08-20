@@ -24,9 +24,19 @@ from pathlib import Path
 
 from . import __version__
 from .devices import DeviceError, RemovableDevice, list_removable_devices
-from .keys import derive_backup_password, derive_luks_recovery_key, generate_key_material
+# NOT imported at module level. keys.py raises SystemExit at IMPORT time when
+# the BIP-39 library is absent, which meant `list`, `estimate`, `boot-guide`,
+# `example-config` and even `--version` all died demanding a package they do
+# not use. The README tells a first-time reader to run `estimate` before
+# committing anything to disk; on a source install that instruction failed.
+# Found by running `list` against a real card reader.
 from .payload import ApplianceConfig, build_provision_payload, config_from_dict, render_preseed
-from .recovery_pdf import write_recovery_pdf
+# Imported lazily inside cmd_write, for the same reason as .keys above:
+# recovery_pdf raises SystemExit at import time when reportlab is missing, and
+# its module-level constants genuinely need reportlab's units, so the guard
+# cannot simply move to the point of use inside that module. Keeping the import
+# here would mean `list` and `estimate` still died — just demanding a PDF
+# library instead of a seed-phrase one.
 from .writer import inject_payload, write_image
 
 
@@ -154,6 +164,8 @@ def _cmd_write(args) -> int:
 
     # --- 1. keys ---
     print("\n[1/6] generating key material (offline, on this machine)")
+    from .keys import generate_key_material
+
     keys = generate_key_material()
     print(f"      key fingerprint: {keys.fingerprint}")
 
@@ -197,6 +209,8 @@ def _cmd_write(args) -> int:
     # --- 3. recovery document, BEFORE anything is written ---
     print("[3/6] writing the recovery document")
     pdf_path = args.output_dir / f"liberator-recovery-{config.hostname}-{keys.fingerprint}.pdf"
+    from .recovery_pdf import write_recovery_pdf
+
     write_recovery_pdf(pdf_path, keys, config,
                        tailnet_hint=f"https://{config.hostname}.<your-tailnet>.ts.net/")
     print(f"      {pdf_path}")
@@ -242,10 +256,21 @@ def _cmd_write(args) -> int:
 
 
 def _cmd_derive() -> int:
+    # Check the dependency BEFORE asking for the secret. Prompting someone to
+    # type their 24-word seed phrase and only then announcing that the tool
+    # cannot use it is a poor thing to do with the most sensitive string they
+    # own — and this is the "I have lost the master password" path, so whoever
+    # is running it is already having a bad day.
+    from .keys import _require_bip39
+
+    _require_bip39()
+
     print("Recover the backup repository password from a 24-word seed phrase.")
     print("Nothing is transmitted; this runs entirely on this machine.\n")
     phrase = input("seed phrase (24 words): ").strip()
     try:
+        from .keys import derive_backup_password
+
         password = derive_backup_password(phrase)
     except ValueError as exc:
         print(f"\nerror: {exc}", file=sys.stderr)
@@ -265,11 +290,22 @@ def _cmd_derive_recovery() -> int:
     This is the "I forgot the master password" path. It runs entirely offline,
     on this machine, and needs nothing from the appliance.
     """
+    # Check the dependency BEFORE asking for the secret. Prompting someone to
+    # type their 24-word seed phrase and only then announcing that the tool
+    # cannot use it is a poor thing to do with the most sensitive string they
+    # own — and this is the "I have lost the master password" path, so whoever
+    # is running it is already having a bad day.
+    from .keys import _require_bip39
+
+    _require_bip39()
+
     print("Recover the DISK RECOVERY KEY from your 24-word seed phrase.")
     print("Use this when the root passphrase is lost and the machine will not unlock.")
     print("Nothing is transmitted; this runs entirely on this machine.\n")
     phrase = input("seed phrase (24 words): ").strip()
     try:
+        from .keys import derive_luks_recovery_key
+
         key = derive_luks_recovery_key(phrase)
     except ValueError as exc:
         print(f"\nerror: {exc}", file=sys.stderr)

@@ -29,15 +29,38 @@ import secrets
 import unicodedata
 from dataclasses import dataclass
 
+# The dependency is REAL, but it is not needed to IMPORT this module — only to
+# run the three functions below that actually touch BIP-39. This used to raise
+# SystemExit at import time, and because payload.py imports KeyMaterial from
+# here, that killed every command in the CLI: `list`, `estimate`, `boot-guide`,
+# `example-config`, even `--version`.
+#
+# Which directly contradicted the README, where a first-time reader is told to
+# run `estimate` before committing anything — "asks your computer nothing,
+# touches no disk, needs no USB stick". On a source install it exited demanding
+# a seed-phrase library it was never going to use.
+#
+# Found by running `sambuca-flasher list` against a real card reader. The frozen
+# binaries bundle mnemonic, so they never showed it.
+#
+# The refusal below is unchanged, only moved to the point of use. Hand-rolling
+# the wordlist is still not acceptable: a subtly wrong list produces a seed that
+# no standard tool can ever recover.
 try:
     from mnemonic import Mnemonic
-except ImportError as exc:  # pragma: no cover - dependency is declared
-    raise SystemExit(
-        "sambuca-flasher requires the 'mnemonic' package for BIP-39 generation.\n"
-        "Install it with:  pip install mnemonic\n"
-        "A hand-rolled wordlist is not acceptable here: a subtly wrong list "
-        "produces a seed that no standard tool can ever recover."
-    ) from exc
+except ImportError:  # pragma: no cover - dependency is declared in pyproject
+    Mnemonic = None
+
+
+def _require_bip39() -> None:
+    """Fail loudly, at the point of use, when the BIP-39 library is absent."""
+    if Mnemonic is None:
+        raise SystemExit(
+            "sambuca-flasher needs the 'mnemonic' package for BIP-39 seed phrases.\n"
+            "Install it with:  pip install mnemonic\n"
+            "A hand-rolled wordlist is not acceptable here: a subtly wrong list "
+            "produces a seed that no standard tool can ever recover."
+        )
 
 
 # Deliberately excludes: 0/O, 1/l/I (indistinguishable in most print fonts),
@@ -88,6 +111,7 @@ def generate_seed_phrase(language: str = "english") -> str:
     user-supplied entropy, dice rolls or "improved" mixing: every historical
     wallet-seed catastrophe traces back to somebody's clever entropy source.
     """
+    _require_bip39()
     mnemo = Mnemonic(language)
     entropy = secrets.token_bytes(_SEED_STRENGTH_BITS // 8)
     phrase = mnemo.to_mnemonic(entropy)
@@ -141,6 +165,7 @@ def derive_backup_password(seed_phrase: str, *, passphrase: str = "") -> str:
     existing backup.
     """
     normalised = unicodedata.normalize("NFKD", seed_phrase.strip())
+    _require_bip39()
     mnemo = Mnemonic("english")
     if not mnemo.check(normalised):
         raise ValueError("seed phrase failed BIP-39 checksum validation")
@@ -181,6 +206,7 @@ def derive_luks_recovery_key(seed_phrase: str, *, passphrase: str = "") -> str:
     import base64
 
     normalised = unicodedata.normalize("NFKD", seed_phrase.strip())
+    _require_bip39()
     mnemo = Mnemonic("english")
     if not mnemo.check(normalised):
         raise ValueError("seed phrase failed BIP-39 checksum validation")
