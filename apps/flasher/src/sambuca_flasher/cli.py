@@ -834,7 +834,8 @@ def _write_watch_file(output_dir: Path, payload: dict, config) -> Path:
         "hostname": config.hostname,
         "beacon_key": payload.get("beacon_key", ""),
         "note": ("Run: sambuca-flasher watch   -- shows install progress while "
-                 "the appliance is building itself. Delete this once it is up."),
+                 "the appliance is building itself. `handover` deletes this "
+                 "for you once the appliance is answering."),
     }, indent=2), encoding="utf-8")
     try:
         os.chmod(watch, 0o600)
@@ -980,7 +981,42 @@ def _cmd_handover(args) -> int:
     _say()
     _say("  Start here:")
     _say(f"    https://{domain}")
+
+    # CLEAN UP THE CREDENTIAL WE LEFT LYING AROUND. The watch file holds a
+    # pairing key for a beacon that provisioning has already killed, so it is
+    # now a secret with nothing to open — the worst kind to leave in a Downloads
+    # folder, because nobody will ever have a reason to think about it again.
+    #
+    # The file itself said "delete this once it is up", which is THE RULE's
+    # named failure written in miniature: telling somebody to do a thing you
+    # could simply do. It gets done here, and only after the appliance has
+    # answered — deleting it while the install is still running would throw
+    # away the only way to watch the rest of it.
+    _retire_watch_file()
     return 0
+
+
+def _retire_watch_file() -> None:
+    """Remove the watch file once the appliance is up and answering.
+
+    Silent about the ordinary cases. A missing file is normal (somebody may
+    have moved it, or provisioned from another machine), and a failed delete is
+    not worth alarming anyone over at the end of a successful install.
+    """
+    path = _find_watch_file(None)
+    if path is None:
+        return
+    try:
+        Path(path).unlink()
+    except OSError:
+        _say()
+        _say(f"  One thing left: delete {path}")
+        _say("  It holds a key for the install-progress service, which has now")
+        _say("  shut down. It is no use to you and no use to anyone else.")
+        return
+    _say()
+    _say("  Tidied up: the install-progress key is no longer needed and has")
+    _say("  been deleted.")
 
 
 def _cmd_boot_guide(args) -> int:

@@ -126,3 +126,36 @@ class TestURLsAreRestricted:
                 continue
             assert "safeurl.check" in src, (
                 f"{name} opens URLs without routing them through safeurl.check")
+
+
+class TestTheWatchFileIsRetired:
+    """The watch file holds a pairing key for a beacon that provisioning kills.
+
+    Once the appliance is up it is a secret with nothing to open, sitting in a
+    Downloads folder that nobody will have reason to think about again.
+    """
+
+    def test_it_deletes_the_watch_file(self, tmp_path, monkeypatch):
+        f = tmp_path / "sambuca-watch-AAAA-BBBB-CCCC.json"
+        f.write_text('{"schema":1,"beacon_key":"x"}', encoding="utf-8")
+        monkeypatch.setattr(cli, "_find_watch_file", lambda _: f)
+        monkeypatch.setattr(cli, "_say", lambda *a, **k: None)
+        cli._retire_watch_file()
+        assert not f.exists()
+
+    def test_a_missing_file_is_not_an_error(self, monkeypatch):
+        """Normal: somebody moved it, or provisioned from another machine."""
+        monkeypatch.setattr(cli, "_find_watch_file", lambda _: None)
+        cli._retire_watch_file()   # must not raise
+
+    def test_it_runs_only_after_the_appliance_has_answered(self):
+        """ORDER IS THE WHOLE SAFETY PROPERTY. Deleting the key while the
+        install is still running would throw away the only way to watch the
+        rest of it — so the call must sit after the early return that fires
+        when nothing is reachable."""
+        src = inspect.getsource(cli._cmd_handover)
+        nothing_answered = src.index("Nothing answered yet")
+        retire = src.index("_retire_watch_file()")
+        assert retire > nothing_answered, (
+            "cleanup must come after the unreachable-appliance return, or a "
+            "failed handover destroys the key needed to watch the install")
