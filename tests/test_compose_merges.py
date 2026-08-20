@@ -92,9 +92,9 @@ def test_every_gpu_overlay_only_extends_services_that_exist(gpu):
         if not overlay.is_file():
             continue
         assert bundle_file.is_file(), f"{overlay.name} extends a bundle that does not exist"
-        defined = set((_load(bundle_file).get("services") or {}))
-        defined |= set((_load(COMPOSE / "docker-compose.yml").get("services") or {}))
-        named = set((_load(overlay).get("services") or {}))
+        defined = set(_load(bundle_file).get("services") or {})
+        defined |= set(_load(COMPOSE / "docker-compose.yml").get("services") or {})
+        named = set(_load(overlay).get("services") or {})
         missing = named - defined
         assert not missing, (
             f"{overlay.name} configures {sorted(missing)}, which "
