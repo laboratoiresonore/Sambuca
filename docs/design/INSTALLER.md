@@ -125,6 +125,16 @@ responder from the Python standard library, no dependencies, running before
 Docker exists. It serves the same `progress.json` the setup page already reads,
 and hands off to Caddy once the real stack is up.
 
+> **The one dependency that is not "none", and nearly bit.** `http.server` is
+> **not** in `python3-minimal`, which is what the package list installed until
+> 2026-08-20. Verified against Debian's package contents for trixie:
+> `http/server.py` ships in `libpython3.13-stdlib`, and `python3-minimal`'s file
+> list does not contain it. The beacon would have failed at the exact moment it
+> exists for — the first minutes of a first boot, with nothing else watching.
+> `10-system.sh` now installs full `python3` and says why. The base system's
+> `standard` task very likely provides it regardless, but an inherited
+> dependency is not a declared one.
+
 **Discovery is zero-config** via mDNS (`_sambuca._tcp.local`), so the desktop app
 finds the machine without anyone typing an IP address.
 

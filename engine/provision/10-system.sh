@@ -37,7 +37,18 @@ PKGS=(
     lsb-release pciutils usbutils smartmontools lm-sensors
     cryptsetup-bin tpm2-tools
     restic
-    python3-minimal
+    # NOT python3-minimal, WHICH WOULD NOT WORK. The install beacon
+    # (docs/design/INSTALLER.md §2) is specified as "a tiny read-only HTTP
+    # responder from the Python standard library, no dependencies" — and
+    # http.server is NOT in python3-minimal. Verified against Debian's own
+    # package contents for trixie: http/server.py ships in
+    # libpython3.13-stdlib, and python3-minimal's file list does not contain
+    # it. The beacon would have failed at the one moment it exists for.
+    #
+    # The base system's "standard" task probably pulls full python3 anyway,
+    # but "probably" is not a dependency. Naming it here makes the beacon's
+    # uphill requirement explicit instead of inherited by luck.
+    python3
 )
 
 log "refreshing apt metadata"
