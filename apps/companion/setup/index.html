@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sambuca is setting itself up</title>
+<link rel="icon" href="assets/sambuca-mark.svg" type="image/svg+xml">
+<!--
+  The setup screen: what the owner watches from their laptop while the appliance
+  provisions itself.
+
+  It answers the same four questions the console does — what is happening, how
+  long, what you should do, what comes next — because the owner is usually NOT
+  standing at the machine. An unattended install with no visible progress is
+  indistinguishable from a hung one, and the failure mode is a power-cycle
+  during disk provisioning.
+
+  SELF-CONTAINED BY CONSTRUCTION. No CDN, no webfont, no analytics, no external
+  fetch of any kind. An appliance whose whole premise is that nothing leaves the
+  machine cannot have its own setup page phone out to load a font.
+-->
+<style>
+  :root {
+    --bg:      #0d1117;
+    --panel:   #161b22;
+    --line:    #30363d;
+    --text:    #c9d1d9;
+    --muted:   #8b949e;
+    --breach:  #ff7b72;
+    --weights: #58a6ff;
+    --ok:      #3fb950;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .shell { width: 100%; max-width: 760px; }
+
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  header img { width: 44px; height: 44px; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: .5px; font-weight: 700; }
+  header p  { margin: 2px 0 0; color: var(--muted); font-size: 13px; letter-spacing: 2.4px;
+              text-transform: uppercase; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+          overflow: hidden; }
+
+  /* The treads loop. Muted + playsinline + loop so it autoplays everywhere;
+     a video with sound would be blocked by every browser's autoplay policy. */
+  .loop { position: relative; background: #000; line-height: 0; }
+  .loop video { width: 100%; display: block; opacity: .82; }
+  .loop::after { content: ""; position: absolute; inset: 0;
+                 background: linear-gradient(180deg, transparent 40%, var(--panel) 100%); }
+
+  .body { padding: 24px 26px 26px; }
+
+  .step { color: var(--weights); font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          letter-spacing: 2px; text-transform: uppercase; }
+  h2 { margin: 10px 0 18px; font-size: 26px; font-weight: 700; }
+
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; margin: 0 0 22px; }
+  dt { color: var(--muted); font-size: 13px; letter-spacing: .3px; white-space: nowrap; }
+  dd { margin: 0; }
+  dd.act { color: var(--text); }
+
+  .bar { height: 6px; background: #0d1117; border-radius: 99px; overflow: hidden;
+         border: 1px solid var(--line); }
+  .bar span { display: block; height: 100%; width: 0;
+              background: linear-gradient(90deg, var(--breach), var(--weights));
+              transition: width .6s ease; }
+  .bar-note { margin-top: 9px; color: var(--muted); font-size: 12.5px; }
+
+  .reassure { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line);
+              color: var(--muted); font-size: 13.5px; }
+  .reassure strong { color: var(--breach); font-weight: 600; }
+
+  .done   .step { color: var(--ok); }
+  .failed .step { color: var(--breach); }
+
+  #stale { display: none; margin-top: 14px; padding: 12px 14px; border-radius: 10px;
+           background: #21262d; border: 1px solid var(--line); color: var(--muted);
+           font-size: 13.5px; }
+
+  /*
+    Reduced motion removes the MOTION, not the picture. An earlier revision set
+    `display:none` here, which left a blank slab where the loop should be — on a
+    page whose entire job is to signal "still working", that is the worst
+    possible thing to show someone. The poster still holds the frame instead.
+    Caught by rendering the page in a browser that actually requests it.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    .loop {
+      aspect-ratio: 560 / 316;
+      background: #000 center / cover no-repeat url("assets/loading-treads-poster.webp");
+    }
+    .loop video { display: none; }
+    .bar span { transition: none; }
+  }
+  @media (max-width: 520px) {
+    dl { grid-template-columns: 1fr; gap: 4px 0; }
+    dt { margin-top: 8px; }
+    h2 { font-size: 21px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <img src="assets/sambuca-mark.svg" alt="">
+    <div>
+      <h1>SAMBUCA</h1>
+      <p>The open-weights siege engine</p>
+    </div>
+  </header>
+
+  <div class="card" id="card">
+    <div class="loop">
+      <!-- poster shows instantly; the loop is decorative, hence alt-less and
+           aria-hidden. It exists to signal "still working", nothing more. -->
+      <video src="assets/loading-treads.mp4"
+             poster="assets/loading-treads-poster.webp"
+             autoplay loop muted playsinline aria-hidden="true"></video>
+    </div>
+
+    <div class="body">
+      <div class="step" id="step">Starting up</div>
+      <h2 id="title">Waking the machine</h2>
+
+      <dl>
+        <dt>What is happening</dt><dd id="what">Reading the setup progress…</dd>
+        <dt>How long</dt><dd id="howlong">—</dd>
+        <dt>What you do</dt><dd class="act" id="move">Nothing. You can close this tab; it keeps going.</dd>
+        <dt>Next</dt><dd id="next">—</dd>
+      </dl>
+
+      <div class="bar"><span id="bar"></span></div>
+      <div class="bar-note" id="barnote">—</div>
+
+      <div id="stale">
+        No update for a while. That is normal during the long downloads — the AI
+        model alone can take hours on a slow connection. The machine is still
+        working. <strong>Do not power it off.</strong>
+      </div>
+
+      <div class="reassure">
+        This appliance is setting itself up with no help from anyone else's
+        servers. When it finishes, this page tells you where everything lives
+        and what to do next. <strong>Do not power the machine off while this runs.</strong>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Poll the file the engine writes at each stage. No websocket: a static file
+// plus polling has no server-side component to fail, and this page has to work
+// at the exact moments when things are least healthy.
+const $ = (id) => document.getElementById(id);
+let lastUpdated = null, staleTicks = 0;
+
+async function tick() {
+  try {
+    const r = await fetch('progress.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const p = await r.json();
+
+    $('title').textContent = p.title || 'Working';
+    $('what').textContent  = p.what || '—';
+    $('howlong').textContent = p.how_long || '—';
+    $('move').textContent  = p.your_move || 'Nothing.';
+    $('next').textContent  = p.next || '—';
+
+    const n = Number(p.step) || 0, total = Number(p.steps_total) || 0;
+    if (total > 0) {
+      $('step').textContent = `Step ${n} of ${total}`;
+      // Report the step as IN PROGRESS, not complete: showing 6/10 as 60% done
+      // when step 6 has only just started is the small lie that makes progress
+      // bars untrustworthy.
+      $('bar').style.width = Math.max(2, ((n - 1) / total) * 100) + '%';
+      $('barnote').textContent = `${n - 1} of ${total} steps finished`;
+    }
+
+    document.getElementById('card').className =
+      'card' + (p.state === 'done' ? ' done' : p.state === 'failed' ? ' failed' : '');
+
+    if (p.state === 'done') {
+      $('step').textContent = 'Finished';
+      $('bar').style.width = '100%';
+      $('barnote').textContent = 'All steps complete';
+    }
+
+    staleTicks = (p.updated && p.updated === lastUpdated) ? staleTicks + 1 : 0;
+    lastUpdated = p.updated;
+    // ~4 minutes without a change. Long downloads legitimately sit still for
+    // far longer than that, so this reassures rather than warns.
+    $('stale').style.display = staleTicks > 48 ? 'block' : 'none';
+  } catch {
+    // Unreachable is expected early on and during the restart in phase 60 —
+    // the page simply keeps its last known state rather than flashing an error
+    // at somebody who cannot act on it.
+  }
+}
+tick();
+setInterval(tick, 5000);
+</script>
+</body>
+</html>

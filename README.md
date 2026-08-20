@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="assets/brand/sambuca-header.svg" width="800"
+       alt="Sambuca — the open-weights siege engine">
+</p>
+
 # 🏰 SAMBUCA: The Open-Weights Siege Engine
 
 > *"Freedom is free. It has no flag, no race, and no borders. It has all the faces at once and none in particular... And now it is also easy!"*
@@ -185,6 +190,14 @@ sambuca/
 │   ├── gpu.<profile>.<bundle>.yml   per-bundle GPU overrides; only enabled bundles are appended
 │   ├── .env.example                 image pins — see docs/IMAGES.md before releasing
 │   └── config/                      Caddyfile, ircd.yaml, snapraid.conf template
+│
+├── apps/companion/
+│   └── setup/index.html             the setup screen the owner watches while it provisions
+│
+├── assets/brand/
+│   ├── sambuca-header.svg           README header
+│   ├── sambuca-mark.svg             square mark: favicon, tray, avatar
+│   └── loading-treads.*             the siege-tread loop shown during long steps
 │
 ├── tools/
 │   ├── verify-images.py             resolve every image against its registry (no docker needed)

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300"
+     width="800" height="300" role="img"
+     aria-labelledby="sambuca-title sambuca-desc">
+  <title id="sambuca-title">Sambuca — the open-weights siege engine</title>
+  <desc id="sambuca-desc">A dark monolithic siege tower on heavy wheels drops a
+  crimson ramp that lands in a web of glowing blue neural nodes, beside the
+  wordmark SAMBUCA.</desc>
+
+  <!--
+    Carries its own dark ground rather than inheriting the page, so it reads
+    identically on GitHub's light and dark themes and needs no <picture>
+    element with two files to keep in sync.
+
+    Width and height are declared alongside viewBox: GitHub's markdown renderer
+    ignores width="100%" on an <img>, and an SVG with no intrinsic size is laid
+    out at whatever the container feels like — usually far too large.
+
+    LAYOUT BUDGET — checked by rendering, not by eye. The illustration occupies
+    x < 350 and the text block starts at x = 388, leaving a 38px gutter. An
+    earlier revision let the node cluster run to x = 400 while the subtitle
+    began at 365, so the blue web sat on top of "THE OPEN-WEIGHTS…" and the
+    crimson rule cut straight through it at every size. If you move either half,
+    re-render and look at it.
+  -->
+  <rect width="800" height="300" fill="#0d1117" rx="15"/>
+
+  <g transform="translate(40, 50)">
+    <!-- The tower -->
+    <path d="M40 200 L40 30 L120 30 L120 200 Z" fill="#161b22" stroke="#30363d" stroke-width="4"/>
+    <path d="M30 30 L50 30 L50 10 L70 10 L70 30 L90 30 L90 10 L110 10 L110 30 L130 30 L130 50 L30 50 Z"
+          fill="#8b949e"/>
+
+    <!-- Heavy wheels -->
+    <circle cx="60" cy="210" r="16" fill="#0d1117" stroke="#8b949e" stroke-width="4"/>
+    <circle cx="100" cy="210" r="16" fill="#0d1117" stroke="#8b949e" stroke-width="4"/>
+    <circle cx="60" cy="210" r="4" fill="#8b949e"/>
+    <circle cx="100" cy="210" r="4" fill="#8b949e"/>
+
+    <!-- The ramp: the breach -->
+    <path d="M120 120 L225 173 L215 188 L120 145 Z" fill="#ff7b72"/>
+    <line x1="125" y1="130" x2="210" y2="173" stroke="#0d1117" stroke-width="3"/>
+    <line x1="125" y1="138" x2="201" y2="176" stroke="#0d1117" stroke-width="2"/>
+
+    <!-- Open weights pouring across the bridge -->
+    <g stroke="#58a6ff" stroke-width="2">
+      <line x1="225" y1="173" x2="243" y2="178"/>
+      <line x1="243" y1="178" x2="268" y2="142"/>
+      <line x1="243" y1="178" x2="276" y2="207"/>
+      <line x1="268" y1="142" x2="301" y2="170"/>
+      <line x1="276" y1="207" x2="301" y2="170"/>
+    </g>
+    <g fill="#58a6ff">
+      <circle cx="243" cy="178" r="6"/>
+      <circle cx="268" cy="142" r="4"/>
+      <circle cx="276" cy="207" r="5"/>
+      <circle cx="301" cy="170" r="4"/>
+    </g>
+  </g>
+
+  <!--
+    Generic font families only. GitHub strips <style> and blocks @font-face and
+    every external fetch from an <img>-embedded SVG, so a webfont here would
+    silently fall back and reflow the wordmark.
+  -->
+  <text x="388" y="158" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="76" font-weight="900" fill="#c9d1d9" letter-spacing="2">SAMBUCA</text>
+  <text x="390" y="198" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
+        font-size="15" font-weight="600" fill="#8b949e" letter-spacing="3.6">THE OPEN-WEIGHTS SIEGE ENGINE</text>
+  <line x1="390" y1="218" x2="742" y2="218" stroke="#ff7b72" stroke-width="3"/>
+</svg>

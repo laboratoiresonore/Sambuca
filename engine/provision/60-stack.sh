@@ -118,6 +118,7 @@ log "compose chain: ${chain}"
     printf 'PUID=%s\n'                "$(id -u "${SAMBUCA_ADMIN_USER:-root}" 2>/dev/null || echo 0)"
     printf 'PGID=%s\n'                "$(id -g "${SAMBUCA_ADMIN_USER:-root}" 2>/dev/null || echo 0)"
     printf 'CASAOS_PORT=%s\n'         "${CASAOS_PORT:-8095}"
+    printf 'SAMBUCA_STATE=%s\n'       "${SB_LIB}"
     printf '\n'
 
     printf '# --- storage ---\n'
@@ -165,6 +166,15 @@ fi
 ok "compose configuration validated"
 
 install -d -m 0755 "${SAMBUCA_APPDATA:-${SAMBUCA_DATA}/appdata}"
+
+# The setup screen's progress file is BIND-MOUNTED into Caddy. Docker creates a
+# DIRECTORY when the source of a file bind-mount does not exist, and that
+# directory then serves 404 for the life of the container — so it must exist
+# before `compose up`, not after.
+if [[ ! -f "${SB_LIB}/progress.json" ]]; then
+    sb_progress_write 0 "Starting your services" \
+        "Bringing the appliance online." "a few minutes" "Nothing." "" "running"
+fi
 
 log "pulling images (this is the long part on a cold install)"
 sb_retry 2 15 docker compose pull --quiet || warn "some images failed to pull — start may be partial"

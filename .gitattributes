@@ -33,9 +33,19 @@ Makefile    text eol=lf
 Caddyfile   text eol=lf
 preseed.cfg text eol=lf
 
-# Binaries must never be touched.
+# Binaries must never be touched. The line-ending normaliser above would happily
+# rewrite CRLF byte pairs inside a video or an image and silently corrupt it.
 *.png    binary
 *.jpg    binary
+*.webp   binary
+*.mp4    binary
+*.webm   binary
 *.pdf    binary
+*.ico    binary
+*.woff2  binary
 *.iso    binary
 *.bundle binary
+
+# SVG is text and stays text — it is reviewable in a diff, which is half the
+# reason the brand marks are vectors rather than exported PNGs.
+*.svg    text eol=lf

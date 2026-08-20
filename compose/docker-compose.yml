@@ -62,6 +62,14 @@ services:
       - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${SAMBUCA_APPDATA}/caddy/data:/data
       - ${SAMBUCA_APPDATA}/caddy/config:/config
+      # The setup screen. Three read-only mounts rather than a build step, and
+      # rather than copying the brand assets into the companion tree — one copy
+      # of a 380 KiB video in the repository, not two.
+      - ../apps/companion:/srv/companion:ro
+      - ../assets/brand:/srv/companion/setup/assets:ro
+      # Written by sb_stage at every provisioning step. Read-only here: the page
+      # reports progress, it never influences it.
+      - ${SAMBUCA_STATE:-/var/lib/sambuca}/progress.json:/srv/companion/setup/progress.json:ro
     environment:
       TZ: ${TZ:-UTC}
       SAMBUCA_DOMAIN: ${SAMBUCA_DOMAIN:-sambuca.local}

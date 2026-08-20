@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"
+     width="128" height="128" role="img" aria-labelledby="mark-title">
+  <title id="mark-title">Sambuca mark</title>
+  <!--
+    The square mark: avatars, favicons, the companion's tab icon, the tray.
+    Same siege tower, ramp and nodes as the header, redrawn for legibility at
+    16px rather than scaled down — at that size the header's crenellations and
+    circuit traces turn to mud.
+  -->
+  <rect width="128" height="128" rx="26" fill="#0d1117"/>
+
+  <!-- Tower -->
+  <path d="M26 96 L26 34 L58 34 L58 96 Z" fill="#161b22" stroke="#30363d" stroke-width="3"/>
+  <path d="M22 34 L32 34 L32 24 L42 24 L42 34 L52 34 L52 24 L62 24 L62 42 L22 42 Z" fill="#8b949e"/>
+
+  <!-- Wheels -->
+  <circle cx="34" cy="101" r="7" fill="#0d1117" stroke="#8b949e" stroke-width="3"/>
+  <circle cx="50" cy="101" r="7" fill="#0d1117" stroke="#8b949e" stroke-width="3"/>
+
+  <!-- Ramp -->
+  <path d="M58 62 L96 82 L92 90 L58 71 Z" fill="#ff7b72"/>
+
+  <!-- Nodes -->
+  <g stroke="#58a6ff" stroke-width="2.5">
+    <line x1="96" y1="82" x2="103" y2="70"/>
+    <line x1="96" y1="82" x2="100" y2="97"/>
+    <line x1="103" y1="70" x2="112" y2="86"/>
+    <line x1="100" y1="97" x2="112" y2="86"/>
+  </g>
+  <g fill="#58a6ff">
+    <circle cx="96" cy="82" r="5"/>
+    <circle cx="103" cy="70" r="4"/>
+    <circle cx="100" cy="97" r="4"/>
+    <circle cx="112" cy="86" r="4"/>
+  </g>
+</svg>

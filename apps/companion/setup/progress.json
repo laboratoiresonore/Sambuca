@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "updated": "2026-08-20T05:40:00Z",
+  "state": "running",
+  "step": 6,
+  "steps_total": 10,
+  "title": "Starting your services",
+  "what": "Downloading and starting files, photos, passwords, chat and the AI.",
+  "how_long": "10 to 40 minutes on a first install — this is the long one",
+  "your_move": "Nothing. Downloads are large; leave it running.",
+  "next": "Downloading the AI model."
+}

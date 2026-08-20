@@ -93,6 +93,21 @@
 		file_server
 	}
 
+	# The setup screen, and the ONLY route besides /ca.crt that is deliberately
+	# ungated. It has to work before identity exists — that is the whole point
+	# of it, since the owner watches provisioning from their laptop while the
+	# appliance is still building the thing that would authenticate them.
+	#
+	# It exposes stage names and a progress percentage. No secrets, no
+	# addresses, no credentials — the completion report holds those and is not
+	# served here.
+	handle /setup* {
+		root * /srv/companion
+		file_server
+		header /assets/* Cache-Control "public, max-age=604800"
+		header /progress.json Cache-Control "no-store"
+	}
+
 	handle {
 		import gate
 		reverse_proxy host.docker.internal:{$CASAOS_PORT} {
@@ -245,8 +260,18 @@ matrix.{$SAMBUCA_DOMAIN} {
 	reverse_proxy pocket-id:1411
 }
 
-# dashboard
+# dashboard + setup screen
 :8452 {
 	import hardening
-	reverse_proxy host.docker.internal:{$CASAOS_PORT}
+	# /setup first: during provisioning CasaOS is not up yet, so proxying
+	# everything would answer the setup screen with a 502 at exactly the moment
+	# the owner is looking for reassurance.
+	handle /setup* {
+		root * /srv/companion
+		file_server
+		header /progress.json Cache-Control "no-store"
+	}
+	handle {
+		reverse_proxy host.docker.internal:{$CASAOS_PORT}
+	}
 }

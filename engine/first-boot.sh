@@ -262,16 +262,27 @@ main() {
     export SB_STAGE_TOTAL
     STAGE_NUM=0
 
+    # The console is a TTY: no images, so the mark is drawn in box characters.
+    # Same silhouette as assets/brand/sambuca-mark.svg — tower, ramp, nodes.
     {
         printf '\n'
-        printf '  ========================================================\n'
-        printf '   SAMBUCA IS SETTING ITSELF UP\n'
-        printf '  ========================================================\n\n'
+        printf '   ██▀▀██▀▀██\n'
+        printf '   ██      ██\n'
+        printf '   ██      ██▄▄\n'
+        printf '   ██      ██  ▀▀▄▄▄        ○────○\n'
+        printf '   ██      ██       ▀▀▄▄▄  ╱ ╲  ╱ ╲\n'
+        printf '   ██      ██            ▀○   ○    ○\n'
+        printf '   ╚═(O)══(O)═╝               ╲  ╱\n'
+        printf '                               ○\n\n'
+        printf '   S A M B U C A\n'
+        printf '   the open-weights siege engine\n'
+        printf '  ────────────────────────────────────────────────────────\n\n'
         printf '  There are %s steps. Most need nothing from you.\n' "$SB_STAGE_TOTAL"
         printf '  The whole thing usually takes 30 to 90 minutes, and longer\n'
         printf '  on a slow connection because it downloads an AI model.\n\n'
-        printf '  You can walk away. It keeps going if you close this screen,\n'
-        printf '  and it tells you what to do at the end.\n\n'
+        printf '  You can walk away. It keeps going if you close this screen.\n'
+        printf '  You can also watch from any device on your network once the\n'
+        printf '  services start, at:   https://%s/setup\n\n' "${SAMBUCA_DOMAIN:-sambuca.local}"
         printf '  Do NOT power the machine off while this runs.\n\n'
     } >&2
 

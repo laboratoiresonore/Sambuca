@@ -242,6 +242,37 @@ sb_stage() {
         printf '[stage %s/%s] %s — %s\n' "$num" "${SB_STAGE_TOTAL:-?}" "$title" "$what" \
             >>"$SB_LOG_FILE" 2>/dev/null || true
     fi
+
+    # And to a JSON file the setup page polls, so the owner can watch progress
+    # from their laptop instead of standing at a monitor. Best-effort: a failure
+    # to write it must never affect provisioning, because a progress display is
+    # not worth risking the thing whose progress it displays.
+    sb_progress_write "$num" "$title" "$what" "$howlong" "$action" "$next" "running" || true
+}
+
+# Written by sb_stage; served read-only to the setup page at /setup/progress.json.
+SB_PROGRESS_FILE="${SB_PROGRESS_FILE:-$SB_LIB/progress.json}"
+
+sb_progress_write() {
+    local num="$1" title="$2" what="$3" howlong="$4" action="$5" next="$6" state="$7"
+    mkdir -p -- "$(dirname -- "$SB_PROGRESS_FILE")" 2>/dev/null || return 0
+    {
+        printf '{\n'
+        printf '  "schema": 1,\n'
+        printf '  "updated": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '  "state": "%s",\n' "$state"
+        printf '  "step": %s,\n' "${num:-0}"
+        printf '  "steps_total": %s,\n' "${SB_STAGE_TOTAL:-0}"
+        printf '  "title": "%s",\n'    "$(sb_json_escape "$title")"
+        printf '  "what": "%s",\n'     "$(sb_json_escape "$what")"
+        printf '  "how_long": "%s",\n' "$(sb_json_escape "$howlong")"
+        printf '  "your_move": "%s",\n' "$(sb_json_escape "$action")"
+        printf '  "next": "%s"\n'      "$(sb_json_escape "$next")"
+        printf '}\n'
+    } >"${SB_PROGRESS_FILE}.tmp" 2>/dev/null \
+        && mv -f -- "${SB_PROGRESS_FILE}.tmp" "$SB_PROGRESS_FILE" 2>/dev/null \
+        && chmod 0644 -- "$SB_PROGRESS_FILE" 2>/dev/null
+    return 0
 }
 
 sb_stage_ok() {
