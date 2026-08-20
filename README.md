@@ -59,9 +59,9 @@ Sambuca is **one program you run on your normal computer**. It writes a USB stic
 
 | Your everyday computer | Download |
 |---|---|
-| 🪟 **Windows** | [sambuca-flasher-windows-x64.exe](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/sambuca-flasher-windows-x64.exe) |
-| 🍎 **Mac** (Apple Silicon) | [sambuca-flasher-macos-arm64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/sambuca-flasher-macos-arm64) |
-| 🐧 **Linux** | [sambuca-flasher-linux-x64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/sambuca-flasher-linux-x64) |
+| 🪟 **Windows** | [sambuca-flasher-windows-x64.exe](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview3/sambuca-flasher-windows-x64.exe) |
+| 🍎 **Mac** (Apple Silicon) | [sambuca-flasher-macos-arm64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview3/sambuca-flasher-macos-arm64) |
+| 🐧 **Linux** | [sambuca-flasher-linux-x64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview3/sambuca-flasher-linux-x64) |
 
 **Try it before committing anything.** This asks your computer nothing, touches no disk, and needs no USB stick — it just tells you what a machine could do:
 
@@ -84,7 +84,7 @@ These downloads are **unsigned**, and we are telling you rather than letting you
 - **macOS** — Gatekeeper refuses to open it. **Right-click the file → Open**, then confirm. Or in Terminal: `xattr -d com.apple.quarantine ./sambuca-flasher-macos-arm64`
 - **macOS / Linux** — make it runnable first: `chmod +x ./sambuca-flasher-...`
 
-Signing costs an Apple Developer account and a Windows code-signing certificate. This project has neither, and would rather say so than pretend the warning is a glitch. You can check the file matches what we built against [SHA256SUMS.txt](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/SHA256SUMS.txt) — though note a checksum published next to a file proves it arrived intact, not who made it.
+Signing costs an Apple Developer account and a Windows code-signing certificate. This project has neither, and would rather say so than pretend the warning is a glitch. You can check the file matches what we built against [SHA256SUMS.txt](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview3/SHA256SUMS.txt) — though note a checksum published next to a file proves it arrived intact, not who made it.
 
 **No Intel Mac build** — GitHub's last Intel build machine has been retired. Install from source instead: `pip install ./apps/flasher`
 
@@ -686,12 +686,14 @@ though it were finished and it is not:
 | **The Steward runtime** — the thing that selects and executes verbs | **Not built.** This is the largest gap on this page. |
 | Odysseus integration for chat, pictures and the Steward | **Not built.** Blocked on publishing Odysseus. |
 
-**The shipped binaries did not work until now, and that is worth stating
-plainly.** `v0.1.0-preview1` compiled, started, printed its version and passed
-every check in CI — and could not flash anything, because the engine was never
-bundled into it. None of the checks touched the engine. `preview2` never
-published at all. Both faults are now guarded by tests that fail the build, and
-the full list of what remains wrong is in [REDO.md](REDO.md).
+**The earlier binaries did not work, and that is worth stating plainly.**
+`v0.1.0-preview1` compiled, started, printed its version and passed every check
+in CI — and could not flash anything, because the engine was never bundled into
+it. None of the checks touched the engine. `v0.1.0-preview2` never published at
+all: the Windows build failed on a path git-bash hands the packager in the wrong
+form. **`v0.1.0-preview3`, the one linked above, is the first release whose
+binaries carry their engine** — and both faults now fail the build rather than
+shipping. The full list of what remains wrong is in [REDO.md](REDO.md).
 
 Two further things are outstanding:
 

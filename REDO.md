@@ -116,7 +116,7 @@ gone or is a thin call into `imager.launch()`.
 |---|---|---|
 | ~~B1~~ **DONE** | **The Windows release build fails.** `$PWD` in git-bash gives PyInstaller `\d\a\Sambuca\Sambuca\engine`. | `v0.1.0-preview2` built linux + macOS, failed windows, skipped the release job. |
 | ~~B2~~ **DONE** | **The only published release cannot flash anything.** preview1's binaries have no engine bundled, so `write` and `write-pi` both fail. | Verified by building and running the .exe. |
-| B3 | **The README's download links point at those broken binaries.** | `README.md:62-74`. |
+| ~~B3~~ **DONE** | **The README's download links point at those broken binaries.** | `README.md:62-74`. |
 | B4 | `estimate` is still referenced in three places in the README and in the app's menu. | Being deleted in A5; references must go with it. |
 | B5 | The `_interactive` menu's options 4 and 5 print a command instead of doing anything. | *"HOW THE FUCK IS THAT HELPING A NOVICE"* — correct. |
 
