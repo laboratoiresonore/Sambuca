@@ -37,7 +37,7 @@ from .payload import ApplianceConfig, build_provision_payload, config_from_dict,
 # cannot simply move to the point of use inside that module. Keeping the import
 # here would mean `list` and `estimate` still died — just demanding a PDF
 # library instead of a seed-phrase one.
-from .writer import inject_payload, write_image
+from .writer import inject_payload
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -303,23 +303,45 @@ def _cmd_write(args) -> int:
         print(json.dumps(keys.redacted(), indent=2))
         return 0
 
-    # --- 4. target confirmation ---
-    print("[4/6] selecting the target device")
-    device = _resolve_device(args.device)
-    if device is None:
-        return 1
-    if not _confirm_destruction(device):
-        print("aborted — nothing was written.")
+    # --- 4 & 5. the write, done by Raspberry Pi Imager ---
+    #
+    # Sambuca no longer writes images. Everything above this point IS ours —
+    # the keys, the recovery document, the payload — and all of it is already
+    # on disk before anything touches a device, which was always the design.
+    from . import imager
+
+    print("[4/6] handing the write to Raspberry Pi Imager")
+    if imager.find_imager() is None:
+        print("\n" + imager.install_hint(), file=sys.stderr)
+        print("\nYour recovery document and payload are already written and safe:",
+              file=sys.stderr)
+        print(f"  {args.output_dir}", file=sys.stderr)
         return 1
 
-    # --- 5. write ---
-    print(f"[5/6] writing {args.iso.name} to {device.path}")
-    write_image(args.iso, device, progress=_progress, verify=not args.no_verify)
-    print("\n      write verified" if not args.no_verify else "\n      write complete (unverified)")
+    print("      In the Imager window:")
+    print("        - choose 'Use custom' and select:")
+    print(f"            {args.iso}")
+    print("        - then choose your USB stick. ONLY that one is erased.")
+    print("      Windows will ask permission — that prompt is expected.\n")
+
+    try:
+        imager.launch(wait=True)
+    except (imager.ImagerNotFound, RuntimeError) as exc:
+        print(f"\nerror: {exc}", file=sys.stderr)
+        return 1
 
     # --- 6. inject ---
     print("[6/6] injecting the sambuca payload")
-    dest = inject_payload(device, staging)
+    from . import pi
+
+    boot = pi.find_boot_partition()
+    if boot is None:
+        print("\nerror: the stick was written, but its boot partition did not "
+              "appear.", file=sys.stderr)
+        print("       Re-insert it and run: sambuca-flasher provision-pi",
+              file=sys.stderr)
+        return 1
+    dest = inject_payload(boot, staging)
     print(f"      {dest}")
 
     print("\n" + "=" * 70)
@@ -654,106 +676,47 @@ def _stage_engine(engine_dir: Path, into: Path) -> int:
 
 
 def _cmd_write_pi(args) -> int:
-    from . import pi
+    """Write a Raspberry Pi card — by launching Raspberry Pi Imager.
 
-    image = args.image
-    kind = pi.identify_image(image)
-    print(f"\nimage: {image.name}")
-    print(f"       {kind.label}")
+    Sambuca no longer writes images. It publishes an OS list and starts the
+    tool that does, which handles device selection, download, checksum
+    verification, writing, readback and elevation on all three platforms.
 
-    if kind.kind == "iso":
-        print("\nerror: that is an x86 installer ISO. A Raspberry Pi cannot boot it.",
-              file=sys.stderr)
-        print("       Fetch a Raspberry Pi OS image (.img.xz) instead.", file=sys.stderr)
+    NOT FINISHED. Per the rule in CLAUDE.md — do it for them, or guide them
+    through every step — this should pre-select the device and OS, pre-fill
+    Customisation, warn before the UAC prompt, and provision automatically when
+    the write completes. None of that is built yet, so this says so plainly
+    rather than dropping someone into an unfamiliar window with no context.
+    See REDO.md section 0.
+    """
+    from . import imager
+
+    print()
+    print("Sambuca uses Raspberry Pi Imager to write cards.")
+    print("It handles the writing, the checksum and the verification.")
+    print()
+
+    if imager.find_imager() is None:
+        print(imager.install_hint(), file=sys.stderr)
         return 1
 
-    size = pi.expanded_size(image, kind)
-    if size:
-        print(f"       expands to {size / 1024**3:.2f} GiB")
+    print("What happens next:")
+    print("  1. Windows will ask permission to run Raspberry Pi Imager.")
+    print("     That prompt is expected — it needs it to write to a card.")
+    print("  2. Choose your device, then the Sambuca image, then your card.")
+    print("     ONLY the card you pick is erased. Check the size matches.")
+    print("  3. When it finishes, come back here.")
+    print()
 
-    # --- engine ---
-    engine_dir = _find_engine(args.engine)
-    if engine_dir is None:
-        print("\nerror: could not find the sambuca engine.", file=sys.stderr)
-        print("       This build should carry it; pass --engine <path> to override.",
-              file=sys.stderr)
+    try:
+        imager.launch(wait=True)
+    except (imager.ImagerNotFound, RuntimeError) as exc:
+        print(f"\nerror: {exc}", file=sys.stderr)
         return 1
 
-    import tempfile
-
-    staging = Path(tempfile.mkdtemp(prefix="sambuca-pi-"))
-    staged = _stage_engine(engine_dir, staging / "sambuca")
-    print(f"\nstaged {staged} engine file(s) from {engine_dir}")
-
-    if args.dry_run:
-        print("\ndry run: no device was touched.")
-        print(f"  staging: {staging}")
-        print("  firstrun.sh preview:")
-        for line in pi.render_firstrun(
-                hostname=args.hostname,
-                run_probe=not args.no_probe,
-                enable_ssh=not args.no_ssh).splitlines()[:12]:
-            print(f"    {line}")
-        return 0
-
-    # --- device ---
-    device = _resolve_device(args.device)
-    if device is None:
-        return 1
-    if not _confirm_destruction(device):
-        print("aborted — nothing was written.")
-        return 1
-
-    # --- write ---
-    print(f"\nwriting {image.name} -> {device.path}")
-
-    known_total = size or 0
-
-    def show(done: int, total: int) -> None:
-        # A percentage ONLY when the real total is known. expanded_size()
-        # returns None when the xz binary is not on PATH, and the previous
-        # `total or written` fallback divided the count by itself, so every
-        # line read "100.0%" from the first chunk onwards. A progress bar that
-        # is always complete is worse than no percentage at all.
-        mib = done / 1024**2
-        if known_total:
-            print(f"\r  {mib:7.0f} / {known_total / 1024**2:.0f} MiB "
-                  f"{done / known_total * 100:5.1f}%", end="", flush=True)
-        else:
-            print(f"\r  {mib:7.0f} MiB written", end="", flush=True)
-
-    written = pi.write_raspios(image, device, progress=show, verify=not args.no_verify)
-    print(f"\n  sha256 (uncompressed): {written[:32]}...")
-    if not args.no_verify:
-        print("  readback verified")
-
-    # --- provision ---
-    print("\nlocating the boot partition")
-    boot = pi.find_boot_partition(device)
-    if boot is None:
-        print("\nerror: the card was written, but its FAT32 boot partition did not "
-              "appear.", file=sys.stderr)
-        print("       Re-insert the card and run:  sambuca-flasher provision-pi",
-              file=sys.stderr)
-        return 1
-    print(f"  {boot}")
-
-    actions = pi.provision_boot_partition(
-        boot,
-        payload_dir=staging / "sambuca",
-        hostname=args.hostname,
-        enable_ssh=not args.no_ssh,
-        run_probe=not args.no_probe,
-        wifi_ssid=args.wifi_ssid,
-    )
-    for a in actions:
-        print(f"  {a}")
-
-    print("\nDone. Put the card in the Pi and power it on.")
-    print("The first boot writes its results BACK ONTO THE CARD:")
-    print("  put the card in a reader and read  sambuca-firstboot.log")
-    print("No network, monitor or keyboard needed to find out what happened.")
-    return 0
+    print()
+    print("Imager finished. Adding Sambuca's provisioning to the card...")
+    return _cmd_provision_pi(args)
 
 
 def _cmd_provision_pi(args) -> int:

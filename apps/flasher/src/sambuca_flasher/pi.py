@@ -329,34 +329,30 @@ def provision_boot_partition(
     return actions
 
 
-def find_boot_partition(device: RemovableDevice) -> Path | None:
+def find_boot_partition(device=None) -> Path | None:
     """Locate the FAT32 boot partition of a freshly written card.
 
-    Windows assigns it a drive letter on its own, but not instantly, and not
-    always before we ask.
+    Takes no device by default, ON PURPOSE: rpi-imager chose the card and wrote
+    it, so Sambuca never held a handle to it. The card is found by what it
+    contains — a cmdline.txt — rather than by a device path nobody passed.
+
+    The letterless case is the one that matters. A freshly written Raspberry Pi
+    card mounts its boot partition WITHOUT a drive letter, so scanning lettered
+    volumes finds nothing on a perfectly healthy card. Rescan, ask Windows for
+    a letter, then look again.
     """
     import platform
     import time
 
-    if platform.system() != "Windows":
-        for base in ("/media", "/run/media", "/mnt"):
-            for candidate in Path(base).rglob("cmdline.txt"):
-                return candidate.parent
-        return None
-
-    from .winraw import assign_boot_letter, disk_number, rescan_disks
+    from .winvol import assign_boot_letter, disk_number, lettered_volumes, rescan_disks
 
     def scan() -> Path | None:
-        try:
-            out = subprocess.run(
-                ["powershell", "-NoProfile", "-Command",
-                 "Get-Volume | Where-Object { $_.DriveLetter } | "
-                 "ForEach-Object { $_.DriveLetter }"],
-                capture_output=True, text=True, timeout=20, check=False,
-            ).stdout
-        except (subprocess.SubprocessError, OSError):
+        if platform.system() != "Windows":
+            for base in ("/media", "/run/media", "/mnt"):
+                for candidate in Path(base).rglob("cmdline.txt"):
+                    return candidate.parent
             return None
-        for letter in out.split():
+        for letter in lettered_volumes():
             p = Path(f"{letter}:/")
             try:
                 if (p / "cmdline.txt").is_file():
@@ -365,131 +361,14 @@ def find_boot_partition(device: RemovableDevice) -> Path | None:
                 continue
         return None
 
-    # Windows has just been told the disk changed underneath it.
     rescan_disks()
+    disk = disk_number(getattr(device, "path", "") or "") if device else None
 
     for attempt in range(15):
         found = scan()
         if found:
             return found
-
-        # THE PART THAT WAS MISSING. A freshly written Raspberry Pi card comes
-        # up with its FAT32 partition mounted but WITHOUT a drive letter — the
-        # same blind spot that made the volume lock a no-op. Scanning lettered
-        # volumes therefore finds nothing, forever, on a card that is perfectly
-        # fine. Ask Windows for a letter rather than waiting for one.
         if attempt == 2:
-            n = disk_number(device.path)
-            if n is not None:
-                assign_boot_letter(n)
-
+            assign_boot_letter(disk)
         time.sleep(1)
     return None
-
-
-def write_raspios(
-    image: Path,
-    device: RemovableDevice,
-    *,
-    progress: ProgressFn | None = None,
-    verify: bool = True,
-) -> str:
-    """Stream-decompress and raw-write a Raspberry Pi OS image to the card.
-
-    Returns the sha256 of the UNCOMPRESSED bytes written, so the caller can
-    state what actually landed rather than that a copy returned zero.
-
-    Verification re-decompresses and compares against a readback. That is a
-    second full pass over ~3 GiB and it is on by default, for the same reason
-    it is on for the x86 path: an SD card that reports a good write and then
-    fails to boot, in a device with no screen, is the worst debugging position
-    this project can put someone in.
-    """
-    import hashlib
-
-    from .winraw import pad_to_sector
-    from .writer import _open_device, _require_privileges, _sync, _unmount
-
-    kind = identify_image(image)
-    if kind.kind == "iso":
-        raise PiError(
-            f"{image.name} is an ISO. A Raspberry Pi cannot boot an x86 installer "
-            f"ISO — it needs a Raspberry Pi OS disk image (.img or .img.xz)."
-        )
-
-    _require_privileges()
-    _unmount(device)
-
-    total = expanded_size(image, kind)
-    written = 0
-    digest = hashlib.sha256()
-
-    with open_image_stream(image, kind) as src, _open_device(device.path, "wb") as dev:
-        while chunk := src.read(_CHUNK):
-            digest.update(chunk)
-            written += len(chunk)
-            # Whole sectors only: a short final write is rejected by the
-            # device, which would fail the very last operation of a multi-GiB
-            # copy. The padding is outside the hash on purpose — the digest
-            # describes the IMAGE, not the padded tail.
-            dev.write(pad_to_sector(chunk))
-            if progress:
-                progress(written, total or written)
-        # flush() is FlushFileBuffers on Windows. There is no CRT descriptor
-        # behind the handle, so os.fsync() has nothing to act on — and a
-        # fileno() that returned something plausible would let it appear to
-        # succeed while flushing nothing.
-        dev.flush()
-
-    _sync()
-
-    if written == 0:
-        raise PiError("wrote 0 bytes — the image stream was empty")
-    if device.size_bytes and written > device.size_bytes:
-        raise PiError(
-            f"image expands to {written} bytes but the card holds "
-            f"{device.size_bytes} — it cannot have been written correctly"
-        )
-
-    expected = digest.hexdigest()
-
-    if verify:
-        readback = hashlib.sha256()
-        remaining = written
-        with _open_device(device.path, "rb") as dev:
-            while remaining > 0:
-                chunk = dev.read(min(_CHUNK, remaining))
-                if not chunk:
-                    break
-                readback.update(chunk)
-                remaining -= len(chunk)
-        if readback.hexdigest() != expected:
-            _restore_disk(device)
-            raise PiError(
-                "READBACK MISMATCH — what is on the card is not what was sent to "
-                "it. Do not boot this. The usual causes are a failing card or a "
-                "reader that lies about completing writes."
-            )
-
-    # The disk was taken offline to write it. Bring it back, or the freshly
-    # written boot partition never mounts and provisioning cannot find it —
-    # and the operator is left with a card Windows appears to have lost.
-    _restore_disk(device)
-    return expected
-
-
-def _restore_disk(device: RemovableDevice) -> None:
-    """Return the disk to normal operation. Never raises: a failure here must
-    not mask the result of the write itself."""
-    import platform
-
-    if platform.system() != "Windows":
-        return
-    try:
-        from .winraw import disk_number, set_disk_offline
-
-        n = disk_number(device.path)
-        if n is not None:
-            set_disk_offline(n, False)
-    except Exception:  # noqa: BLE001 - best effort by design
-        pass

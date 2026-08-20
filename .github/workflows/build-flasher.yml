@@ -82,16 +82,28 @@ jobs:
           # profiles, so neither `write` nor `write-pi` worked at all — while
           # every check below passed, because none of them touch the engine.
           # PyInstaller wants os.pathsep between source and destination.
+          # $PWD in git-bash on Windows is a POSIX path (/d/a/...). PyInstaller
+          # received it as a backslashed version of that, could not find the
+          # directory, and failed the build — v0.1.0-preview2 produced linux
+          # and macOS binaries, failed windows, and therefore published nothing
+          # at all. `pwd -W` is git-bash's way of asking for a real Windows
+          # path (D:/a/...).
           case "${{ runner.os }}" in
-            Windows) SEP=';' ;;
-            *)       SEP=':' ;;
+            Windows) SEP=';' ; ROOT="$(pwd -W)" ;;
+            *)       SEP=':' ; ROOT="$PWD" ;;
           esac
+          echo "bundling engine and manifest from: $ROOT"
+
+          # The manifest ships too. manifest.py falls back to a bundled copy
+          # when GitHub is unreachable, and looks for it under _MEIPASS — a
+          # binary without it cannot start offline.
           pyinstaller \
             --onefile \
             --name sambuca-flasher \
             --collect-all mnemonic \
             --collect-all reportlab \
-            --add-data "$PWD/engine${SEP}engine" \
+            --add-data "$ROOT/engine${SEP}engine" \
+            --add-data "$ROOT/manifest${SEP}manifest" \
             --console \
             apps/flasher/entrypoint.py
 
@@ -117,7 +129,16 @@ jobs:
             | tee /tmp/enginecheck.txt | grep -q "staged .* engine file" \
             || { echo "FAIL: the binary cannot find its bundled engine"; cat /tmp/enginecheck.txt; exit 1; }
 
-          echo "the frozen binary works, engine included"
+          # And the bundled MANIFEST, which is what lets it start with no
+          # network. Pointed at an unreachable host, the fallback must carry
+          # it — a binary that only works online is not the offline-first
+          # installer this project claims to ship.
+          SAMBUCA_MANIFEST="http://127.0.0.1:1/unreachable.json" \
+            "$BIN" write-pi --image apps/flasher/tests/fixtures/not-an-iso.img --dry-run 2>&1 \
+            | grep -q "staged .* engine file" \
+            || { echo "FAIL: no bundled manifest — the binary cannot work offline"; exit 1; }
+
+          echo "the frozen binary works, engine and manifest included"
 
       - uses: actions/upload-artifact@v4
         with:
