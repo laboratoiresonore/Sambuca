@@ -38,9 +38,13 @@ from pathlib import Path
 # NOT A CONSTANT. The OS-list location, the install commands and the download
 # page all come from the manifest, which is fetched live. A URL baked into a
 # binary is wrong the day it moves, and nobody redownloads a flasher.
+# jsDelivr, NOT raw.githubusercontent. raw serves .json as text/plain and
+# rpi-imager silently ignores a list served that way — the device picker comes
+# up empty with no error at all, which is indistinguishable from a broken file.
+# Measured: official application/json, raw text/plain, jsDelivr application/json.
 _FALLBACK_REPO = (
-    "https://raw.githubusercontent.com/laboratoiresonore/Sambuca"
-    "/main/os-list/sambuca-os-list.json"
+    "https://cdn.jsdelivr.net/gh/laboratoiresonore/Sambuca@main"
+    "/os-list/sambuca-os-list.json"
 )
 
 

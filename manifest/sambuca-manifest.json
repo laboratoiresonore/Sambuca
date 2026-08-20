@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "updated": "2026-08-20",
-
   "_comment": [
     "THE SINGLE SOURCE OF TRUTH FOR THE INSTALLER, FETCHED LIVE.",
     "",
@@ -12,22 +11,22 @@
     "",
     "WHY. A downloaded binary is frozen the day it is built. When an image is",
     "reissued, a checksum rotates, a dependency moves or a board is finally",
-    "tested, a hardcoded binary is wrong until every user downloads a new one —",
+    "tested, a hardcoded binary is wrong until every user downloads a new one \u2014",
     "and most never will. Fetching this at startup means the app corrects",
     "itself; the binary only carries a fallback copy for offline use.",
     "",
     "os-list/sambuca-os-list.json is GENERATED from this file, so the image",
-    "facts exist in exactly one place. Do not hand-edit that file."
+    "facts exist in exactly one place. Do not hand-edit that file.",
+    "HOSTING IS NOT INTERCHANGEABLE. raw.githubusercontent.com serves .json as text/plain, and rpi-imager ignores a list served that way - the device picker comes up empty with no error, which looks exactly like a broken list. Measured 2026-08-20: official=application/json, raw.github=text/plain, jsDelivr=application/json. So the OS LIST is served via jsDelivr, which sets the right type. Our OWN manifest still comes from raw.githubusercontent because Python does not care about content-type and raw is uncached, so it updates immediately; jsDelivr caches @main for hours."
   ],
-
   "links": {
     "home": "https://github.com/laboratoiresonore/Sambuca",
     "issues": "https://github.com/laboratoiresonore/Sambuca/issues",
     "releases": "https://github.com/laboratoiresonore/Sambuca/releases",
-    "os_list": "https://raw.githubusercontent.com/laboratoiresonore/Sambuca/main/os-list/sambuca-os-list.json",
-    "engine_archive": "https://github.com/laboratoiresonore/Sambuca/archive/refs/heads/main.tar.gz"
+    "os_list": "https://cdn.jsdelivr.net/gh/laboratoiresonore/Sambuca@main/os-list/sambuca-os-list.json",
+    "engine_archive": "https://github.com/laboratoiresonore/Sambuca/archive/refs/heads/main.tar.gz",
+    "os_list_raw": "https://raw.githubusercontent.com/laboratoiresonore/Sambuca/main/os-list/sambuca-os-list.json"
   },
-
   "dependencies": {
     "rpi_imager": {
       "name": "Raspberry Pi Imager",
@@ -35,17 +34,37 @@
       "minimum_version": "1.8.0",
       "download": "https://www.raspberrypi.com/software/",
       "install": {
-        "windows": ["winget", "install", "--id", "RaspberryPiFoundation.RaspberryPiImager", "--accept-package-agreements", "--accept-source-agreements"],
-        "darwin": ["brew", "install", "--cask", "raspberry-pi-imager"],
-        "linux": ["sudo", "apt-get", "install", "-y", "rpi-imager"]
+        "windows": [
+          "winget",
+          "install",
+          "--id",
+          "RaspberryPiFoundation.RaspberryPiImager",
+          "--accept-package-agreements",
+          "--accept-source-agreements"
+        ],
+        "darwin": [
+          "brew",
+          "install",
+          "--cask",
+          "raspberry-pi-imager"
+        ],
+        "linux": [
+          "sudo",
+          "apt-get",
+          "install",
+          "-y",
+          "rpi-imager"
+        ]
       }
     }
   },
-
   "tested_devices": [
     {
       "name": "Raspberry Pi Zero 2 W",
-      "tags": ["pi3-64bit", "pi3-32bit"],
+      "tags": [
+        "pi3-64bit",
+        "pi3-32bit"
+      ],
       "icon": "https://downloads.raspberrypi.com/imager/icons/RPi_Zero_2_W.png",
       "description": "Raspberry Pi Zero 2 W - the only board tested so far",
       "matching_type": "inclusive",
@@ -55,7 +74,6 @@
       "note": "512 MB of memory, below Sambuca's 4 GB floor. This is the arm64 test rig, not an appliance."
     }
   ],
-
   "images": [
     {
       "id": "raspios-lite-arm64",
@@ -68,11 +86,13 @@
       "extract_sha256": "e235fd24fc5f039c08daba7d3abc04aecc7313f979d16d2a3fdad29dd44c33a9",
       "download_sha256": "acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3",
       "init_format": "systemd",
-      "devices": ["pi3-64bit", "pi3-32bit"],
+      "devices": [
+        "pi3-64bit",
+        "pi3-32bit"
+      ],
       "verified": "extract_sha256 measured locally on 2026-08-20 by decompressing the verified download and hashing it; it matches the digest produced by a real write to a card."
     }
   ],
-
   "tiers": {
     "_comment": "Mirrors engine/hardware-detect.sh. Served live so a threshold can be corrected without reissuing binaries. The ENGINE on the target machine remains authoritative; these values are what the estimator shows before you commit hardware.",
     "min_ram_mb": 3500,
