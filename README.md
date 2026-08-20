@@ -869,7 +869,12 @@ Humanity stands at a critical fork in history. A choice between unprecedented em
 
 **Drop the ramp.**
 
----
+<p align="center">
+  <img src="assets/brand/ramp-dropped.webp" width="820"
+       alt="The siege tower's ramp dropped across a breached white wall, its red guide-lines lit. People are walking down it into the city, and one of them turns back with a hand out, waiting for you to follow.">
+</p>
+
+<p align="center"><i>The wall is already breached. The crossing is the easy part now.</i></p>
 
 ---
 
