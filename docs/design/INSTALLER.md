@@ -5,6 +5,25 @@
        alt="A sambuca USB key driven into a server rack, a burst of red light where it meets the machine.">
 </p>
 
+> [!WARNING]
+> **THIS IS A DESIGN, NOT A DESCRIPTION. Most of it is not built.**
+>
+> Read it as intent. What actually exists today is in
+> [REDO.md](../../REDO.md) and [ROADMAP.md](../../ROADMAP.md), which mark every
+> item built / partial / missing.
+>
+> Two sections have since been overtaken by reality and are kept for their
+> reasoning, not their conclusions:
+>
+> * **The writing itself is no longer ours.** Sambuca launches Raspberry Pi
+>   Imager and supplies an image list; it does not implement device selection,
+>   download, verification or writing. The 855 lines that did are deleted.
+> * **"The desktop app"** throughout means a graphical program that does not
+>   exist. The flow it describes runs in a console today.
+>
+> The beacon, the account setup and the unified control panel remain unbuilt
+> and remain wanted.
+
 A decision document for the desktop app. Every section is measured against the
 three standing principles, and where they pull against each other the conflict
 is named rather than smoothed over.

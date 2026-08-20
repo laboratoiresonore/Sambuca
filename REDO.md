@@ -120,7 +120,7 @@ gone or is a thin call into `imager.launch()`.
 | ~~B2~~ **DONE** | **The only published release cannot flash anything.** preview1's binaries have no engine bundled, so `write` and `write-pi` both fail. | Verified by building and running the .exe. |
 | ~~B3~~ **DONE** | **The README's download links point at those broken binaries.** | `README.md:62-74`. |
 | ~~B4~~ **DONE** | `estimate` is still referenced in three places in the README and in the app's menu. | Being deleted in A5; references must go with it. |
-| B5 | The `_interactive` menu's options 4 and 5 print a command instead of doing anything. | *"HOW THE FUCK IS THAT HELPING A NOVICE"* — correct. |
+| ~~B5~~ **DONE** | The `_interactive` menu's options 4 and 5 print a command instead of doing anything. | *"HOW THE FUCK IS THAT HELPING A NOVICE"* — correct. |
 
 **Acceptance for B1:** a tagged build produces three binaries and a release with
 `SHA256SUMS.txt`, and each binary passes the engine-bundle check that already
@@ -147,9 +147,9 @@ exists in CI.
 |---|---|---|
 | ~~D1~~ **DONE** | **README does not mention rpi-imager or the manifest at all.** | It describes an architecture that no longer exists. |
 | ~~D2~~ **DONE** | *"Plug in a blank USB stick and hit 'Flash.'"* (`README:274`) | There is no Flash button. There is a console app. |
-| D3 | `docs/design/INSTALLER.md` describes a desktop app throughout. | It does not exist. Either build it (C1) or mark the document as a design not yet built. |
+| ~~D3~~ **DONE** | `docs/design/INSTALLER.md` describes a desktop app throughout. | It does not exist. Either build it (C1) or mark the document as a design not yet built. |
 | D4 | The README's Pi note says a Pi "is not installable yet". | Still true, but now a card has been written and the OS list offers it. Needs reconciling. |
-| D5 | `docs/MAINTENANCE.md` coupling register has no entry for rpi-imager, the manifest, jsDelivr, or the OS-list schema. | Four new external couplings, none registered. |
+| ~~D5~~ **DONE** | `docs/MAINTENANCE.md` coupling register has no entry for rpi-imager, the manifest, jsDelivr, or the OS-list schema. | Four new external couplings, none registered. |
 | ~~D6~~ **DONE** | The status table does not mention that the shipped binaries never worked. | The most important thing a reader could know. |
 
 ---
