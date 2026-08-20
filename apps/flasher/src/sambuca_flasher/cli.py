@@ -1426,9 +1426,24 @@ def _cmd_provision_pi(args) -> int:
     for a in actions:
         print(f"  {a}")
 
+    # WHERE THE FLOW USED TO END. It said "power it on" and stopped, leaving
+    # somebody holding a machine with nine services on it and no address for
+    # any of them. Naming the next command is the whole difference between a
+    # handover and an abandonment.
     print("\nDone. Put the card in the Pi and power it on.")
-    print("The first boot writes its results BACK ONTO THE CARD:")
-    print("  put the card in a reader and read  sambuca-firstboot.log")
+    print()
+    print("  FIRST BOOT TAKES 10-20 MINUTES. It downloads and starts")
+    print("  everything. Leave it alone while it does.")
+    print()
+    print("  Then come back here and run:")
+    print()
+    print("      sambuca-flasher handover")
+    print()
+    print("  That checks what is running, sets this computer up to trust it,")
+    print("  and saves every address as bookmarks you can import.")
+    print()
+    print("  If something went wrong, the first boot writes its results BACK")
+    print("  ONTO THE CARD: put it in a reader and read sambuca-firstboot.log")
     return 0
 
 
@@ -1446,9 +1461,10 @@ _MENU = """
     1   Which machine can run this?      (opens the guide)
     2   Which USB sticks can I write to?
     3   How do I boot a machine from USB?
-    4   Write an installer USB
+    4   Write an installer USB            (for a PC or laptop)
     5   Write a Raspberry Pi card
     6   Recover a lost password from my seed phrase
+    7   My machine is running - set it up on this computer
 
     q   Quit
 
@@ -1499,16 +1515,45 @@ def _interactive() -> int:
                 model = input('\n  Which machine? (e.g. "Dell XPS 15"): ').strip()
                 return main(["boot-guide", model])
             if choice == "4":
-                print("\n  Writing an installer USB needs a Debian ISO and an "
-                      "elevated terminal.")
-                print("  Run:  sambuca-flasher write --iso <path-to.iso>")
-                print("  See:  https://github.com/laboratoiresonore/Sambuca")
-                return 0
+                # THE RULE, SECOND CLAUSE. This one genuinely cannot be done
+                # for them — a Debian ISO is 700 MiB from a mirror this app
+                # does not pin. So it GUIDES: says where to get it, waits, and
+                # takes the path. Printing "Run: sambuca-flasher write --iso"
+                # at a novice and stopping is the failure wearing a helpful
+                # face, which is exactly what stood here before.
+                print()
+                print("  This writes an installer USB for a normal PC or laptop.")
+                print()
+                print("  You need Debian's installer file first - it is free,")
+                print("  about 700 MB, and comes straight from debian.org:")
+                print()
+                print("    https://www.debian.org/download")
+                print()
+                print("  Save it somewhere you can find, then come back here.")
+                print()
+                try:
+                    raw = input("  Drag the file here, or paste its path: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    return 0
+                # Dragging a file onto a terminal quotes paths that contain
+                # spaces, and a novice will not think to strip them.
+                iso = raw.strip('"').strip("'").strip()
+                if not iso:
+                    print("\n  Nothing entered. Nothing done.")
+                    return 0
+                if not Path(iso).is_file():
+                    print(f"\n  There is no file at:\n    {iso}")
+                    print("  Check it downloaded, then try again.")
+                    return 1
+                return main(["write", "--iso", iso])
             if choice == "5":
-                print("\n  Writing a Raspberry Pi card needs an image and an "
-                      "elevated terminal.")
-                print("  Run:  sambuca-flasher write-pi --image <path-to.img.xz>")
-                return 0
+                # NO ARGUMENTS NEEDED ANY MORE. rpi-imager downloads the image
+                # from the manifest, so the old instruction to pass --image was
+                # both an abdication AND stale: that flag is now "rarely
+                # needed" and demanding it turned people away at the door.
+                return main(["write-pi"])
+            if choice == "7":
+                return main(["handover"])
             if choice == "6":
                 return main(["derive-recovery-key"])
         except (EOFError, KeyboardInterrupt):
