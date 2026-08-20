@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 from . import __version__
@@ -129,6 +130,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="also open the search in your browser")
     p_boot.add_argument("--list-vendors", action="store_true")
 
+    p_hand = sub.add_parser(
+        "handover",
+        help="check what your appliance is running, trust it, and bookmark it")
+    p_hand.add_argument("--domain", default="sambuca.local",
+                        help="the appliance's name (default: sambuca.local)")
+    p_hand.add_argument("--tailnet", default="",
+                        help="its full tailnet name, if you use Tailscale")
+
     sub.add_parser(
         "verify-sheet",
         help="prove a printed recovery sheet is readable and is this machine's")
@@ -161,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_write_pi(args)
         if args.command == "provision-pi":
             return _cmd_provision_pi(args)
+        if args.command == "handover":
+            return _cmd_handover(args)
         if args.command == "verify-sheet":
             return _cmd_verify_sheet(args)
         if args.command == "derive-backup-key":
@@ -552,6 +563,152 @@ def _warn_if_git_worktree(out_dir: Path) -> None:
             print("!" * 70)
             print()
             return
+
+
+def _offer_certificate(domain: str) -> None:
+    """Teach this computer to trust the appliance, or explain why not.
+
+    WITHOUT THIS EVERY PAGE LOOKS BROKEN. The appliance issues its own
+    certificates - that is what lets it serve HTTPS on a home network with no
+    public domain. But no browser has heard of that authority, so every service
+    opens behind a full-width security warning. Teaching a novice to click
+    through those is the worst habit this project could possibly install.
+
+    IT IS STILL A REAL PERMISSION, so it is asked for, never assumed, and the
+    fingerprint goes on screen first: a certificate fetched over a network we
+    cannot yet verify is a certificate somebody else may have supplied.
+    """
+    from . import ca
+
+    _say()
+    _say("-" * 68)
+    _say("  TRUST YOUR APPLIANCE'S CERTIFICATE")
+    _say("-" * 68)
+    _say()
+
+    try:
+        cert = ca.fetch(domain)
+    except ca.NotReady:
+        # EARLY IS NOT BROKEN. Caddy writes its root on the first TLS
+        # handshake, so this means wait - not debug a network that is fine.
+        _say("  The appliance is still setting up its certificate.")
+        _say("  Give it a few minutes, then run:  sambuca-flasher handover")
+        return
+
+    if cert is None:
+        _say("  Could not download the certificate from the appliance.")
+        _say("  Services will still work; the browser will warn you each time.")
+        _say("  You can do this later with:  sambuca-flasher handover")
+        return
+
+    if ca.is_installed(cert):
+        _say("  Already trusted by this computer. Nothing to do.")
+        return
+
+    _say(ca.explain())
+    _say()
+    _say("  Certificate fingerprint:")
+    _say(f"    {cert.fingerprint[:39]}")
+    _say(f"    {cert.fingerprint[39:]}")
+    _say()
+
+    if not _ask_yes("  Tell this computer to trust it?"):
+        _say()
+        _say("  Left alone. Your browser will warn you on every page - the")
+        _say("  warning is expected, but you will have to click past it.")
+        return
+
+    _say()
+    _say("  Running:")
+    _say(f"    {' '.join(ca.install_command(Path('sambuca-ca.crt')))}")
+    _say()
+
+    workdir = Path(tempfile.gettempdir()) / "sambuca-ca"
+    ok, detail = ca.install(cert, workdir)
+    if ok:
+        _say(f"  Done - {detail}.")
+        _say()
+        _say("  Close and reopen your browser for it to take effect.")
+        _say(f"  To undo this later:  {ca.removal_hint()}")
+    else:
+        # A managed or locked-down machine refusing is NORMAL, not an error
+        # worth alarming somebody over.
+        _say(f"  Could not install it: {detail}")
+        _say("  This is common on work computers, which often forbid it.")
+        _say("  Everything still works; the browser will warn you each time.")
+
+
+def _cmd_handover(args) -> int:
+    """Hand the finished appliance over: what works, trusted, bookmarked.
+
+    THE FLOW ENDED BY STOPPING. Provisioning said "put the card in the Pi and
+    power it on" and that was the last word - leaving somebody holding a
+    machine with nine services on it and no idea of a single address. The
+    project had built a private cloud and handed over silence.
+
+    Three things, in the only order that works: find out what is actually
+    answering, trust the certificate so the addresses open cleanly, then write
+    the addresses somewhere their browser can keep.
+    """
+    from . import handover
+
+    domain = (getattr(args, "domain", None) or "sambuca.local").strip()
+    tailnet_name = (getattr(args, "tailnet", None) or "").strip()
+
+    _say()
+    _say("=" * 68)
+    _say("  YOUR APPLIANCE")
+    _say("=" * 68)
+    _say()
+    _say(f"  Looking for {domain} ...")
+    _say()
+
+    links = handover.check_all(handover.appliance_links(
+        domain, tailnet_name=tailnet_name))
+
+    working = [l for l in links if l.reachable]
+    for link in links:
+        mark = "up  " if link.reachable else "--  "
+        _say(f"    {mark}{link.name:<28} {link.url}")
+
+    _say()
+    if not working:
+        # DO NOT DRESS THIS UP. Nothing answered, and pretending otherwise
+        # sends somebody off to bookmark addresses that go nowhere.
+        _say("  Nothing answered yet.")
+        _say()
+        _say("  If you have only just powered it on, first boot takes 10-20")
+        _say("  minutes - it is downloading and starting everything.")
+        _say()
+        _say("  If it has been longer than that, put the card in a reader and")
+        _say("  read  sambuca-firstboot.log  - it records what happened.")
+        return 1
+
+    _say(f"  {len(working)} of {len(links)} services are answering.")
+
+    # CERTIFICATE BEFORE BOOKMARKS. Bookmarks that all open behind a security
+    # warning teach exactly the wrong lesson on first use.
+    _offer_certificate(domain)
+
+    dest = Path.home() / "Desktop"
+    if not dest.is_dir():
+        dest = Path.home()
+    path = handover.write_bookmarks(working, dest / "sambuca-bookmarks.html")
+
+    _say()
+    _say("-" * 68)
+    _say("  YOUR ADDRESSES")
+    _say("-" * 68)
+    _say()
+    _say(f"  Saved to:  {path}")
+    _say()
+    _say("  Import it into your browser so the addresses are always there:")
+    _say("    Chrome / Edge   Bookmarks -> Import bookmarks and settings")
+    _say("    Firefox         Bookmarks -> Manage -> Import -> From HTML")
+    _say()
+    _say("  Start here:")
+    _say(f"    https://{domain}")
+    return 0
 
 
 def _cmd_boot_guide(args) -> int:

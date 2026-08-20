@@ -63,6 +63,11 @@ def appliance_links(domain: str, *, tailnet_name: str = "") -> list[Link]:
     """
     base = domain.rstrip(".")
     links = [
+        # THE FRONT DOOR GOES FIRST, and it belongs in this list at all because
+        # the handover tells people to start here. An address we hand somebody
+        # while never checking it is the one most likely to greet them with a
+        # browser error, and it is the first thing they will ever open.
+        Link("Dashboard", f"https://{base}", "the front door - start here"),
         Link("Files, calendar and contacts", f"https://cloud.{base}",
              "instead of Google Drive"),
         Link("Photos", f"https://photos.{base}", "instead of Google Photos"),

@@ -112,6 +112,19 @@ class TestLinkList:
         links = handover.appliance_links("sambuca.local")
         assert all("ts.net" not in x.url for x in links)
 
+    def test_the_address_people_are_told_to_start_at_is_checked(self):
+        """The handover ends by saying "start here" and naming the dashboard.
+
+        For a while it named an address that was not in this list at all, so
+        the one page every owner opens first was the one page nothing had
+        verified. An unchecked recommendation is how somebody's first contact
+        with their new appliance becomes a browser error.
+        """
+        links = handover.appliance_links("sambuca.local")
+        apex = [x for x in links if x.url == "https://sambuca.local"]
+        assert apex, "the dashboard the owner is sent to must be checked too"
+        assert apex[0] is links[0], "the front door belongs first"
+
     def test_what_it_replaces_is_in_plain_words(self):
         """The audience does not know what Immich is."""
         links = handover.appliance_links("sambuca.local")
