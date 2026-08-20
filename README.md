@@ -117,6 +117,19 @@ The AI is the other half. It is not a chat box bolted on the side.
 
 Three things. The third one is the one nobody else offers, and it is the reason a novice can own a server at all.
 
+> [!IMPORTANT]
+> **All three are described here as though they work, and they do not yet.**
+> The substrate is real — the profiler, the model catalogues, the ComfyUI
+> service, the FLUX workflow, the verb catalogue and its linter are built and
+> tested. What is missing is the part that connects them to you: Odysseus is
+> unpublished, the Steward runtime is not built, and no picture has yet come
+> out of the workflow.
+>
+> [**Where the AI plane actually stands**](#where-the-ai-plane-actually-stands)
+> sets out each piece and its state. That table is the honest one, and it is
+> 500 lines below this — which is too far away for a section that reads like a
+> promise, so the warning belongs here as well.
+
 ### 1. It talks
 
 A private assistant that can read your own documents and never sends a word anywhere. No per-message cost, no terms of service, no training on your manuscript.
@@ -669,8 +682,13 @@ resolution of every container image — digests recorded in
 [docs/IMAGES.md](docs/IMAGES.md). 25 tests pass, including pinned derivation
 vectors for both seed-derived keys.
 
-**Where the AI plane actually stands**, since the section above describes it as
-though it were finished and it is not:
+### Where the AI plane actually stands
+
+Promoted to a real heading, because the summary above links here — and it was
+bold text in a paragraph, which produces no anchor at all. A link that silently
+goes nowhere is the same failure as a knob that turns and changes nothing.
+
+The section near the top describes this as though it were finished. It is not:
 
 | Piece | State |
 |---|---|
