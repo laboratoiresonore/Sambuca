@@ -114,11 +114,15 @@ jobs:
         # Exit 2 means only first-party images are unpublished, which is a known
         # pre-release state. Exit 1 means a third-party reference is broken and
         # an appliance would fail to pull it — that fails the build.
+        #
+        # `|| rc=$?` is load-bearing: steps run under `bash -e`, so a bare
+        # invocation aborts the step the moment the script exits 2, and the
+        # "expected pre-release" branch below becomes unreachable.
         run: |
-          python tools/verify-images.py compose/.env.example
-          rc=$?
-          if [ $rc -eq 2 ]; then
+          rc=0
+          python tools/verify-images.py compose/.env.example || rc=$?
+          if [ "$rc" -eq 2 ]; then
             echo "::warning::first-party images not yet published (expected pre-release)"
             exit 0
           fi
-          exit $rc
+          exit "$rc"

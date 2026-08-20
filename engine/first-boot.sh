@@ -187,7 +187,8 @@ run_phase() {
 
     # Phases run in a subshell: a phase that leaks `set -x`, changes directory,
     # or exports something odd cannot contaminate the orchestrator.
-    # shellcheck source=/dev/null  (phase path is resolved at runtime by design)
+    # The phase path is resolved at runtime by design, so it cannot be followed.
+    # shellcheck source=/dev/null
     if ( set -uo pipefail; SB_TAG="$name"; source "$script" ); then
         local elapsed=$(( $(date +%s) - started ))
         [[ $SB_DRY_RUN == 1 ]] || sb_state_mark "$name"

@@ -21,7 +21,14 @@
 
 {
 	admin off
-	email {$SAMBUCA_ACME_EMAIL}
+	# NO GLOBAL `email` DIRECTIVE, deliberately. It configures the ACME account
+	# for public certificate issuance, and sambuca never issues one: LAN traffic
+	# uses Caddy's internal CA, and tailnet traffic gets its certificate from
+	# `tailscale serve`. An `email` line with an empty value is also a hard parse
+	# error, so the "harmless" version of this is not harmless.
+	#
+	# If you point a real public domain at this box, add it back:
+	#   email you@example.com
 	servers {
 		trusted_proxies static 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
 	}
