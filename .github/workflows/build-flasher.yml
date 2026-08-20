@@ -20,16 +20,25 @@ name: build-flasher
 # this project has. The release notes say so plainly rather than letting people
 # discover it — and the workaround is documented, not hidden.
 
+# A `paths` filter alongside `tags` is a footgun: for a tag push GitHub
+# evaluates both, and a tag pointing at a commit that did not touch those paths
+# never builds. A release that silently does not happen is the worst kind. The
+# tag trigger therefore carries NO path filter; the path filter applies only to
+# branch pushes, where skipping unrelated work is genuinely useful.
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+    branches: [main]
     paths:
       - "apps/flasher/**"
+      - "engine/**"
       - ".github/workflows/build-flasher.yml"
 
+# `write` is required to publish a release. It was `read`, which builds the
+# binaries and then cannot attach them to anything.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -115,3 +124,71 @@ jobs:
           name: sambuca-flasher-${{ matrix.label }}
           path: dist/${{ matrix.binary }}
           retention-days: 30
+
+  release:
+    name: publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # upload-artifact nests each one in its own directory. Flatten, and give
+      # every binary a name that says which platform it is for — three files
+      # all called `sambuca-flasher` in one release is useless.
+      - name: collect and name the binaries
+        run: |
+          mkdir -p dist
+          for d in artifacts/sambuca-flasher-*; do
+            label="${d#artifacts/sambuca-flasher-}"
+            src=$(find "$d" -type f | head -1)
+            [ -z "$src" ] && { echo "no binary in $d"; exit 1; }
+            case "$label" in
+              windows-*) cp "$src" "dist/sambuca-flasher-${label}.exe" ;;
+              *)         cp "$src" "dist/sambuca-flasher-${label}" ;;
+            esac
+          done
+          chmod +x dist/sambuca-flasher-* 2>/dev/null || true
+          ls -la dist/
+
+      # The README points at this file and explains what it does and does not
+      # prove: that the download arrived intact, not who built it.
+      - name: checksums
+        run: |
+          cd dist && sha256sum sambuca-flasher-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/sambuca-flasher-*
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'preview') || contains(github.ref_name, 'rc') }}
+          body: |
+            **These binaries are unsigned.** Your computer will warn you, and we
+            would rather say so than let you discover it.
+
+            - **Windows** — SmartScreen says "unrecognised app". More info -> Run anyway.
+            - **macOS** — right-click the file -> Open, then confirm. Or
+              `xattr -d com.apple.quarantine ./sambuca-flasher-macos-arm64`
+            - **macOS / Linux** — `chmod +x ./sambuca-flasher-...` first.
+
+            Signing needs an Apple Developer account and a Windows code-signing
+            certificate; this project has neither. `SHA256SUMS.txt` proves a
+            download arrived intact — not who made it.
+
+            **No Intel Mac build** — the last Intel runner has been retired.
+            Install from source instead: `pip install ./apps/flasher`
+
+            Try it before committing anything. This touches no disk and needs no
+            USB stick:
+
+                sambuca-flasher estimate "my old Dell desktop, 16GB RAM"

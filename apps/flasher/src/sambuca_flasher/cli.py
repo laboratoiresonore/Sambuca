@@ -127,6 +127,20 @@ def main(argv: list[str] | None = None) -> int:
     p_cfg = sub.add_parser("example-config", help="print a commented example configuration")
     p_cfg.add_argument("--output", type=Path)
 
+    # No arguments AND nobody typed a command: this was double-clicked.
+    # argparse would print a usage line and exit 2, and the console window
+    # created for us would close on that exit — which looks exactly like a
+    # crash. Offer a menu instead.
+    if argv is None and len(sys.argv) == 1:
+        from .console import launched_by_double_click
+
+        if launched_by_double_click():
+            from .console import pause_before_exit
+
+            rc = _interactive()
+            pause_before_exit()
+            return rc
+
     args = parser.parse_args(argv)
 
     try:
@@ -798,3 +812,80 @@ def _cmd_provision_pi(args) -> int:
     print("The first boot writes its results BACK ONTO THE CARD:")
     print("  put the card in a reader and read  sambuca-firstboot.log")
     return 0
+
+
+_MENU = """
+====================================================================
+  SAMBUCA
+  Turn a spare computer into your own private cloud and AI server.
+====================================================================
+
+  You opened this by double-clicking, so here is a menu. Everything
+  below is also available as a command if you prefer typing.
+
+  Nothing here touches a disk until it asks you first, in capitals.
+
+    1   What could my machine do?        (asks nothing, changes nothing)
+    2   Which USB sticks can I write to?
+    3   How do I boot a machine from USB?
+    4   Write an installer USB
+    5   Write a Raspberry Pi card
+    6   Recover a lost password from my seed phrase
+
+    q   Quit
+
+"""
+
+
+def _interactive() -> int:
+    """A menu, for someone who double-clicked the file.
+
+    THE BUG THIS EXISTS FOR: with no arguments argparse printed a usage line
+    and exited 2. Double-clicked from a file manager the console window is
+    created for the process and destroyed the moment it exits, so the window
+    appeared and vanished — reported, entirely fairly, as "it crashed as soon
+    as I clicked it".
+
+    That is the first thing a non-technical owner does with a downloaded
+    program, and the README tells them to download it and run it. A usage
+    string aimed at people who already know the commands is no answer.
+    """
+    from .console import ascii_safe
+
+    while True:
+        print(ascii_safe(_MENU))
+        try:
+            choice = input("  choose: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return 0
+
+        if choice in ("q", "quit", "exit", ""):
+            return 0
+
+        try:
+            if choice == "1":
+                machine = input("\n  Describe the machine "
+                                '(e.g. "old Dell desktop, 16GB RAM"): ').strip()
+                return main(["estimate", machine]) if machine else 0
+            if choice == "2":
+                return main(["list"])
+            if choice == "3":
+                model = input('\n  Which machine? (e.g. "Dell XPS 15"): ').strip()
+                return main(["boot-guide", model])
+            if choice == "4":
+                print("\n  Writing an installer USB needs a Debian ISO and an "
+                      "elevated terminal.")
+                print("  Run:  sambuca-flasher write --iso <path-to.iso>")
+                print("  See:  https://github.com/laboratoiresonore/Sambuca")
+                return 0
+            if choice == "5":
+                print("\n  Writing a Raspberry Pi card needs an image and an "
+                      "elevated terminal.")
+                print("  Run:  sambuca-flasher write-pi --image <path-to.img.xz>")
+                return 0
+            if choice == "6":
+                return main(["derive-recovery-key"])
+        except (EOFError, KeyboardInterrupt):
+            return 0
+
+        print("\n  Sorry, I did not understand that.\n")

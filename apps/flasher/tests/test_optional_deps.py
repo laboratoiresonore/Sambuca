@@ -104,3 +104,43 @@ def test_bip39_commands_refuse_clearly(without_optional_deps, argv, capsys):
         "failure mode for a tool that generates recovery secrets"
     )
     assert "pip install" in message
+
+
+class TestDoubleClickLaunch:
+    """A double-clicked console app must not vanish.
+
+    REGRESSION. With no arguments argparse printed a usage line and exited 2.
+    Launched from a file manager the console window is created for the process
+    and destroyed the instant it exits, so the window appeared and disappeared
+    inside a frame — reported, fairly, as "it crashed as soon as I clicked it".
+
+    That is the first thing a non-technical owner does with a downloaded .exe,
+    and the README tells them to download it and run it.
+    """
+
+    def test_menu_exists_and_names_the_safe_option_first(self):
+        from sambuca_flasher import cli
+
+        assert hasattr(cli, "_interactive")
+        assert "double-clicking" in cli._MENU
+        # The reassurance a nervous first-time reader needs, before the
+        # options that touch a disk.
+        assert "touches a disk until it asks you first" in cli._MENU
+
+    def test_detection_helpers_are_importable_and_safe(self):
+        """They must never raise — they run before anything else."""
+        from sambuca_flasher.console import launched_by_double_click, pause_before_exit
+
+        assert isinstance(launched_by_double_click(), bool)
+        # A no-op when not double-clicked; must not block a test run.
+        pause_before_exit()
+
+    def test_explicit_argv_never_triggers_the_menu(self, capsys):
+        """Passing argv means a caller drove this deliberately."""
+        from sambuca_flasher import cli
+
+        try:
+            cli.main(["boot-guide", "--list-vendors"])
+        except SystemExit:
+            pass
+        assert "double-clicking" not in capsys.readouterr().out
