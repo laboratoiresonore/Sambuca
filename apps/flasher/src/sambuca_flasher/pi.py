@@ -395,8 +395,39 @@ log "memory:   $(awk '/MemTotal/ {{print $2}}' /proc/meminfo 2>/dev/null) kB"
 log "cpu:      $(nproc 2>/dev/null) cores"
 log "model:    $(tr -d '\\0' </proc/device-tree/model 2>/dev/null)"
 
+# ---- the name this machine answers to -----------------------------------
+# The LAN-only fallback rests entirely on <name>.local resolving, so this is
+# not cosmetic. Setting /etc/hostname alone is not enough:
+#
+#   * /etc/hosts must agree, or every single sudo call prints
+#     "unable to resolve host" — alarming on a machine somebody just built,
+#     and a real delay on each command.
+#   * avahi must be installed and running, or the .local name resolves for
+#     nobody, and the log promising it is simply wrong.
 if [ "$(hostname)" != "{hostname}" ]; then
+    old_name="$(hostname)"
     echo "{hostname}" >/etc/hostname 2>/dev/null && log "hostname set to {hostname}"
+
+    # Keep /etc/hosts in step. Rewrite the loopback entry rather than
+    # appending, so repeated boots cannot accumulate stale names.
+    if [ -f /etc/hosts ]; then
+        sed -i "s/127\\.0\\.1\\.1.*/127.0.1.1\\t{hostname}/" /etc/hosts 2>/dev/null
+        grep -q "127.0.1.1" /etc/hosts 2>/dev/null || \\
+            printf '127.0.1.1\\t%s\\n' "{hostname}" >>/etc/hosts 2>/dev/null
+        log "/etc/hosts updated (was $old_name)"
+    fi
+    hostnamectl set-hostname "{hostname}" >/dev/null 2>&1 || hostname "{hostname}" 2>/dev/null
+fi
+
+# mDNS, so the name works with no tailnet and no address to remember.
+if ! command -v avahi-daemon >/dev/null 2>&1; then
+    log "installing avahi so {hostname}.local resolves"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq avahi-daemon >/dev/null 2>&1 \\
+        || log "could not install avahi - the .local name will NOT work"
+fi
+if command -v avahi-daemon >/dev/null 2>&1; then
+    systemctl enable --now avahi-daemon >/dev/null 2>&1
+    systemctl restart avahi-daemon >/dev/null 2>&1
 fi
 {ssh}{authkey}{tailscale}{probe}
 # ---- disarm ---------------------------------------------------------------
@@ -412,7 +443,14 @@ fi
 # "reachable on the LAN" is a claim with nothing actionable behind it.
 lanip=$(hostname -I 2>/dev/null | tr ' ' '\\n' | grep -v '^$' | head -1)
 log "LAN address: ${{lanip:-unknown}}"
-log "LAN name: $(hostname).local"
+
+# Say what was CHECKED, not what was configured. A name written into a file is
+# not a name that resolves, and the fallback depends on this one.
+if systemctl is-active avahi-daemon >/dev/null 2>&1; then
+    log "LAN name: $(hostname).local  (mDNS running)"
+else
+    log "LAN name: NOT AVAILABLE - avahi is not running, use the address above"
+fi
 log ""
 log "To reach this machine:"
 log "  ssh $(ls /home 2>/dev/null | head -1)@${{lanip:-<address>}}"
