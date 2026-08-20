@@ -295,6 +295,13 @@ deviations from stock — each attributed to what makes it and when.
 
 ### What is actually installed, and what we changed
 
+> [!TIP]
+> **In plain English:** Sambuca does not write your file server, your photo app or
+> your password manager. It assembles software other people already built — all of
+> it free and open source — into one appliance that replaces the commercial,
+> non-private versions you are paying for now. This section lists every one of
+> those programs, and every change Sambuca makes to it before handing it to you.
+
 Transparency first. This appliance runs other people's software, and it does not
 run it stock. Below is everything it installs, and **every deviation from what
 you would get installing these yourself** — including who makes each change and
@@ -303,6 +310,12 @@ at which moment.
 Nothing here is hidden behind a "recommended settings" checkbox.
 
 ### The software
+
+> [!TIP]
+> **In plain English:** these are the actual programs that end up on your machine,
+> who wrote them, and what each one replaces. Everything here is free software —
+> you could install any of it yourself, for free, today. Sambuca's job is that you
+> do not have to.
 
 Every component is free software. Versions are the exact pins in
 [compose/.env.example](compose/.env.example).
@@ -344,6 +357,13 @@ what runs on your machine.
 
 ### Verification status — read this before trusting the table
 
+> [!TIP]
+> **In plain English:** how much we have actually checked, and how much we have
+> not. Short version: the software versions are real, current and scanned for
+> known security holes — and **nobody has yet installed the whole thing on a real
+> computer from start to finish.** We would rather tell you that than let you find
+> out.
+
 | Level | Status |
 |---|---|
 | Every reference resolves in its registry | ✅ verified 2026-08-20, digests in [docs/IMAGES.md](docs/IMAGES.md) |
@@ -358,6 +378,13 @@ first dishonest thing in it. The versions are pinned, resolvable, scanned and
 they render — that is a real bar, and it is not the same bar as *runs*.
 
 ### Every modification, and when it happens
+
+> [!TIP]
+> **In plain English:** every single change Sambuca makes to that software before
+> you get it, why, and at which moment — on your own computer while making the
+> USB stick, during installation, or on the machine's first start-up. Most changes
+> close a door that the software leaves open by default. Nothing here is hidden
+> behind a "recommended settings" checkbox.
 
 | # | Change | Made by | When |
 |---|---|---|---|
@@ -410,6 +437,12 @@ instead.
 
 ### Design commitments
 
+> [!TIP]
+> **In plain English:** the promises this project makes about how it behaves, and
+> what each one costs. Things like: it never sends anything anywhere, the printed
+> sheet is enough to get your files back, and when something breaks it says so
+> loudly instead of pretending it worked.
+
 These are the decisions the code is built around. Each one costs something.
 
 **Nothing phones home.** No analytics, no crash reporting, no license check. The
@@ -457,6 +490,11 @@ applies, validates, and rolls back on failure.
 <br>
 
 ### Repository layout
+
+> [!TIP]
+> **In plain English:** a map of the code, for people who want to read it before
+> running it. You do not need this to use Sambuca. It is here because "trust us"
+> is not a security model, and you should be able to check.
 
 ```
 sambuca/
@@ -546,6 +584,12 @@ sambuca/
 
 ### Status
 
+> [!TIP]
+> **In plain English:** what genuinely works, what is untested, and what is still
+> missing. The headline: everything is checked automatically on every change, and
+> **no one has yet done a real install on real hardware.** Treat this as an early
+> preview, not a finished product.
+
 Early, but not vapour. **CI is green** — shellcheck, the flasher suite on
 Linux/macOS/Windows across Python 3.11 and 3.13, Caddyfile validation, compose
 rendering for all 48 GPU-profile × bundle-subset combinations, and live registry
@@ -583,6 +627,12 @@ implemented. Reading is not verification.
 <br>
 
 ### 🧭 Where this is going — three development axes
+
+> [!TIP]
+> **In plain English:** what is being built next, and why. Three goals: make it
+> simple enough for someone who has never installed an operating system, make it
+> genuinely secure including when you lose your password, and never ship software
+> with sloppy defaults when a safer version exists.
 
 Everything after the first working appliance is organised along three axes. They
 are not phases to be completed in order; they are standing directions, and every
