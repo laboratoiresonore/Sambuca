@@ -151,6 +151,26 @@ def main(argv: list[str] | None = None) -> int:
     except DeviceError as exc:
         print(f"\nerror: {exc}", file=sys.stderr)
         return 1
+    except PermissionError as exc:
+        # A NOVICE MUST NEVER SEE A TRACEBACK. The frozen binary printed a raw
+        # Python stack for a plain permissions problem — eight lines of
+        # shutil.py internals that tell the reader nothing they can act on,
+        # ending in "Failed to execute script". Observed while provisioning a
+        # real card.
+        print(f"\nerror: permission denied: {exc.filename or exc}", file=sys.stderr)
+        print("       Writing to a device or its partitions needs "
+              "Administrator on Windows, or sudo elsewhere.", file=sys.stderr)
+        print("       Close any window showing the card, then re-run from an "
+              "elevated terminal.", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        # Everything else the filesystem or a device can throw. The message is
+        # the operating system's own, which is more useful than ours would be,
+        # but the traceback is not.
+        print(f"\nerror: {exc.strerror or exc}", file=sys.stderr)
+        if getattr(exc, "filename", None):
+            print(f"       while working on: {exc.filename}", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         print("\naborted — nothing was written.", file=sys.stderr)
         return 130
@@ -210,8 +230,19 @@ def _cmd_write(args) -> int:
     print("[2/6] building the provisioning payload")
     payload = build_provision_payload(config, keys)
 
-    repo_root = Path(__file__).resolve().parents[4]
-    preseed_template = repo_root / "engine" / "autoinstall" / "preseed.cfg"
+    # Same bundle-aware lookup as the Pi path. This used to walk up from
+    # __file__, which in a frozen one-file binary points inside a temporary
+    # extraction directory — so the shipped .exe could not find the preseed
+    # template and the primary command of the application failed. CI never
+    # caught it because the smoke tests only exercise --version, boot-guide,
+    # estimate and example-config, none of which touch the engine.
+    engine_root = _find_engine(None)
+    if engine_root is None:
+        raise DeviceError(
+            "could not find the sambuca engine. This build should carry it "
+            "bundled; from a source checkout, run from the repository."
+        )
+    preseed_template = engine_root / "autoinstall" / "preseed.cfg"
     if not preseed_template.is_file():
         raise DeviceError(f"preseed template not found at {preseed_template}")
     preseed = render_preseed(preseed_template, config, keys)
@@ -543,6 +574,33 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
+def _find_engine(explicit: Path | None) -> Path | None:
+    """Locate the engine directory, working BOTH from source and frozen.
+
+    A PyInstaller one-file binary unpacks itself into a temporary directory and
+    points __file__ inside it, so walking up from __file__ resolves to nonsense.
+    On the first run of an actual built .exe it produced
+    `C:\\Users\\...\\AppData\\engine`, and the app could not provision a card at
+    all — the source tree had been tested, the shipped artefact had not.
+
+    Someone who downloads a single .exe has no repository to walk up into, so
+    the engine is BUNDLED into the binary and found via sys._MEIPASS.
+
+    Order: what the operator asked for, then the bundle, then the repository.
+    """
+    if explicit:
+        return explicit if explicit.is_dir() else None
+
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled:
+        candidate = Path(bundled) / "engine"
+        if candidate.is_dir():
+            return candidate
+
+    candidate = Path(__file__).resolve().parents[4] / "engine"
+    return candidate if candidate.is_dir() else None
+
+
 def _stage_engine(engine_dir: Path, into: Path) -> int:
     """Copy the parts of the engine a Pi actually needs onto the card.
 
@@ -600,10 +658,11 @@ def _cmd_write_pi(args) -> int:
         print(f"       expands to {size / 1024**3:.2f} GiB")
 
     # --- engine ---
-    engine_dir = args.engine or (Path(__file__).resolve().parents[4] / "engine")
-    if not engine_dir.is_dir():
-        print(f"\nerror: engine not found at {engine_dir}", file=sys.stderr)
-        print("       pass --engine <path>", file=sys.stderr)
+    engine_dir = _find_engine(args.engine)
+    if engine_dir is None:
+        print("\nerror: could not find the sambuca engine.", file=sys.stderr)
+        print("       This build should carry it; pass --engine <path> to override.",
+              file=sys.stderr)
         return 1
 
     import tempfile
@@ -713,9 +772,11 @@ def _cmd_provision_pi(args) -> int:
     boot = Path(boot)
     print(f"  {boot}")
 
-    engine_dir = args.engine or (Path(__file__).resolve().parents[4] / "engine")
-    if not engine_dir.is_dir():
-        print(f"\nerror: engine not found at {engine_dir}", file=sys.stderr)
+    engine_dir = _find_engine(args.engine)
+    if engine_dir is None:
+        print("\nerror: could not find the sambuca engine.", file=sys.stderr)
+        print("       This build should carry it; pass --engine <path> to override.",
+              file=sys.stderr)
         return 1
 
     staging = Path(tempfile.mkdtemp(prefix="sambuca-pi-"))

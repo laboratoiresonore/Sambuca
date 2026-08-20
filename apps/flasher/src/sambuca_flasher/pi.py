@@ -273,9 +273,12 @@ def provision_boot_partition(
     # 1. the payload
     if payload_dir and payload_dir.is_dir():
         dest = boot / "sambuca"
-        if dest.exists():
-            shutil.rmtree(dest, ignore_errors=True)
-        shutil.copytree(payload_dir, dest)
+        # COPY OVER; do not delete and recreate. On Windows a directory removal
+        # can still be pending when the very next makedirs runs, and the result
+        # is ERROR_ACCESS_DENIED on a path that was fine a millisecond earlier —
+        # observed on this exact card, while elevated. dirs_exist_ok sidesteps
+        # the race entirely, and stale files are overwritten by name.
+        shutil.copytree(payload_dir, dest, dirs_exist_ok=True)
         n = sum(1 for _ in dest.rglob("*") if _.is_file())
         actions.append(f"copied payload -> {dest.name}/ ({n} files)")
 

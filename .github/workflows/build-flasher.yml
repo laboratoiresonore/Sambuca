@@ -66,11 +66,23 @@ jobs:
         # PyInstaller's import analysis cannot see it, and a binary that ships
         # without it fails at the exact moment it generates a seed phrase.
         run: |
+          # --add-data engine: THE BINARY MUST CARRY THE ENGINE.
+          # Both write paths located it by walking up from __file__, which in a
+          # one-file bundle points inside a temporary extraction directory. The
+          # shipped binary therefore could not find preseed.cfg or the tier
+          # profiles, so neither `write` nor `write-pi` worked at all — while
+          # every check below passed, because none of them touch the engine.
+          # PyInstaller wants os.pathsep between source and destination.
+          case "${{ runner.os }}" in
+            Windows) SEP=';' ;;
+            *)       SEP=':' ;;
+          esac
           pyinstaller \
             --onefile \
             --name sambuca-flasher \
             --collect-all mnemonic \
             --collect-all reportlab \
+            --add-data "$PWD/engine${SEP}engine" \
             --console \
             apps/flasher/entrypoint.py
 
@@ -86,7 +98,17 @@ jobs:
           "$BIN" estimate "Raspberry Pi 5 16GB" | grep -q "Tier"
           "$BIN" estimate "RTX 4090" | grep -q "Tier           : 1"
           "$BIN" example-config | grep -q '"hostname"'
-          echo "the frozen binary works"
+
+          # THE CHECK THAT WAS MISSING, and the reason a broken binary shipped.
+          # Everything above passes on a binary that cannot flash anything,
+          # because none of it touches the engine. This asserts the bundle
+          # actually carries it — the difference between a program that starts
+          # and a program that does its job.
+          "$BIN" write-pi --image apps/flasher/tests/fixtures/not-an-iso.img --dry-run 2>&1 \
+            | tee /tmp/enginecheck.txt | grep -q "staged .* engine file" \
+            || { echo "FAIL: the binary cannot find its bundled engine"; cat /tmp/enginecheck.txt; exit 1; }
+
+          echo "the frozen binary works, engine included"
 
       - uses: actions/upload-artifact@v4
         with:
