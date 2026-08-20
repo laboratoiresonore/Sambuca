@@ -1,0 +1,95 @@
+# sambuca :: compose/ai.yml — the local inference plane
+#
+# Ollama is the engine; Odysseus is the interface. Ollama is NOT on the `edge`
+# network: an unauthenticated model server that anything on the LAN can reach is
+# a remote code-execution surface dressed up as a convenience.
+#
+# Every resource number in this file comes from /etc/sambuca/profile.env, which
+# hardware-detect.sh derived from the actual machine. Nothing here is guessed.
+
+services:
+
+  ollama:
+    restart: unless-stopped
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.5.7}
+    container_name: sambuca-ollama
+    networks: [ai]
+    volumes:
+      - ${SAMBUCA_APPDATA}/ollama:/root/.ollama
+    environment:
+      TZ: ${TZ:-UTC}
+      OLLAMA_HOST: 0.0.0.0:11434
+      # ── VRAM/RAM arbitration, set by hardware-detect.sh ──
+      # How many models may be resident at once. Above 1, a second model can
+      # evict the first mid-generation on a card that cannot hold both.
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      # Concurrent requests per model. Each one costs a full KV cache.
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      # How long an idle model camps on VRAM before releasing it. Short values
+      # are what let Immich's indexer get the card back on mid-tier hardware.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+      OLLAMA_FLASH_ATTENTION: ${OLLAMA_FLASH_ATTENTION:-0}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-4096}
+      OLLAMA_NOHISTORY: "true"
+    deploy:
+      resources:
+        limits:
+          # A hard cgroup ceiling. When CPU inference over-allocates it is this
+          # limit that stops it, not the kernel OOM killer taking Postgres down
+          # with it because that happened to be the largest RSS on the box.
+          memory: ${OLLAMA_MEM_LIMIT:-4g}
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt:
+      - no-new-privileges:true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Odysseus — the chat and agent frontend. The primary human surface of the
+  # appliance, and the only service that talks to Ollama directly.
+  # ─────────────────────────────────────────────────────────────────────────
+  odysseus:
+    restart: unless-stopped
+    image: ${ODYSSEUS_IMAGE:-ghcr.io/laboratoiresonore/odysseus:latest}
+    container_name: sambuca-odysseus
+    networks: [edge, ai, data]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ${SAMBUCA_APPDATA}/odysseus:/app/data
+      - ${SAMBUCA_FILES}:/workspace:ro
+    environment:
+      TZ: ${TZ:-UTC}
+      ODYSSEUS_BASE_URL: https://chat.${SAMBUCA_DOMAIN:-sambuca.local}
+      # Points at the container, on the internal AI network only.
+      OLLAMA_BASE_URL: http://ollama:11434
+      ODYSSEUS_DEFAULT_MODEL: ${SAMBUCA_MODEL_CHAT:-llama3.2:3b-instruct-q4_K_M}
+      ODYSSEUS_CODE_MODEL: ${SAMBUCA_MODEL_CODE:-}
+      ODYSSEUS_VISION_MODEL: ${SAMBUCA_MODEL_VISION:-}
+      ODYSSEUS_EMBED_MODEL: ${SAMBUCA_MODEL_EMBED:-nomic-embed-text}
+      # Identity is delegated to Pocket ID via the Caddy forward-auth header.
+      ODYSSEUS_AUTH_MODE: ${ODYSSEUS_AUTH_MODE:-forward-header}
+      ODYSSEUS_AUTH_HEADER: X-Auth-Request-Email
+      # Sovereignty switch: refuse to call anything off this machine.
+      ODYSSEUS_ALLOW_REMOTE_PROVIDERS: "false"
+      ODYSSEUS_TELEMETRY: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"

@@ -1,0 +1,93 @@
+# sambuca :: compose/comms.yml — encrypted communications
+#
+# Ergo (IRC, self-contained) · Matrix Synapse (federated, E2EE)
+#
+# These are the only services besides Caddy that bind host ports, because IRC
+# clients and Matrix federation speak their own protocols and cannot be proxied
+# through an HTTP reverse proxy.
+#
+# FEDERATION IS OFF BY DEFAULT. Turning it on makes this machine reachable from
+# the public Matrix network — a deliberate decision with real exposure, not a
+# default someone should discover after the fact.
+
+services:
+
+  ergo:
+    restart: unless-stopped
+    image: ${ERGO_IMAGE:-ghcr.io/ergochat/ergo:v2.13.1}
+    container_name: sambuca-ergo
+    networks: [edge]
+    ports:
+      - "6667:6667"     # plaintext, LAN only — the firewall does not open this
+      - "6697:6697"     # TLS
+    volumes:
+      - ./config/ergo/ircd.yaml:/ircd/ircd.yaml:ro
+      - ${SAMBUCA_APPDATA}/ergo:/ircd/data
+      - ${SAMBUCA_APPDATA}/caddy/data/caddy/pki/authorities/local:/ircd/tls:ro
+    environment:
+      TZ: ${TZ:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6667 || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  synapse:
+    restart: unless-stopped
+    image: ${SYNAPSE_IMAGE:-ghcr.io/element-hq/synapse:v1.119.0}
+    container_name: sambuca-synapse
+    networks: [edge, data]
+    depends_on:
+      synapse-postgres:
+        condition: service_healthy
+    volumes:
+      - ${SAMBUCA_APPDATA}/synapse:/data
+    environment:
+      TZ: ${TZ:-UTC}
+      SYNAPSE_SERVER_NAME: ${SAMBUCA_TS_DNSNAME:-${SAMBUCA_DOMAIN:-sambuca.local}}
+      SYNAPSE_REPORT_STATS: "no"
+      SYNAPSE_CONFIG_DIR: /data
+      SYNAPSE_REGISTRATION_SHARED_SECRET: ${SYNAPSE_REGISTRATION_SECRET:?SYNAPSE_REGISTRATION_SECRET is required}
+      UID: ${PUID:-1000}
+      GID: ${PGID:-1000}
+    # Federation port 8448 is intentionally NOT published. To federate, publish
+    # it here, open it in /etc/nftables.conf, and understand that this box then
+    # accepts connections from the public internet.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8008/health || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  synapse-postgres:
+    restart: unless-stopped
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: sambuca-synapse-db
+    networks: [data]
+    volumes:
+      - ${SAMBUCA_APPDATA}/synapse/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: synapse
+      # Synapse REQUIRES C collation. Without these two arguments the schema
+      # creates successfully and then corrupts state-group ordering later.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C --data-checksums"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapse"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

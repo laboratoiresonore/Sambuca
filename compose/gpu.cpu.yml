@@ -1,0 +1,28 @@
+# sambuca :: compose/gpu.cpu.yml — no-accelerator overlay
+#
+# Selected when there is no usable GPU, when the driver has not loaded yet, or
+# when the card is an Intel iGPU that Ollama has no supported backend for.
+#
+# This file EXISTS so the COMPOSE_FILE chain is uniform across every machine.
+# A missing overlay would make phase 60 branch, and a branch in the rendering
+# path is how "works on the test box, fails on the reclaimed laptop" happens.
+
+services:
+
+  ollama:
+    environment:
+      # llama.cpp defaults to all cores, which on a 4-core box leaves nothing
+      # for the reverse proxy and the box appears to hang during generation.
+      OLLAMA_NUM_THREADS: ${OLLAMA_NUM_THREADS:-0}   # 0 = library default
+      OLLAMA_LLM_LIBRARY: ${OLLAMA_LLM_LIBRARY:-}    # e.g. cpu_avx2 to force a build
+    deploy:
+      resources:
+        limits:
+          memory: ${OLLAMA_MEM_LIMIT:-4g}
+
+  immich-machine-learning:
+    # No device reservation, and the image suffix is empty, so the CPU variant
+    # of the ML image is pulled. On tier 3/4 hardware the owner should also cap
+    # concurrency in Immich itself: Administration -> Jobs.
+    environment:
+      MACHINE_LEARNING_WORKERS: ${MACHINE_LEARNING_WORKERS:-1}

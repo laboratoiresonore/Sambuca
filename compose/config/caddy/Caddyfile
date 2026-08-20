@@ -1,0 +1,210 @@
+# sambuca :: Caddyfile — the single ingress
+#
+# ══════════════════════════════════════════════════════════════════════════
+# TWO FRONT DOORS, and why
+#
+#   LAN  →  subdomains of {$SAMBUCA_DOMAIN}, TLS from Caddy's INTERNAL CA.
+#           chat.sambuca.local, photos.sambuca.local, …
+#           Install /var/lib/sambuca/sambuca-local-ca.crt once per device.
+#
+#   TAILNET → ports on the single MagicDNS name, TLS from Let's Encrypt via
+#           `tailscale serve`.  https://<host>.<tailnet>.ts.net:8443
+#
+# The port map exists because a tailnet node has exactly ONE DNS name. There is
+# no wildcard, so subdomain routing is structurally unavailable over Tailscale.
+# Path-prefix routing was the alternative and was rejected: Nextcloud and Immich
+# both break under a prefix in ways that surface much later as broken uploads.
+#
+# The port listeners bind to 127.0.0.1 on the host, so only tailscaled can
+# reach them — they are not a second LAN surface.
+# ══════════════════════════════════════════════════════════════════════════
+
+{
+	admin off
+	email {$SAMBUCA_ACME_EMAIL}
+	servers {
+		trusted_proxies static 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
+	}
+}
+
+# ─────────────────────────────────────────────────────────────────────────
+# Reusable snippets
+# ─────────────────────────────────────────────────────────────────────────
+
+(hardening) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+}
+
+# The zero-trust gate. Applied ONLY to services with no authentication of
+# their own.
+#
+# FAIL-CLOSED BY CONSTRUCTION: forward_auth forwards whatever oauth2-proxy
+# answers. If identity is not yet bootstrapped, oauth2-proxy is unhealthy and
+# Caddy cannot dial it — the client gets 502 and the service stays sealed.
+# There is no "allow on auth backend failure" path anywhere in this file.
+(gate) {
+	forward_auth oauth2-proxy:4180 {
+		uri /oauth2/auth
+		copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Preferred-Username
+
+		@needs-login status 401
+		handle_response @needs-login {
+			redir * https://auth.{$SAMBUCA_DOMAIN}/oauth2/start?rd={scheme}://{host}{uri}
+		}
+	}
+}
+
+(local_tls) {
+	tls internal
+}
+
+# ═════════════════════════════════════════════════════════════════════════
+# LAN front door — subdomain routing
+# ═════════════════════════════════════════════════════════════════════════
+
+# Dashboard (CasaOS runs on the HOST, not in the mesh).
+{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+
+	# The local CA, served unauthenticated and deliberately so: a device that
+	# does not yet trust the CA cannot complete a TLS handshake to download it
+	# from behind the gate. Public certificate material is not a secret.
+	handle /ca.crt {
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=sambuca-local-ca.crt"
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		file_server
+	}
+
+	handle {
+		import gate
+		reverse_proxy host.docker.internal:{$CASAOS_PORT} {
+			header_up Host {upstream_hostport}
+		}
+	}
+}
+
+auth.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	# NOT gated — this IS the gate. Gating it would be a redirect loop.
+	reverse_proxy oauth2-proxy:4180
+}
+
+id.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	# NOT gated — the identity provider cannot depend on itself.
+	reverse_proxy pocket-id:1411
+}
+
+chat.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	import gate
+	reverse_proxy odysseus:3000
+}
+
+cloud.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	# Nextcloud owns its own sessions, WebDAV clients and mobile apps. Putting
+	# a browser-cookie gate in front of it breaks every non-browser client.
+	reverse_proxy nextcloud-aio:11000
+
+	# Required by Nextcloud's own setup checks.
+	redir /.well-known/carddav /remote.php/dav 301
+	redir /.well-known/caldav /remote.php/dav 301
+
+	request_body {
+		max_size 16GB
+	}
+}
+
+photos.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	# Immich has its own auth and its mobile app uses bearer tokens.
+	reverse_proxy immich-server:2283
+	request_body {
+		max_size 50GB
+	}
+}
+
+vault.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	# Vaultwarden authenticates itself. See cloud.yml for why it is not gated.
+	reverse_proxy vaultwarden:80
+}
+
+notes.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	import gate
+	reverse_proxy blinko:1111
+}
+
+pdf.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	import gate
+	reverse_proxy bentopdf:8080
+}
+
+status.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	import gate
+	reverse_proxy uptime-kuma:3001
+}
+
+matrix.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	reverse_proxy synapse:8008
+
+	# Client autodiscovery. Federation is a separate listener and is off.
+	handle /.well-known/matrix/client {
+		header Content-Type application/json
+		header Access-Control-Allow-Origin *
+		respond `{"m.homeserver":{"base_url":"https://matrix.{$SAMBUCA_DOMAIN}"}}` 200
+	}
+}
+
+# ═════════════════════════════════════════════════════════════════════════
+# TAILNET front door — port routing on the single MagicDNS name.
+#
+# Plain HTTP: tailscaled terminates TLS in front of these and forwards over
+# loopback. Adding `tls internal` here would double-encrypt to no benefit and
+# break the serve mapping.
+# ═════════════════════════════════════════════════════════════════════════
+
+:8443 { import hardening
+        reverse_proxy odysseus:3000 }
+:8444 { import hardening
+        reverse_proxy nextcloud-aio:11000 }
+:8445 { import hardening
+        reverse_proxy immich-server:2283 }
+:8446 { import hardening
+        reverse_proxy vaultwarden:80 }
+:8447 { import hardening
+        reverse_proxy blinko:1111 }
+:8449 { import hardening
+        reverse_proxy bentopdf:8080 }
+:8450 { import hardening
+        reverse_proxy uptime-kuma:3001 }
+:8451 { import hardening
+        reverse_proxy pocket-id:1411 }
+:8452 { import hardening
+        reverse_proxy host.docker.internal:{$CASAOS_PORT} }

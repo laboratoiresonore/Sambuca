@@ -1,0 +1,100 @@
+# sambuca :: compose/office.yml — documents and notes
+#
+# Blinko (AI notes, backed by the local Ollama) · BentoPDF (in-browser PDF tools)
+#
+# Both sit behind the forward-auth gate: neither ships an account system worth
+# exposing, and BentoPDF in particular is used for sensitive client documents.
+
+services:
+
+  blinko:
+    restart: unless-stopped
+    image: ${BLINKO_IMAGE:-blinkospace/blinko:1.4.2}
+    container_name: sambuca-blinko
+    networks: [edge, ai, data]
+    depends_on:
+      blinko-postgres:
+        condition: service_healthy
+    volumes:
+      - ${SAMBUCA_APPDATA}/blinko:/app/.blinko
+    environment:
+      TZ: ${TZ:-UTC}
+      NODE_ENV: production
+      NEXTAUTH_URL: https://notes.${SAMBUCA_DOMAIN:-sambuca.local}
+      NEXT_PUBLIC_BASE_URL: https://notes.${SAMBUCA_DOMAIN:-sambuca.local}
+      NEXTAUTH_SECRET: ${BLINKO_JWT_SECRET:?BLINKO_JWT_SECRET is required}
+      DATABASE_URL: postgresql://blinko:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@blinko-postgres:5432/blinko
+      # Blinko's AI features point at the local engine. There is no cloud
+      # fallback configured and no API key on this machine to enable one.
+      AI_PROVIDER: ollama
+      OPENAI_API_ENDPOINT: http://ollama:11434/v1
+      OPENAI_API_KEY: sk-local-no-remote-provider
+      AI_MODEL: ${SAMBUCA_MODEL_CHAT:-llama3.2:3b-instruct-q4_K_M}
+      AI_EMBEDDING_MODEL: ${SAMBUCA_MODEL_EMBED:-nomic-embed-text}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:1111/ >/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  blinko-postgres:
+    restart: unless-stopped
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: sambuca-blinko-db
+    networks: [data]
+    volumes:
+      - ${SAMBUCA_APPDATA}/blinko/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: blinko
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: blinko
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blinko -d blinko"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BentoPDF — merge/split/sign/redact, entirely in the browser.
+  #
+  # The processing happens client-side in WebAssembly: the document never leaves
+  # the browser tab, so a privileged client file is not uploaded anywhere, not
+  # even to this appliance. `read_only: true` because it serves static assets and
+  # has no legitimate reason to write to its own filesystem.
+  # ─────────────────────────────────────────────────────────────────────────
+  bentopdf:
+    restart: unless-stopped
+    # The `-simple` self-hosted build, not the commercial one — see .env.example.
+    image: ${BENTOPDF_IMAGE:-ghcr.io/alam00000/bentopdf-simple:v2.8.7}
+    container_name: sambuca-bentopdf
+    networks: [edge]
+    environment:
+      TZ: ${TZ:-UTC}
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+      - /var/cache/nginx:size=16m
+      - /var/run:size=8m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 120s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"

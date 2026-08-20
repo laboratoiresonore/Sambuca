@@ -1,0 +1,16 @@
+[Unit]
+Description=sambuca encrypted backup
+Documentation=https://github.com/laboratoiresonore/Sambuca
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sambuca/engine/maintenance/backup.sh
+# restic exit 3 = PARTIAL backup. It is surfaced as a unit failure so that
+# `systemctl is-failed` and Uptime Kuma both see it. A partial backup that
+# reports success is the failure this whole design exists to prevent.
+SuccessExitStatus=0
+TimeoutStartSec=21600
+Nice=15
+IOSchedulingClass=idle

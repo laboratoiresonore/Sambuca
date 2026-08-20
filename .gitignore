@@ -1,0 +1,32 @@
+# Secrets and rendered environments — NEVER committed.
+compose/.env
+compose/.env.example.bak
+compose/local.yml
+*.pem
+*.key
+secrets/
+liberator-recovery*.pdf
+sambuca-payload-*/
+
+# Build artefacts
+build/
+dist/
+*.iso
+*.iso.sha256
+*.bundle
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

@@ -1,0 +1,12 @@
+[Unit]
+Description=sambuca configuration sync
+Documentation=https://github.com/laboratoiresonore/Sambuca
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sambuca/engine/maintenance/gitops-sync.sh
+TimeoutStartSec=1800
+Nice=10
+IOSchedulingClass=idle

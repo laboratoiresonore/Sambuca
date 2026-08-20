@@ -1,0 +1,37 @@
+# sambuca :: compose/gpu.amd.yml — ROCm overlay
+#
+# AMD compute reaches containers through device nodes and group membership,
+# not through a custom container runtime. /dev/kfd is the compute node and
+# /dev/dri holds the render nodes; both are required.
+#
+# group_add uses the numeric GIDs recorded by phase 30 in /etc/sambuca/gpu-amd.env
+# because the render group's GID differs across distributions and a hardcoded
+# 44/109 silently produces a permission error that looks like "no GPU found".
+
+services:
+
+  ollama:
+    image: ${OLLAMA_ROCM_IMAGE:-ollama/ollama:0.5.7-rocm}
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - ${AMD_VIDEO_GID:-44}
+      - ${AMD_RENDER_GID:-105}
+    environment:
+      # Consumer RDNA cards are not on AMD's official support list; this makes
+      # ROCm treat them as the nearest supported gfx target. Wrong values here
+      # cause an immediate segfault rather than a graceful fallback, so it is
+      # exposed as an override rather than guessed.
+      HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:-}
+      ROCR_VISIBLE_DEVICES: ${ROCR_VISIBLE_DEVICES:-0}
+
+  immich-machine-learning:
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - ${AMD_VIDEO_GID:-44}
+      - ${AMD_RENDER_GID:-105}
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:-}

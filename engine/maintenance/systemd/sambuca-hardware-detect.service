@@ -1,0 +1,16 @@
+[Unit]
+Description=sambuca hardware profiler
+Documentation=https://github.com/laboratoiresonore/Sambuca
+After=local-fs.target
+# Runs BEFORE the stack so compose reads a profile matching the hardware that
+# is actually present this boot — cards get added, removed and fail.
+Before=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/opt/sambuca/engine/hardware-detect.sh --quiet
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

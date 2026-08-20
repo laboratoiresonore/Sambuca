@@ -1,0 +1,12 @@
+[Unit]
+Description=sambuca parity sync and scrub
+Documentation=https://github.com/laboratoiresonore/Sambuca
+After=local-fs.target
+ConditionPathExists=/etc/snapraid.conf
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sambuca/engine/maintenance/snapraid-sync.sh
+TimeoutStartSec=43200
+Nice=19
+IOSchedulingClass=idle

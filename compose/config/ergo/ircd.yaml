@@ -1,0 +1,87 @@
+# sambuca :: Ergo IRC configuration
+#
+# Ergo is a single-binary IRCv3 server with built-in account registration,
+# history and TLS — no services package, no external database. That is why it is
+# here rather than a classic ircd: one container, no moving parts.
+#
+# Registration is INVITE-ONLY. An IRC server that accepts open registration on a
+# machine reachable from a tailnet becomes someone else's chat host.
+
+network:
+  name: sambuca
+
+server:
+  name: irc.sambuca.local
+  listeners:
+    # Plaintext, LAN only. /etc/nftables.conf does not open 6667 externally.
+    ":6667": {}
+    ":6697":
+      tls:
+        cert: /ircd/tls/root.crt
+        key: /ircd/tls/root.key
+
+  casemapping: precis
+  enforce-utf8: true
+
+  max-sendq: 96k
+  ip-limits:
+    count: true
+    max-concurrent-connections: 32
+    max-connections-per-window: 64
+    throttle-duration: 10m
+
+accounts:
+  registration:
+    enabled: true
+    # Invite-only: an operator issues the invite, nobody self-registers.
+    allow-before-connect: false
+    email-verification:
+      enabled: false
+    throttling:
+      enabled: true
+      duration: 10m
+      max-attempts: 3
+  authentication-enabled: true
+  require-sasl:
+    enabled: true
+    exempted:
+      - "localhost"
+  multiclient:
+    enabled: true
+    allowed-by-default: true
+    always-on: opt-in
+
+channels:
+  registration:
+    enabled: true
+    operator-only: false
+    max-channels-per-account: 30
+
+history:
+  enabled: true
+  channel-length: 2048
+  client-length: 256
+  autoresize-window: 3d
+  # Persistent history keeps conversations across restarts, on this machine
+  # only. Nothing is sent anywhere else, ever.
+  persistent:
+    enabled: true
+    unregistered-channels: false
+    registered-channels: opt-out
+    direct-messages: opt-out
+
+datastore:
+  path: /ircd/data/ircd.db
+  autoupgrade: true
+
+limits:
+  nicklen: 32
+  channellen: 64
+  awaylen: 390
+  kicklen: 390
+  topiclen: 390
+
+logging:
+  - method: stderr
+    type: "* -userinput -useroutput"
+    level: warn

@@ -1,0 +1,210 @@
+# sambuca :: compose/docker-compose.yml — the core mesh
+#
+# This file is ALWAYS in the COMPOSE_FILE chain. Bundles (ai / cloud / office /
+# comms) and exactly one GPU overlay are appended to it by phase 60-stack.
+#
+# NETWORK MODEL — three segments, and every service joins the minimum it needs:
+#
+#   edge   only Caddy is exposed to the host here. A service on `edge` is
+#          reachable through the reverse proxy and nowhere else.
+#   ai     the inference plane. Ollama has NO edge membership: nothing reaches
+#          the model server except services that are supposed to.
+#   data   databases and caches. `internal: true` — no route off the host at
+#          all, so a compromised web service cannot exfiltrate from Postgres.
+#
+# PORT MODEL — the only host ports bound anywhere in this project are Caddy's
+# 80/443 and the IRC/Matrix federation ports. Everything else is proxied.
+
+networks:
+  edge:
+    name: sambuca-edge
+    driver: bridge
+  ai:
+    name: sambuca-ai
+    driver: bridge
+  data:
+    name: sambuca-data
+    driver: bridge
+    internal: true
+
+x-common: &common
+  restart: unless-stopped
+  environment:
+    TZ: ${TZ:-UTC}
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  security_opt:
+    - no-new-privileges:true
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Caddy — the single ingress. Terminates LAN TLS with an internal CA and
+  # receives tailnet traffic from `tailscale serve` on 127.0.0.1:80.
+  # ─────────────────────────────────────────────────────────────────────────
+  caddy:
+    <<: *common
+    image: ${CADDY_IMAGE:-caddy:2.8-alpine}
+    container_name: sambuca-caddy
+    networks: [edge]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"          # HTTP/3
+      # Tailnet front door. Bound to loopback ONLY: a tailnet node has one DNS
+      # name, so remote routing is by port, and `tailscale serve` is the only
+      # thing that reaches these. They are not a second LAN surface.
+      - "127.0.0.1:8443-8452:8443-8452"
+    volumes:
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${SAMBUCA_APPDATA}/caddy/data:/data
+      - ${SAMBUCA_APPDATA}/caddy/config:/config
+    environment:
+      TZ: ${TZ:-UTC}
+      SAMBUCA_DOMAIN: ${SAMBUCA_DOMAIN:-sambuca.local}
+      SAMBUCA_TS_DNSNAME: ${SAMBUCA_TS_DNSNAME:-}
+      CASAOS_PORT: ${CASAOS_PORT:-8095}
+    extra_hosts:
+      # CasaOS runs on the HOST, not in this mesh — it manages Docker itself.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Pocket ID — passkey/WebAuthn identity provider. The only account system
+  # the appliance itself owns.
+  # ─────────────────────────────────────────────────────────────────────────
+  pocket-id:
+    <<: *common
+    image: ${POCKET_ID_IMAGE:-ghcr.io/pocket-id/pocket-id:v0.53}
+    container_name: sambuca-pocket-id
+    networks: [edge]
+    volumes:
+      - ${SAMBUCA_APPDATA}/pocket-id:/app/data
+    environment:
+      TZ: ${TZ:-UTC}
+      APP_URL: https://id.${SAMBUCA_DOMAIN:-sambuca.local}
+      TRUST_PROXY: "true"
+      ENCRYPTION_KEY: ${POCKET_ID_ENCRYPTION_KEY:?POCKET_ID_ENCRYPTION_KEY is required}
+      # WebAuthn binds credentials to an origin. Changing the domain later
+      # invalidates every enrolled passkey — this is a WebAuthn property, not a
+      # sambuca limitation. Decide the domain before you enrol.
+      PUBLIC_APP_URL: https://id.${SAMBUCA_DOMAIN:-sambuca.local}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:1411/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # oauth2-proxy — the forward-auth gate Caddy delegates to for services that
+  # have no authentication of their own.
+  #
+  # FAILS CLOSED: with no client ID (identity not yet bootstrapped) this
+  # container stays unhealthy and Caddy's forward_auth returns 503 on gated
+  # routes. That is the intended behaviour. An auth gate that lets traffic
+  # through when its backend is down is not a gate.
+  # ─────────────────────────────────────────────────────────────────────────
+  oauth2-proxy:
+    <<: *common
+    image: ${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.6.0}
+    container_name: sambuca-oauth2-proxy
+    networks: [edge]
+    depends_on:
+      pocket-id:
+        condition: service_healthy
+    command:
+      - --provider=oidc
+      - --provider-display-name=sambuca
+      - --oidc-issuer-url=https://id.${SAMBUCA_DOMAIN:-sambuca.local}
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --email-domain=*
+      - --cookie-domain=.${SAMBUCA_DOMAIN:-sambuca.local}
+      - --whitelist-domain=.${SAMBUCA_DOMAIN:-sambuca.local}
+      - --cookie-secure=true
+      - --cookie-samesite=lax
+      - --set-xauthrequest=true
+      - --skip-provider-button=true
+      - --redirect-url=https://auth.${SAMBUCA_DOMAIN:-sambuca.local}/oauth2/callback
+    environment:
+      TZ: ${TZ:-UTC}
+      OAUTH2_PROXY_CLIENT_ID_FILE: /run/secrets/client_id
+      OAUTH2_PROXY_CLIENT_SECRET_FILE: /run/secrets/client_secret
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?OAUTH2_PROXY_COOKIE_SECRET is required}
+    volumes:
+      - /etc/sambuca/secrets/oauth2_client_id:/run/secrets/client_id:ro
+      - /etc/sambuca/secrets/oauth2_client_secret:/run/secrets/client_secret:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4180/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Uptime Kuma — health monitoring, including of the things that would
+  # otherwise fail silently (backup timer, snapraid sync, model endpoint).
+  # ─────────────────────────────────────────────────────────────────────────
+  uptime-kuma:
+    <<: *common
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:1.23.16}
+    container_name: sambuca-uptime-kuma
+    networks: [edge]
+    volumes:
+      - ${SAMBUCA_APPDATA}/uptime-kuma:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "node extra/healthcheck.js || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Watchtower — HARDENED, and deliberately not what most guides ship.
+  #
+  #   * label-enable: a container is updated ONLY if it opts in. Nothing with a
+  #     database schema opts in, because an unattended major-version bump is how
+  #     self-hosted setups lose data at 04:00 with nobody watching.
+  #   * monitor-only for the rest: it reports that an update exists and lets
+  #     the GitOps sync (which pins versions) decide.
+  #   * no --cleanup of volumes, ever.
+  # ─────────────────────────────────────────────────────────────────────────
+  watchtower:
+    <<: *common
+    image: ${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}
+    container_name: sambuca-watchtower
+    networks: [edge]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: ${TZ:-UTC}
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_REMOVE_VOLUMES: "false"
+      WATCHTOWER_INCLUDE_RESTARTING: "false"
+      WATCHTOWER_ROLLING_RESTART: "true"
+      WATCHTOWER_SCHEDULE: ${WATCHTOWER_SCHEDULE:-0 0 5 * * *}
+      WATCHTOWER_NOTIFICATION_REPORT: "true"
+      WATCHTOWER_TIMEOUT: 60s
+    healthcheck:
+      test: ["CMD", "/watchtower", "--health-check"]
+      interval: 120s
+      timeout: 10s
+      retries: 3

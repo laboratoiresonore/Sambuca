@@ -1,0 +1,21 @@
+[Unit]
+Description=sambuca first-boot provisioning
+Documentation=https://github.com/laboratoiresonore/Sambuca
+After=network-online.target
+Wants=network-online.target
+# Provisioning installs Docker; it must not race the daemon it installs.
+Before=docker.service
+ConditionPathExists=!/var/lib/sambuca/state/90-report.done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/sambuca/engine/first-boot.sh
+# Model pulls on a slow connection legitimately take hours. A timeout here
+# would leave a half-provisioned appliance and no way to tell why.
+TimeoutStartSec=infinity
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,199 @@
+# sambuca :: compose/cloud.yml — the SaaS replacements that hold real data
+#
+# Vaultwarden (passwords) · Nextcloud AIO (files/docs/calendar) · Immich (photos)
+#
+# These three carry irreplaceable user data, so they follow stricter rules than
+# the rest of the mesh:
+#   - never auto-updated (no watchtower label) — schema migrations are a decision
+#   - databases live on the `data` network, which has no route off the host
+#   - every one of them is in the nightly restic set
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Vaultwarden — passwords and secrets.
+  # ─────────────────────────────────────────────────────────────────────────
+  vaultwarden:
+    restart: unless-stopped
+    image: ${VAULTWARDEN_IMAGE:-vaultwarden/server:1.32.7-alpine}
+    container_name: sambuca-vaultwarden
+    networks: [edge]
+    volumes:
+      - ${SAMBUCA_APPDATA}/vaultwarden:/data
+    environment:
+      TZ: ${TZ:-UTC}
+      DOMAIN: https://vault.${SAMBUCA_DOMAIN:-sambuca.local}
+      # Open registration on an appliance that may be reachable from a tailnet
+      # of shared devices is not a default worth having.
+      SIGNUPS_ALLOWED: "false"
+      INVITATIONS_ALLOWED: "true"
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN:?VAULTWARDEN_ADMIN_TOKEN is required}
+      WEBSOCKET_ENABLED: "true"
+      ROCKET_PORT: 80
+      LOG_LEVEL: warn
+      # Vaultwarden holds the keys to everything else. It authenticates its own
+      # users and is NOT placed behind the forward-auth gate: chaining an
+      # appliance-local IdP in front of the password manager that stores the
+      # recovery credentials for that IdP is a circular dependency.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/alive >/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt:
+      - no-new-privileges:true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Nextcloud All-in-One.
+  #
+  # AIO is a MASTER CONTAINER: it orchestrates its own children through the
+  # Docker socket rather than being a normal compose service. That is why it
+  # gets a socket mount and a fixed volume name — both are AIO requirements, not
+  # sambuca choices. Its children are not visible in this file.
+  # ─────────────────────────────────────────────────────────────────────────
+  nextcloud-aio:
+    restart: unless-stopped
+    image: ${NEXTCLOUD_AIO_IMAGE:-nextcloud/all-in-one:latest}
+    container_name: nextcloud-aio-mastercontainer   # fixed name: AIO requires it
+    networks: [edge]
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config   # fixed: AIO requires it
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      TZ: ${TZ:-UTC}
+      # Caddy terminates TLS, so AIO serves plain HTTP behind it.
+      APACHE_PORT: 11000
+      APACHE_IP_BINDING: 0.0.0.0
+      NEXTCLOUD_DATADIR: ${SAMBUCA_FILES}
+      NEXTCLOUD_MOUNT: ${SAMBUCA_DATA}
+      # We are behind a reverse proxy on a private network; AIO's public DNS
+      # round-trip check cannot succeed and would block setup forever.
+      SKIP_DOMAIN_VALIDATION: "true"
+      NEXTCLOUD_UPLOAD_LIMIT: 16G
+      NEXTCLOUD_MAX_TIME: 3600
+      NEXTCLOUD_MEMORY_LIMIT: 1024M
+      # AIO ships its own borg-based backup. Ours is restic, driven by
+      # engine/maintenance/backup.sh, so AIO's is left off to avoid two
+      # uncoordinated backup systems racing on the same data directory.
+      AIO_DISABLE_BACKUP_SECTION: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1:8080 >/dev/null || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Immich — photos, with local face recognition and CLIP search.
+  #
+  # The machine-learning worker is the appliance's other big VRAM consumer.
+  # Its device, image variant and memory ceiling all come from the arbitration
+  # block in hardware-detect.sh. See that file for why inference wins ties.
+  # ─────────────────────────────────────────────────────────────────────────
+  immich-server:
+    restart: unless-stopped
+    image: ${IMMICH_SERVER_IMAGE:-ghcr.io/immich-app/immich-server:v1.119.1}
+    container_name: sambuca-immich
+    networks: [edge, data]
+    depends_on:
+      immich-postgres:
+        condition: service_healthy
+      immich-redis:
+        condition: service_started
+    volumes:
+      - ${SAMBUCA_PHOTOS}:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: ${TZ:-UTC}
+      DB_HOSTNAME: immich-postgres
+      DB_USERNAME: immich
+      DB_PASSWORD: ${IMMICH_DB_PASSWORD:?IMMICH_DB_PASSWORD is required}
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+      IMMICH_MACHINE_LEARNING_URL: http://immich-machine-learning:3003
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2283/api/server/ping >/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  immich-machine-learning:
+    restart: unless-stopped
+    # IMMICH_ML_IMAGE_SUFFIX is "" (cpu), "-cuda", "-rocm" or "-openvino",
+    # chosen by hardware-detect.sh. It is empty on anything below 20 GiB VRAM.
+    image: ${IMMICH_ML_IMAGE:-ghcr.io/immich-app/immich-machine-learning:v1.119.1}${IMMICH_ML_IMAGE_SUFFIX:-}
+    container_name: sambuca-immich-ml
+    networks: [data]
+    volumes:
+      - ${SAMBUCA_APPDATA}/immich/model-cache:/cache
+    environment:
+      TZ: ${TZ:-UTC}
+      MACHINE_LEARNING_WORKERS: ${MACHINE_LEARNING_WORKERS:-1}
+      MACHINE_LEARNING_WORKER_TIMEOUT: ${MACHINE_LEARNING_WORKER_TIMEOUT:-120}
+      # Thread ceiling so a full-library re-index cannot starve inference of CPU.
+      MACHINE_LEARNING_REQUEST_THREADS: ${IMMICH_ML_THREADS:-2}
+      OMP_NUM_THREADS: ${IMMICH_ML_THREADS:-2}
+    deploy:
+      resources:
+        limits:
+          memory: ${IMMICH_ML_MEM_LIMIT:-2g}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:3003/ping')\" || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  immich-postgres:
+    restart: unless-stopped
+    image: ${IMMICH_DB_IMAGE:-tensorchord/pgvecto-rs:pg14-v0.2.0}
+    container_name: sambuca-immich-db
+    networks: [data]
+    volumes:
+      - ${SAMBUCA_APPDATA}/immich/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD:?IMMICH_DB_PASSWORD is required}
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  immich-redis:
+    restart: unless-stopped
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: sambuca-immich-redis
+    networks: [data]
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - ${SAMBUCA_APPDATA}/immich/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer   # fixed name: AIO refuses to start otherwise

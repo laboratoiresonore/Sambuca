@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sambuca-flasher"
+version = "0.1.0"
+description = "Build a sambuca sovereign-appliance installer USB and its recovery document"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "laboratoiresonore" }]
+keywords = ["self-hosted", "sovereignty", "installer", "usb", "debian", "preseed"]
+
+# Deliberately small. Every dependency here is one more thing that could
+# exfiltrate a seed phrase from the machine that generates it.
+dependencies = [
+    "mnemonic>=0.21",   # BIP-39. Do not hand-roll the wordlist.
+    "reportlab>=4.0",   # recovery PDF
+    "passlib>=1.7",     # SHA-512 crypt on Windows/macOS and Python >= 3.13
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+sambuca-flasher = "sambuca_flasher.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/laboratoiresonore/Sambuca"
+Source = "https://github.com/laboratoiresonore/Sambuca"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "BLE"]
+ignore = ["S603", "S607"]   # subprocess use is intentional and argument-listed
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
