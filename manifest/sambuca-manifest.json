@@ -11,7 +11,7 @@
     "",
     "WHY. A downloaded binary is frozen the day it is built. When an image is",
     "reissued, a checksum rotates, a dependency moves or a board is finally",
-    "tested, a hardcoded binary is wrong until every user downloads a new one \u2014",
+    "tested, a hardcoded binary is wrong until every user downloads a new one —",
     "and most never will. Fetching this at startup means the app corrects",
     "itself; the binary only carries a fallback copy for offline use.",
     "",
@@ -102,5 +102,15 @@
     "tier3_ram_mb": 24000,
     "immich_gpu_min_vram_mb": 20000,
     "image_min_vram_mb": 6000
+  },
+  "installer_iso": {
+    "_comment": "The Debian netinst the x86 installer is built from. Present so the flasher can fetch it FOR the owner instead of telling them to go and find it - the Pi path never needed this because rpi-imager downloads its own image, and that asymmetry was an accident of tooling, not a decision.",
+    "name": "Debian 13 (trixie) netinst, 64-bit",
+    "version": "13.6.0",
+    "url": "https://cdimage.debian.org/debian-cd/13.6.0/amd64/iso-cd/debian-13.6.0-amd64-netinst.iso",
+    "sha256": "65273beed27b2df543b68b65630ba525cfbad8df2b12035732b2dff87d6664e7",
+    "size": 791674880,
+    "checksums_url": "https://cdimage.debian.org/debian-cd/13.6.0/amd64/iso-cd/SHA256SUMS",
+    "verified": "sha256 read from Debian's own SHA256SUMS and size from a HEAD against the pinned URL, both on 2026-08-20. Pinned to 13.6.0 rather than 'current/', which moves without warning and would silently invalidate this digest. Docker and Tailscale were both confirmed to publish a trixie apt release before this was pinned - the engine derives its codename from /etc/os-release, so an ISO whose repos lacked trixie would break every install."
   }
 }

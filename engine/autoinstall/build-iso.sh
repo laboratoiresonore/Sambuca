@@ -30,7 +30,7 @@ Rebuild a Debian netinst ISO with the sambuca payload embedded.
 
 Usage: build-iso.sh --iso <debian-netinst.iso> [--output DIR]
 
-  --iso PATH      Source Debian 12 netinst ISO (required)
+  --iso PATH      Source Debian netinst ISO (required)
   --output DIR    Where to write the result (default: ./build)
   -h, --help      This text
 USAGE

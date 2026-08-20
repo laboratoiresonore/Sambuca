@@ -167,6 +167,17 @@ def images() -> list[dict[str, Any]]:
     return list(load().get("images", []))
 
 
+def installer_iso() -> dict[str, Any]:
+    """The Debian netinst the x86 installer is built from.
+
+    Served from the manifest rather than compiled in so a point release can be
+    pinned without reissuing binaries — and pinned to an exact version rather
+    than Debian's 'current/', which moves without warning and would silently
+    invalidate the digest that makes the download safe to use.
+    """
+    return dict(load().get("installer_iso", {}))
+
+
 def dependency(name: str) -> dict[str, Any]:
     return dict(load().get("dependencies", {}).get(name, {}))
 

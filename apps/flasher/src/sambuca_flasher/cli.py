@@ -54,7 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         help="include devices over 512 GB (hidden by default — usually backup drives)")
 
     p_write = sub.add_parser("write", help="build and write an installer USB")
-    p_write.add_argument("--iso", type=Path, required=True, help="Debian 12 netinst ISO")
+    p_write.add_argument("--iso", type=Path, required=True,
+                         help="Debian netinst ISO (the menu can download it for you)")
     p_write.add_argument("--config", type=Path, help="JSON appliance configuration")
     p_write.add_argument("--output-dir", type=Path, default=Path.cwd(),
                          help="where the recovery PDF is written (default: cwd)")
@@ -636,6 +637,133 @@ def _offer_certificate(domain: str) -> None:
         _say(f"  Could not install it: {detail}")
         _say("  This is common on work computers, which often forbid it.")
         _say("  Everything still works; the browser will warn you each time.")
+
+
+def _clear_progress_line(live: bool) -> None:
+    """Wipe the in-place progress line, but only where one was drawn.
+
+    Off a terminal nothing was ever overwritten, so emitting 78 spaces just
+    adds a line of blanks to whatever is reading the output — which is exactly
+    what it did until somebody looked at piped output instead of assuming it
+    matched the console.
+    """
+    if live:
+        sys.stdout.write("\r" + " " * 78 + "\r")
+        sys.stdout.flush()
+
+
+def _obtain_iso():
+    """Get Debian's installer file, downloading it rather than asking for it.
+
+    THE RULE'S FIRST CLAUSE APPLIES HERE AFTER ALL. This step looked like a
+    clause-two case - "we cannot fetch 755 MB for them, so guide them to
+    debian.org" - and that reading was wrong. Of course the app can download a
+    file. The Pi path already gets its image downloaded by rpi-imager; the x86
+    path asked a human to go and find one purely because no wrapped tool
+    happened to do it. That is an accident of tooling, not a decision, and it
+    was costing a novice a trip to a mirror index.
+
+    The manifest pins the exact release and its digest, so what lands is
+    verified before anything is allowed to use it.
+
+    Returns a Path, or None if the owner backed out or it could not be had.
+    """
+    from . import download, manifest
+
+    spec = manifest.installer_iso()
+    if not spec.get("url") or not spec.get("sha256"):
+        # NO PIN, NO DOWNLOAD. Fetching 755 MB with nothing to check it
+        # against is worse than asking, because it looks trustworthy.
+        return _ask_for_iso("Sambuca does not have a verified download for "
+                            "your version.")
+
+    size_mb = int(spec.get("size", 0)) / 1_000_000
+    _say()
+    _say("  This writes an installer USB for a normal PC or laptop.")
+    _say()
+    _say(f"  It needs {spec.get('name', 'the Debian installer')} -")
+    _say(f"  free, official, and about {size_mb:.0f} MB.")
+    _say()
+
+    dest = Path.home() / "Downloads" / Path(spec["url"]).name
+    if dest.is_file():
+        _say(f"  Found one already downloaded:\n    {dest}")
+        _say("  Checking it is intact...")
+    elif not _ask_yes("  Download it now?"):
+        return _ask_for_iso("")
+
+    _say()
+
+    # \r ONLY WORKS ON A TERMINAL. Piped to a file or a log it is just a
+    # character, so 3,000 progress updates become 3,000 lines of noise with
+    # the useful output buried somewhere inside. Redrawing in place is a
+    # terminal affordance, not a universal one.
+    live = sys.stdout.isatty()
+    state = {"last": -1}
+
+    def show(p):
+        if live:
+            sys.stdout.write("\r  " + p.human() + "   ")
+            sys.stdout.flush()
+            return
+        # Not a terminal: one line every 10%, so a log stays readable and
+        # still shows the download is moving.
+        step = int(p.percent // 10)
+        if step != state["last"]:
+            state["last"] = step
+            print(f"  {p.human()}")
+
+    try:
+        path = download.fetch(spec["url"], dest, sha256=spec["sha256"],
+                              expected_size=int(spec.get("size", 0)),
+                              on_progress=show)
+    except download.DownloadError as exc:
+        _clear_progress_line(live)
+        _say(f"  {exc}")
+        _say()
+        return _ask_for_iso("You can also download it yourself:")
+    except KeyboardInterrupt:
+        # THE PART FILE SURVIVES ON PURPOSE. Stopping a 755 MB download should
+        # not throw away what has already arrived.
+        _clear_progress_line(live)
+        _say("  Stopped. Choosing this again will carry on where it got to.")
+        return None
+
+    _clear_progress_line(live)
+    _say(f"  Ready, and verified:\n    {path}")
+    return path
+
+
+def _ask_for_iso(reason: str):
+    """The fallback: guide them to fetch it themselves, step by step.
+
+    Reached when there is no verified download, when one fails, or when the
+    owner would rather do it their own way. Still guidance, never an
+    instruction thrown over a wall.
+    """
+    _say()
+    if reason:
+        _say(f"  {reason}")
+    _say("  Debian's installer is free and comes straight from debian.org:")
+    _say()
+    _say("    https://www.debian.org/download")
+    _say()
+    _say("  Save it somewhere you can find, then come back here.")
+    _say()
+    try:
+        raw = input("  Drag the file here, or paste its path: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    # A dragged file arrives wrapped in quotes; a novice will not strip them.
+    iso = raw.strip('"').strip("'").strip()
+    if not iso:
+        _say("\n  Nothing entered. Nothing done.")
+        return None
+    if not Path(iso).is_file():
+        _say(f"\n  There is no file at:\n    {iso}")
+        _say("  Check it finished downloading, then try again.")
+        return None
+    return Path(iso)
 
 
 def _cmd_handover(args) -> int:
@@ -1515,37 +1643,10 @@ def _interactive() -> int:
                 model = input('\n  Which machine? (e.g. "Dell XPS 15"): ').strip()
                 return main(["boot-guide", model])
             if choice == "4":
-                # THE RULE, SECOND CLAUSE. This one genuinely cannot be done
-                # for them — a Debian ISO is 700 MiB from a mirror this app
-                # does not pin. So it GUIDES: says where to get it, waits, and
-                # takes the path. Printing "Run: sambuca-flasher write --iso"
-                # at a novice and stopping is the failure wearing a helpful
-                # face, which is exactly what stood here before.
-                print()
-                print("  This writes an installer USB for a normal PC or laptop.")
-                print()
-                print("  You need Debian's installer file first - it is free,")
-                print("  about 700 MB, and comes straight from debian.org:")
-                print()
-                print("    https://www.debian.org/download")
-                print()
-                print("  Save it somewhere you can find, then come back here.")
-                print()
-                try:
-                    raw = input("  Drag the file here, or paste its path: ").strip()
-                except (EOFError, KeyboardInterrupt):
-                    return 0
-                # Dragging a file onto a terminal quotes paths that contain
-                # spaces, and a novice will not think to strip them.
-                iso = raw.strip('"').strip("'").strip()
-                if not iso:
-                    print("\n  Nothing entered. Nothing done.")
-                    return 0
-                if not Path(iso).is_file():
-                    print(f"\n  There is no file at:\n    {iso}")
-                    print("  Check it downloaded, then try again.")
+                iso = _obtain_iso()
+                if iso is None:
                     return 1
-                return main(["write", "--iso", iso])
+                return main(["write", "--iso", str(iso)])
             if choice == "5":
                 # NO ARGUMENTS NEEDED ANY MORE. rpi-imager downloads the image
                 # from the manifest, so the old instruction to pass --image was
