@@ -96,9 +96,9 @@ command, and without making a single choice they were not told how to make.
 | ~~A2~~ **DONE** | `writer.py` — the write and verify path | ~200 of 280 | Same. **Keep `inject_payload`**, which is ours. |
 | A3 | `devices.py` — the target-picker half | ~150 of 196 | rpi-imager picks the device. **Keep boot-partition lookup**, needed after writing. |
 | ~~A4~~ **DONE** | `pi.py` — `write_raspios`, `_restore_disk` | ~120 of 495 | Same. **Keep `render_firstrun` and `provision_boot_partition`.** |
-| A5 | `estimate.py` | 319 | Conceptually wrong: guesses about a different machine from a typed sentence. |
+| ~~A5~~ **DONE** | `estimate.py` | 319 | Conceptually wrong: guesses about a different machine from a typed sentence. |
 | ~~A6~~ **DONE** | `tests/test_winraw.py` | 90 | Tests A1. |
-| A7 | `tests/test_estimate_parsing.py` | 110 | Tests A5. |
+| ~~A7~~ **DONE** | `tests/test_estimate_parsing.py` | 110 | Tests A5. |
 | A8 | `cli.py` — `write`/`write-pi` device handling, the `_interactive` menu's dead options | ~200 of 891 | Superseded by launching rpi-imager. |
 
 **Roughly 1,500 of 4,217 lines go.** Deleting rather than archiving, per the
@@ -117,7 +117,7 @@ gone or is a thin call into `imager.launch()`.
 | ~~B1~~ **DONE** | **The Windows release build fails.** `$PWD` in git-bash gives PyInstaller `\d\a\Sambuca\Sambuca\engine`. | `v0.1.0-preview2` built linux + macOS, failed windows, skipped the release job. |
 | ~~B2~~ **DONE** | **The only published release cannot flash anything.** preview1's binaries have no engine bundled, so `write` and `write-pi` both fail. | Verified by building and running the .exe. |
 | ~~B3~~ **DONE** | **The README's download links point at those broken binaries.** | `README.md:62-74`. |
-| B4 | `estimate` is still referenced in three places in the README and in the app's menu. | Being deleted in A5; references must go with it. |
+| ~~B4~~ **DONE** | `estimate` is still referenced in three places in the README and in the app's menu. | Being deleted in A5; references must go with it. |
 | B5 | The `_interactive` menu's options 4 and 5 print a command instead of doing anything. | *"HOW THE FUCK IS THAT HELPING A NOVICE"* — correct. |
 
 **Acceptance for B1:** a tagged build produces three binaries and a release with

@@ -63,14 +63,12 @@ Sambuca is **one program you run on your normal computer**. It writes a USB stic
 | 🍎 **Mac** (Apple Silicon) | [sambuca-flasher-macos-arm64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview3/sambuca-flasher-macos-arm64) |
 | 🐧 **Linux** | [sambuca-flasher-linux-x64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview3/sambuca-flasher-linux-x64) |
 
-**Try it before committing anything.** This asks your computer nothing, touches no disk, and needs no USB stick — it just tells you what a machine could do:
+**Not sure your machine is good enough?** The table below tells you, and you do not have to run anything to find out. The machine itself measures its own hardware on first boot and reports what it found — this app runs on a *different* computer and cannot see the one that matters.
 
-```powershell
-.\sambuca-flasher-windows-x64.exe estimate "my old Dell desktop, 16GB RAM"
-```
+**Stuck at the "press F12 to boot" step?** That is the part that defeats most people, and there is a guide for your exact machine:
 
 ```bash
-chmod +x ./sambuca-flasher-macos-arm64 && ./sambuca-flasher-macos-arm64 estimate "my old Dell desktop, 16GB RAM"
+sambuca-flasher boot-guide "Dell OptiPlex 7060"
 ```
 
 <details>
@@ -175,7 +173,7 @@ Pick the one that sounds like the machine you have. It expands.
 
 **There is a floor, and it is memory.** Below about 4 GB this is not a slower appliance, it is one that will not come up: the file server alone wants ~2 GB, the photo library ~4 GB with its database, and the smallest chat model ~2.5 GB. A Pi Zero, a thin client or a 2 GB VM is under the line. The installer checks, refuses, and tells you exactly which parts would not fit rather than handing you a machine that thrashes.
 
-*Raspberry Pi note: the engine is x86-64 today, so a Pi is not installable yet — [it is planned](docs/design/NEXT-STAGE.md), and a Pi Zero 2 W is being used as the port's test rig. When it lands you will want a Pi 5 with 8 GB or more. Run `estimate "Raspberry Pi 5 16GB"` for the buying guide.*
+*Raspberry Pi note: the engine is x86-64 today, so a Pi is not installable yet — [it is planned](docs/design/NEXT-STAGE.md), and a Pi Zero 2 W is being used as the port's test rig. When it lands you will want a Pi 5 with 8 GB or more.*
 
 </details>
 
@@ -223,7 +221,7 @@ You need three things: **how much RAM**, **how many CPU cores**, and **whether t
 Then just describe it in plain English — the tool is generous about phrasing:
 
 ```
-sambuca-flasher estimate "HP desktop, 16GB, has a graphics card I think"
+sambuca-flasher boot-guide "HP desktop"
 ```
 
 </details>

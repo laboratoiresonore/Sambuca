@@ -25,17 +25,16 @@ from pathlib import Path
 from . import __version__
 from .devices import DeviceError, RemovableDevice, list_removable_devices
 # NOT imported at module level. keys.py raises SystemExit at IMPORT time when
-# the BIP-39 library is absent, which meant `list`, `estimate`, `boot-guide`,
+# the BIP-39 library is absent, which meant `list`, `boot-guide`,
 # `example-config` and even `--version` all died demanding a package they do
-# not use. The README tells a first-time reader to run `estimate` before
-# committing anything to disk; on a source install that instruction failed.
+# not use — every command in the CLI died demanding a seed-phrase library.
 # Found by running `list` against a real card reader.
 from .payload import ApplianceConfig, build_provision_payload, config_from_dict, render_preseed
 # Imported lazily inside cmd_write, for the same reason as .keys above:
 # recovery_pdf raises SystemExit at import time when reportlab is missing, and
 # its module-level constants genuinely need reportlab's units, so the guard
 # cannot simply move to the point of use inside that module. Keeping the import
-# here would mean `list` and `estimate` still died — just demanding a PDF
+# here would mean `list` and `boot-guide` still died — just demanding a PDF
 # library instead of a seed-phrase one.
 from .writer import inject_payload
 
@@ -107,12 +106,6 @@ def main(argv: list[str] | None = None) -> int:
                    help="recover the DISK recovery key from a seed phrase "
                         "(use when the root passphrase is lost)")
 
-    p_est = sub.add_parser("estimate",
-                           help="what will this machine be able to do? "
-                                "(check before you buy anything)")
-    p_est.add_argument("machine", nargs="*", default=[],
-                       help='e.g. "Dell OptiPlex 7060, 16GB, no graphics card"')
-
     p_boot = sub.add_parser("boot-guide",
                             help="how to boot the target machine from the USB "
                                  "(the step that defeats most people)")
@@ -158,8 +151,6 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_derive_recovery()
         if args.command == "boot-guide":
             return _cmd_boot_guide(args)
-        if args.command == "estimate":
-            return _cmd_estimate(args)
         if args.command == "example-config":
             return _cmd_example(args)
     except DeviceError as exc:
@@ -249,7 +240,7 @@ def _cmd_write(args) -> int:
     # extraction directory — so the shipped .exe could not find the preseed
     # template and the primary command of the application failed. CI never
     # caught it because the smoke tests only exercise --version, boot-guide,
-    # estimate and example-config, none of which touch the engine.
+    # boot-guide and example-config, none of which touch the engine.
     engine_root = _find_engine(None)
     if engine_root is None:
         raise DeviceError(
@@ -454,27 +445,6 @@ def _warn_if_git_worktree(out_dir: Path) -> None:
             print("!" * 70)
             print()
             return
-
-
-def _cmd_estimate(args) -> int:
-    """Tell someone what a machine can do before they commit it or buy it."""
-    from . import estimate as est
-
-    machine = " ".join(args.machine).strip()
-    if not machine:
-        print("Which machine are you thinking of using?")
-        print("The brand and the rough specs are enough.")
-        print()
-        print("Examples:")
-        print("  Dell OptiPlex 7060, 16GB RAM, no graphics card")
-        print("  gaming PC with an RTX 3060 12GB")
-        print("  Raspberry Pi 5 16GB")
-        print("  old laptop")
-        print()
-        machine = input("machine: ").strip()
-
-    print(est.report(machine))
-    return 0
 
 
 def _cmd_boot_guide(args) -> int:
@@ -811,7 +781,7 @@ _MENU = """
 
   Nothing here touches a disk until it asks you first, in capitals.
 
-    1   What could my machine do?        (asks nothing, changes nothing)
+    1   Which machine can run this?      (opens the guide)
     2   Which USB sticks can I write to?
     3   How do I boot a machine from USB?
     4   Write an installer USB
@@ -850,9 +820,17 @@ def _interactive() -> int:
 
         try:
             if choice == "1":
-                machine = input("\n  Describe the machine "
-                                '(e.g. "old Dell desktop, 16GB RAM"): ').strip()
-                return main(["estimate", machine]) if machine else 0
+                print()
+                print("  Which machines can run Sambuca is a table in the README,")
+                print("  not something to describe here:")
+                print("    https://github.com/laboratoiresonore/Sambuca"
+                      "#which-machine-should-i-use")
+                print()
+                print("  This app runs on YOUR computer and installs onto a")
+                print("  DIFFERENT one, so it cannot measure the machine that")
+                print("  matters. That machine profiles its own hardware on first")
+                print("  boot and tells you what it found.")
+                return 0
             if choice == "2":
                 return main(["list"])
             if choice == "3":

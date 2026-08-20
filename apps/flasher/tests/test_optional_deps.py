@@ -28,7 +28,6 @@ import pytest
 FREE_COMMANDS = [
     ["--version"],
     ["list"],
-    ["estimate", "an old Dell desktop, 16GB RAM"],
     ["boot-guide", "--list-vendors"],
     ["example-config"],
 ]

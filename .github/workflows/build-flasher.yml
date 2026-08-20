@@ -116,8 +116,6 @@ jobs:
           BIN="dist/${{ matrix.binary }}"
           "$BIN" --version
           "$BIN" boot-guide "Dell XPS 15 9520" | grep -q "F12"
-          "$BIN" estimate "Raspberry Pi 5 16GB" | grep -q "Tier"
-          "$BIN" estimate "RTX 4090" | grep -q "Tier           : 1"
           "$BIN" example-config | grep -q '"hostname"'
 
           # THE CHECK THAT WAS MISSING, and the reason a broken binary shipped.
@@ -212,4 +210,4 @@ jobs:
             Try it before committing anything. This touches no disk and needs no
             USB stick:
 
-                sambuca-flasher estimate "my old Dell desktop, 16GB RAM"
+                sambuca-flasher boot-guide "Dell OptiPlex 7060"
