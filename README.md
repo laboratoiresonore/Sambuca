@@ -77,6 +77,12 @@ But there is a very fair reason for that friction: it is the literal cost of esc
 Everything above is why. Everything below is what it actually does, and how
 to run it.
 
+Deeper detail lives in four documents: [ARCHITECTURE](docs/ARCHITECTURE.md) (the
+three network planes, the boot sequence, the VRAM arbitration),
+[SECURITY](docs/SECURITY.md) (the threat model and the compromises made on
+purpose), [HARDWARE](docs/HARDWARE.md) (which tier your machine lands in) and
+[IMAGES](docs/IMAGES.md) (the pinning policy).
+
 ## What it replaces
 
 | You were paying for | It runs |
@@ -142,6 +148,7 @@ sambuca/
 │   │   ├── disk-select.sh           resolves the target, or REFUSES — never guesses
 │   │   ├── abort-countdown.sh       the 30-second fail-safe
 │   │   ├── late-command.sh          stages the engine into the installed system
+│   │   ├── enroll-recovery-key.sh   adds the seed-derived SECOND LUKS keyslot, in the installer
 │   │   ├── luks-tpm-enroll.sh       optional TPM 2.0 auto-unlock (opt-in, with the tradeoff stated)
 │   │   └── build-iso.sh             rebuild a netinst ISO with the payload embedded
 │   │
@@ -165,6 +172,7 @@ sambuca/
 │       ├── gitops-sync.sh           signed-tag-only config sync, with a forbidden-path review gate
 │       ├── backup.sh                restic, with correct exit-3 handling and restore verification
 │       ├── snapraid-sync.sh         parity sync with a deletion threshold that aborts
+│       ├── recovery-key.sh          sambuca-recovery {status,enrol,verify} — prove the key works
 │       └── systemd/                 units and timers
 │
 ├── compose/
@@ -177,11 +185,16 @@ sambuca/
 │   ├── .env.example                 image pins — see docs/IMAGES.md before releasing
 │   └── config/                      Caddyfile, ircd.yaml, snapraid.conf template
 │
+├── tools/
+│   └── verify-images.py             resolve every image against its registry (no docker needed)
+│
 └── docs/
-    ├── ARCHITECTURE.md
+    ├── ARCHITECTURE.md              the three network planes, boot sequence, VRAM arbitration
     ├── SECURITY.md                  the threat model, and the tradeoffs made on purpose
     ├── HARDWARE.md                  what tier your machine lands in, and why
-    └── IMAGES.md                    image pinning policy
+    ├── IMAGES.md                    image pinning policy
+    └── design/
+        └── NEXT-STAGE.md            the three development axes, as decisions
 ```
 
 ---
@@ -219,9 +232,17 @@ These are the decisions the code is built around. Each one costs something.
 flasher makes zero network requests. Odysseus is configured with remote
 providers disabled.
 
-**The paper is sufficient.** The backup repository password is derived from the
-24-word seed with a versioned HKDF. With the printed sheet alone you can restore
-your data on a machine that has never heard of this project.
+**The paper is sufficient.** The backup repository password AND a disk recovery
+key are both derived from the 24-word seed with versioned HKDFs. With the
+printed sheet alone you can open the disk on a machine whose passphrase has been
+forgotten, and restore your data on a machine that has never heard of this
+project.
+
+**No single point of failure that is one string on one sheet.** The disk has two
+independent keyslots — the root passphrase and the seed-derived recovery key.
+Either opens it; neither can be computed from the other. `sambuca-recovery
+verify` proves the key works *before* you need it, because a keyslot that exists
+is not a keyslot that works.
 
 **The installer refuses rather than guesses.** No hardcoded `/dev/sda`. If the
 disk selection rules do not produce exactly one answer, installation stops and
@@ -246,11 +267,12 @@ applies, validates, and rolls back on failure.
 
 ## Status
 
-Early, but not vapour. The engine, compose mesh and flasher are complete and
-internally consistent, every shell script passes `bash -n`, the flasher's 19
-tests pass, and **18 of 19 container images were verified
-against their live registries on 2026-08-19** — digests recorded in
-[docs/IMAGES.md](docs/IMAGES.md).
+Early, but not vapour. **CI is green** — shellcheck, the flasher suite on
+Linux/macOS/Windows across Python 3.11 and 3.13, Caddyfile validation, compose
+rendering for all 48 GPU-profile × bundle-subset combinations, and live registry
+resolution of every container image — digests recorded in
+[docs/IMAGES.md](docs/IMAGES.md). 25 tests pass, including pinned derivation
+vectors for both seed-derived keys.
 
 Two things are honestly outstanding:
 
@@ -260,13 +282,114 @@ Two things are honestly outstanding:
   convenience; `make pin-images` converts them to digests, which is what makes
   a flashed USB reproducible. Do that before cutting a release tag.
 
-The CI matrix (shellcheck, the flasher suite on Linux/macOS/Windows, Caddyfile
-validation, compose rendering for all three GPU overlays) is configured but has
-not run yet — this is its first push.
-
 And the honest headline: **no machine has yet been installed end-to-end from a
-flashed stick.** The install path is reviewed, syntax-checked and reasoned
-through, but unproven. Treat it accordingly until someone reports otherwise.
+flashed stick.** The install path is reviewed, syntax-checked, linted by three
+independent toolchains and reasoned through, but unproven on real hardware.
+Treat it accordingly until someone reports otherwise — and if you are the first
+to try it, open an issue either way.
+
+That gap is not modesty. Every serious bug found so far was found by a machine
+running the code, not by anyone reading it: a `local` declaration that gave four
+databases the same password, CRLF line endings that made the abort countdown
+unrunnable, a `read -t` that would have hung the installer where it is not
+implemented. Reading is not verification.
+
+---
+
+## 🧭 Where this is going — three development axes
+
+Everything after the first working appliance is organised along three axes. They
+are not phases to be completed in order; they are standing directions, and every
+change should advance one of them without regressing the other two. The full
+decision document — what gets built, what gets **rejected**, and why — is
+[docs/design/NEXT-STAGE.md](docs/design/NEXT-STAGE.md).
+
+### 1. User-friendliness — take the novice all the way
+
+**The hard part of de-Googling is not the server. It is the fourteen small
+migrations afterwards:** contacts, calendar, photos, mail, passwords, files, the
+phone, the second phone, the spouse's laptop. Every self-hosting project ships
+the server and abandons you at exactly the point where the work starts. That
+abandonment is the whole reason self-hosting has a reputation for being for
+hobbyists.
+
+So the target is not a flasher with a nicer window. It is a **companion that
+persists after installation and drives the migration to completion** — served by
+the appliance, opened from any browser, because the migrations happen on phones
+and laptops, not on the machine that wrote the USB.
+
+- **A checklist with memory.** Close the tab, come back tomorrow, it knows where
+  you were. The single most important feature, and the one always missing.
+- **The certificate wall, solved rather than explained.** Per-platform trust
+  profiles, not a paragraph about trust stores. This is where every novice
+  trips first.
+- **QR codes for every phone step.** Pointing a camera at a screen succeeds
+  where typing a URL into a phone browser and hitting a cert warning does not.
+- **Verified, not asserted.** Each step ends with the appliance *checking* the
+  client actually connected and the first photo actually synced. A checklist
+  that only records clicks is a checklist that lies.
+- **Mail stays deliberately conservative.** Home-IP deliverability is not
+  something you control. We will offer IMAP mirroring for archive and will not
+  pretend this box should be your MX — saying so is more useful than shipping a
+  mail server that quietly drops mail.
+
+### 2. Security — a fortress that can also be unbricked
+
+State of the art is not only about keeping attackers out. It is equally about
+what happens when the *owner* makes a mistake, because an appliance nobody can
+recover is one that eats somebody's photo archive.
+
+- **Done: the disk has two independent keys.** Forgetting the master password
+  used to mean permanent, total data loss. It now means typing the recovery key
+  from the same sheet. See the design commitments above.
+- **Update control that is rigorous about what it swallows.** Signed tags and
+  forbidden-path review already ship. Next: diff size and shape limits, refusal
+  of any update introducing something key-shaped, **no new outbound host without
+  human review** (supply-chain compromise almost always needs to phone
+  somewhere), digest-drift detection, and a rollback path *exercised in CI
+  against a deliberately poisoned update* — because a recovery path nobody has
+  run is a recovery path that does not work.
+- **Rescue mode on the same USB.** Boot the stick, unlock with either secret,
+  and get a menu: repair the bootloader, re-run a phase, copy the data off,
+  reset the passphrase. Today the answer is "boot Debian rescue and know what
+  you are doing", which is not an answer for this audience.
+
+### 3. Perfected setup — hardened variants, never stock
+
+Where a stock component's defaults are wrong for a machine holding confidential
+work, the appliance ships a hardened variant instead of the stock one.
+
+**The worked example is the generative stack.** Stock ComfyUI accumulates inputs
+and outputs on disk forever, executes custom nodes fetched at runtime, and
+reaches the internet freely. For a box holding client documents that is three
+unacceptable defaults in one container. The sambuca variant:
+
+- **Ephemeral I/O by construction** — inputs and outputs on tmpfs, purged on a
+  timer. Deletion is the default and retention the exception, the inverse of
+  every stock configuration.
+- **No runtime node installation** — nodes pinned at build time. A generative
+  server that can `pip install` from a workflow file is remote code execution
+  with a nice UI.
+- **No egress** — models fetched and verified during provisioning; at runtime
+  the container has no route off the host. A workflow cannot phone home.
+- **Under the same VRAM arbitration as everything else** — inference first,
+  generative second, background photo ML last, rather than a fourth actor that
+  believes it owns the card.
+
+**And the machine runs as lean as it can.** Nothing idles that was not asked
+for; spare RAM is spent on making storage fast — tmpfs scratch and zram, sized
+from measured hardware by the same profiler that sizes everything else, with a
+hard floor so a large render cannot squeeze Postgres into the OOM killer. "Lean"
+is a number in `profile.env` you can check, not an adjective in a README.
+
+### Where to help
+
+The Call to Action below asks for UI polish, Bash scripting and hardware
+testers. Mapped onto the axes: **UI polish is axis 1** (the companion's
+checklist and migration flows — the highest-leverage work in the project).
+**Bash scripting is axes 2 and 3** (update guards, rescue mode, the memory
+plan). **Hardware testing is all three at once**, and is the single thing this
+project needs most: nobody has yet installed it end-to-end from a flashed stick.
 
 ---
 
