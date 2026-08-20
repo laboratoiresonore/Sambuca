@@ -51,6 +51,8 @@ class Estimate:
     chat_model: str
     speed: str
     photo_ai: str
+    pictures: str
+    steward: str
     spec: Spec
     caveats: list[str] = field(default_factory=list)
 
@@ -115,10 +117,25 @@ def parse(text: str) -> Spec:
             spec.label = text.strip() or preset.label
             break
 
-    # "16gb", "16 gb", "16g" — RAM unless it is clearly attached to a GPU.
-    ram = re.search(r"(\d+)\s*(?:gb|g)\b(?!\s*(?:vram|video))", t)
-    if ram and "ram" in t or (ram and not spec.ram_mb):
-        spec.ram_mb = int(ram.group(1)) * 1024
+    # RAM. Two bugs lived here, both found by running the estimator on the
+    # machines it is meant to warn people about.
+    #
+    # 1. MEGABYTES WERE NEVER PARSED. The pattern matched only gb|g, so
+    #    "512MB" fell through to the 8 GB default and the machine was reported
+    #    as comfortably installable. Every machine the memory floor exists to
+    #    refuse — a Pi Zero, a thin client, a small VM — is specified in MB.
+    #
+    # 2. `if ram and "ram" in t or (ram and not spec.ram_mb)` binds as
+    #    (A and B) or (A and C). When a preset had already set ram_mb, an
+    #    explicit figure the user typed was discarded: "OptiPlex 8 cores 32GB"
+    #    kept the preset's 16 GB and reported the wrong tier. A number someone
+    #    typed themselves must always win over a default we guessed for them.
+    ram_gb = re.search(r"(\d+)\s*(?:gb|g)\b(?!\s*(?:vram|video))", t)
+    ram_mb = re.search(r"(\d+)\s*mb\b(?!\s*(?:vram|video))", t)
+    if ram_mb:
+        spec.ram_mb = int(ram_mb.group(1))
+    elif ram_gb:
+        spec.ram_mb = int(ram_gb.group(1)) * 1024
 
     cores = re.search(r"(\d+)\s*(?:core|cores|cpu)", t)
     if cores:
@@ -168,6 +185,24 @@ def estimate(spec: Spec) -> Estimate:
         tier, name = 4, "low-resource"
         chat, speed = "3B", "Patient — about a sentence at a time"
 
+    # Picture generation, matching the rules in engine/profiles/tierN.env.
+    # The README leads with "it draws"; an estimator that stays silent about it
+    # is telling a reader less than the front page does.
+    if tier in (1, 2):
+        pictures = "Yes — seconds per picture" if tier == 1 else "Yes — a little slower"
+    elif tier == 3:
+        pictures = "Optional, and slow — MINUTES per picture (off by default)"
+    else:
+        pictures = "No — not offered on this class of machine"
+
+    # The Steward is present on every tier; only how you drive it changes.
+    steward = {
+        1: "Free-form speech",
+        2: "Free-form speech",
+        3: "Speech, narrower phrasings",
+        4: "Guided menus with a search box",
+    }[tier]
+
     photo = "on the GPU" if spec.vram_mb >= IMMICH_GPU_MIN_VRAM_MB else "on the CPU"
     if 0 < spec.vram_mb < IMMICH_GPU_MIN_VRAM_MB:
         caveats.append(
@@ -181,12 +216,34 @@ def estimate(spec: Spec) -> Estimate:
             "ARM (Raspberry Pi): the engine is x86-64 today, so this is NOT yet "
             "installable. Support is planned — see docs/design/NEXT-STAGE.md."
         )
-    if spec.ram_mb < 8192:
+    if spec.ram_mb < 3500:
         caveats.append(
-            f"{spec.ram_mb // 1024} GB of RAM is below the practical floor. "
+            f"REFUSED: {_human_mb(spec.ram_mb)} of RAM is below the hard floor of "
+            "3.5 GB, and the installer will decline this machine. The file server "
+            "alone wants ~2 GB, the photo library ~4 GB with its database, and the "
+            "smallest chat model ~2.5 GB. This is not a slow install, it is one "
+            "that will not come up."
+        )
+    elif spec.ram_mb < 8192:
+        caveats.append(
+            f"{_human_mb(spec.ram_mb)} of RAM is below the practical floor. "
             "8 GB is the minimum for the cloud services to be comfortable."
         )
-    return Estimate(tier, name, chat, speed, photo, spec, caveats)
+    return Estimate(tier, name, chat, speed, photo, pictures, steward, spec, caveats)
+
+
+def _human_mb(mb: int) -> str:
+    """Render a memory figure without lying about small ones.
+
+    `mb // 1024` turns 512 MB into "0 GB". Reporting that a machine has zero
+    memory is both wrong and self-defeating: it appears in the very warning
+    that is trying to be taken seriously.
+    """
+    if mb < 1024:
+        return f"{mb} MB"
+    if mb % 1024 == 0:
+        return f"{mb // 1024} GB"
+    return f"{mb / 1024:.1f} GB"
 
 
 def report(text: str) -> str:
@@ -200,12 +257,14 @@ def report(text: str) -> str:
         f"  WHAT SAMBUCA CAN DO ON: {spec.label or 'this machine'}",
         "=" * 68,
         "",
-        f"  Read as        : {spec.cores} cores, {spec.ram_mb // 1024} GB RAM, GPU: {gpu}",
+        f"  Read as        : {spec.cores} cores, {_human_mb(spec.ram_mb)} RAM, GPU: {gpu}",
         f"  Tier           : {est.tier} ({est.tier_name})",
         "",
         f"  Chat model     : {est.chat_model}",
         f"  Chat speed     : {est.speed}",
         f"  Photo AI runs  : {est.photo_ai}",
+        f"  Make pictures  : {est.pictures}",
+        f"  Run it by voice: {est.steward}",
         "",
         "  WHAT YOU GET, REGARDLESS OF TIER",
         "  " + "-" * 64,
