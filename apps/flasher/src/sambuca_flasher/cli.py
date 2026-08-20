@@ -69,8 +69,12 @@ def main(argv: list[str] | None = None) -> int:
     p_pi = sub.add_parser(
         "write-pi",
         help="write a Raspberry Pi OS card with sambuca first-boot provisioning")
-    p_pi.add_argument("--image", type=Path, required=True,
-                      help="Raspberry Pi OS image (.img or .img.xz)")
+    # NOT REQUIRED. rpi-imager downloads the image itself, from the OS list
+    # Sambuca publishes. Demanding a file here made the first command anybody
+    # runs refuse to start, asking for something they neither have nor need.
+    p_pi.add_argument("--image", type=Path,
+                      help="a local image to write instead of the one rpi-imager "
+                           "downloads (rarely needed)")
     p_pi.add_argument("--device", help="target device path (from `list`)")
     p_pi.add_argument("--hostname", default="sambuca")
     p_pi.add_argument("--engine", type=Path,
@@ -883,6 +887,30 @@ def _cmd_write_pi(args) -> int:
             _say("  asks you for those itself, and Sambuca never stores them.")
             _say()
 
+    # ---- the prerequisite nothing else checked --------------------------
+    # A headless appliance with no network is a brick you cannot ask why. The
+    # Pi Zero 2 W has NO ETHERNET, so wi-fi is not optional for it — and the
+    # wi-fi key is a secret Sambuca must not hold, so this is guidance, not
+    # automation. Nothing said it was required until now, and EVERYTHING
+    # downhill depends on it: the tailnet join, ssh, and the address written
+    # back onto the card.
+    from . import customisation as _cust
+
+    if _cust.supported() and not _cust.wifi_configured():
+        _say("  IMPORTANT — set wi-fi in the Imager's Customisation screen.")
+        _say()
+        _say("  This machine will have no screen and no keyboard. If it cannot")
+        _say("  reach a network, there is no way to reach IT, and no way for")
+        _say("  it to tell you what went wrong.")
+        _say()
+        _say("  A Raspberry Pi Zero 2 W has no ethernet socket at all, so")
+        _say("  wi-fi is the only way in.")
+        _say()
+        _say("  Sambuca does not set this for you on purpose: the wi-fi")
+        _say("  password is yours, and it would have to be stored to be")
+        _say("  filled in. The Imager asks you directly.")
+        _say()
+
     # ---- G5: the one choice that stays yours ----------------------------
     # Storage is the destructive step, so it gets the MOST words, not the
     # fewest. Naming what is attached, by size and label, is the difference
@@ -961,11 +989,33 @@ def _cmd_provision_pi(args) -> int:
 
     boot = args.boot
     if boot is None:
-        device = _resolve_device(args.device)
-        if device is None:
-            return 1
-        print(f"\nlocating the boot partition on {device.path}")
-        boot = pi.find_boot_partition(device)
+        # NO DEVICE NEEDED. rpi-imager chose and wrote the card; Sambuca never
+        # held a handle to it. The card is found by what it CONTAINS.
+        print("\nlooking for the card...")
+        boot = pi.find_boot_partition()
+
+        # THE EJECT SEAM. rpi-imager dismounts the card when it finishes — its
+        # own last screen says "you can now remove the SD card". So the very
+        # next step goes looking for a partition the operating system has let
+        # go of, and no amount of rescanning brings it back. The card has to
+        # be physically re-seated, and saying so is the whole job here.
+        if boot is None:
+            print()
+            print("  The Imager finished and released the card, which is normal.")
+            print("  Sambuca still needs to add its own configuration to it.")
+            print()
+            print("  Take the card out and put it straight back in.")
+            print()
+            for attempt in range(3):
+                try:
+                    input("  Press Enter once you have done that ")
+                except (EOFError, KeyboardInterrupt):
+                    break
+                boot = pi.find_boot_partition()
+                if boot is not None:
+                    break
+                if attempt < 2:
+                    print("  Still cannot see it. Give it a few seconds and try again.")
 
     if boot is None or not Path(boot).is_dir():
         print("\nerror: could not find the FAT32 boot partition.", file=sys.stderr)

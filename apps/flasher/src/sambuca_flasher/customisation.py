@@ -166,6 +166,25 @@ def detect_locale() -> tuple[str, str]:
     return mapping.get(tz_windows.strip(), ""), layout.get(kb_code, "")
 
 
+def wifi_configured() -> bool:
+    """Has wi-fi been set in the Imager, WITHOUT reading what it is?
+
+    A PRESENCE CHECK, deliberately. The value is the owner's network and its
+    key; this returns only whether something is there, so the flow can say
+    "you still need to do this" without the installer ever holding it.
+
+    Used because a headless appliance that reaches no network cannot be
+    reached, cannot be asked why, and cannot report anything back.
+    """
+    if not supported():
+        return False
+    rc, out = _ps(
+        f"$k = Get-ItemProperty -Path '{_KEY}' -ErrorAction SilentlyContinue; "
+        f"if ($k -and $k.wifiSSID) {{ Write-Output 'set' }} else {{ Write-Output 'unset' }}"
+    )
+    return rc == 0 and "set" in out
+
+
 def apply(c: Customisation) -> tuple[bool, list[str]]:
     """Write the safe fields. Returns (ok, what_changed)."""
     if not supported():
