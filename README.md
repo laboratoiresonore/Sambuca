@@ -318,6 +318,9 @@ persists after installation and drives the migration to completion** — served 
 the appliance, opened from any browser, because the migrations happen on phones
 and laptops, not on the machine that wrote the USB.
 
+That split gives the desktop app exactly one job after the USB is written:
+**recovery**. It is the thing you still have when the appliance will not boot.
+
 - **A checklist with memory.** Close the tab, come back tomorrow, it knows where
   you were. The single most important feature, and the one always missing.
 - **The certificate wall, solved rather than explained.** Per-platform trust
@@ -328,10 +331,23 @@ and laptops, not on the machine that wrote the USB.
 - **Verified, not asserted.** Each step ends with the appliance *checking* the
   client actually connected and the first photo actually synced. A checklist
   that only records clicks is a checklist that lies.
-- **Mail stays deliberately conservative.** Home-IP deliverability is not
-  something you control. We will offer IMAP mirroring for archive and will not
-  pretend this box should be your MX — saying so is more useful than shipping a
-  mail server that quietly drops mail.
+- **Mail: inbound sovereign, outbound relayed.** You forward your mail to a
+  provider, the appliance continuously drains it into a local archive you own,
+  and sends through that provider's SMTP. The insight that makes this work: *a
+  mailbox that is drained every few minutes is a transport, not a store* — so
+  free tiers are fine, storage limits stop mattering, and provider trust matters
+  far less because nothing sits there. Optional drain-and-delete, off by default
+  and behind a dry run. **No Google Cloud Console** — Gmail needs an App
+  Password, six clicks, and Takeout covers the history. We do not run an MX:
+  home-IP deliverability is not controllable, and a mail server that silently
+  drops mail is worse than none.
+- **Signal and WhatsApp alongside IRC.** Encrypted comms that only reach other
+  sambuca owners are a toy. Matrix bridges put Signal, WhatsApp and IRC in one
+  client. Bridges terminate end-to-end encryption to re-encrypt into Matrix —
+  which on a hosted bridge means a stranger reads your messages, and here means
+  *your own hardware, on your own tailnet, on an encrypted disk*. WhatsApp
+  bridging also breaks Meta's terms and carries a small but real ban risk; it is
+  off by default and says so in those words before showing you a QR code.
 
 ### 2. Security — a fortress that can also be unbricked
 
@@ -342,6 +358,13 @@ recover is one that eats somebody's photo archive.
 - **Done: the disk has two independent keys.** Forgetting the master password
   used to mean permanent, total data loss. It now means typing the recovery key
   from the same sheet. See the design commitments above.
+- **A recovery vault for when the sheet is gone too.** The desktop app keeps an
+  encrypted copy of the key material, unlocked by three questions only you can
+  answer, on your own machine and nowhere else. Because the answers are
+  low-entropy, the key derivation is deliberately brutal — memory-hard, seconds
+  per attempt. And because the vault is a second complete copy of every secret,
+  the app says so plainly: whoever has your laptop *and* guesses the answers has
+  your disk. Opt-in, deletable, and never an escrow that leaves your hardware.
 - **Update control that is rigorous about what it swallows.** Signed tags and
   forbidden-path review already ship. Next: diff size and shape limits, refusal
   of any update introducing something key-shaped, **no new outbound host without
@@ -364,14 +387,20 @@ and outputs on disk forever, executes custom nodes fetched at runtime, and
 reaches the internet freely. For a box holding client documents that is three
 unacceptable defaults in one container. The sambuca variant:
 
-- **Ephemeral I/O by construction** — inputs and outputs on tmpfs, purged on a
-  timer. Deletion is the default and retention the exception, the inverse of
-  every stock configuration.
+- **Ephemeral by container lifecycle, not by timer.** One disposable container
+  per session: `--rm`, read-only rootfs, inputs and outputs on tmpfs *inside*
+  it. The session ends, the container dies, and the I/O is gone by construction.
+  A purge timer is a promise; a destroyed container is a fact. Deletion is the
+  default and retention the exception — the inverse of every stock setup.
 - **No runtime node installation** — nodes pinned at build time. A generative
   server that can `pip install` from a workflow file is remote code execution
   with a nice UI.
-- **No egress** — models fetched and verified during provisioning; at runtime
-  the container has no route off the host. A workflow cannot phone home.
+- **No egress** — models are fetched and verified during provisioning and
+  mounted read-only; at runtime the container has no network namespace at all. A
+  workflow cannot phone home because there is nowhere to phone from.
+- **The cost, stated:** a cold model load per session, tens of seconds for a
+  large checkpoint. That is the correct side of the bargain when the alternative
+  is a client's document sitting in an output folder six months later.
 - **Under the same VRAM arbitration as everything else** — inference first,
   generative second, background photo ML last, rather than a fourth actor that
   believes it owns the card.
