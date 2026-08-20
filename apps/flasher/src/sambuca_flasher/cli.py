@@ -689,7 +689,30 @@ def _cmd_write_pi(args) -> int:
     rather than dropping someone into an unfamiliar window with no context.
     See REDO.md section 0.
     """
+    import tempfile
+
     from . import imager
+
+    # Stage the engine first, and do it even on a dry run. This is what proves
+    # a BUILT BINARY carries its engine — CI runs exactly this path, because a
+    # binary that starts but cannot find its payload is the failure that shipped
+    # in v0.1.0-preview1 while every other check passed.
+    engine_dir = _find_engine(args.engine)
+    if engine_dir is None:
+        print("\nerror: could not find the sambuca engine.", file=sys.stderr)
+        print("       This build should carry it; pass --engine <path> to override.",
+              file=sys.stderr)
+        return 1
+
+    staging = Path(tempfile.mkdtemp(prefix="sambuca-pi-"))
+    staged = _stage_engine(engine_dir, staging / "sambuca")
+    print(f"\nstaged {staged} engine file(s) from {engine_dir}")
+
+    if args.dry_run:
+        print("\ndry run: no device was touched, and Raspberry Pi Imager was "
+              "not started.")
+        print(f"  staging: {staging}")
+        return 0
 
     print()
     print("Sambuca uses Raspberry Pi Imager to write cards.")
