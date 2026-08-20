@@ -17,7 +17,7 @@
     "",
     "os-list/sambuca-os-list.json is GENERATED from this file, so the image",
     "facts exist in exactly one place. Do not hand-edit that file.",
-    "HOSTING IS NOT INTERCHANGEABLE. raw.githubusercontent.com serves .json as text/plain, and rpi-imager ignores a list served that way - the device picker comes up empty with no error, which looks exactly like a broken list. Measured 2026-08-20: official=application/json, raw.github=text/plain, jsDelivr=application/json. So the OS LIST is served via jsDelivr, which sets the right type. Our OWN manifest still comes from raw.githubusercontent because Python does not care about content-type and raw is uncached, so it updates immediately; jsDelivr caches @main for hours."
+    "HOSTING IS NOT INTERCHANGEABLE, AND NOTHING HERE IS UNCACHED. raw.githubusercontent.com serves .json as text/plain, and rpi-imager ignores a list served that way - the device picker comes up empty with no error, which looks exactly like a broken list. Measured 2026-08-20: official=application/json, raw.github=text/plain, jsDelivr=application/json. So the OS LIST goes through jsDelivr. The manifest itself stays on raw because content-type does not matter to a Python client. BOTH ARE CACHED: raw sends Cache-Control max-age=300, so an edit takes up to ~5 minutes to appear, and jsDelivr holds a branch ref far longer. An earlier version of this note claimed raw was uncached and updated immediately; that was wrong, measured wrong, and would have had someone debugging a stale file as if it were a bad edit."
   ],
   "links": {
     "home": "https://github.com/laboratoiresonore/Sambuca",

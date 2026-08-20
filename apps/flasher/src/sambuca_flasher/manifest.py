@@ -48,6 +48,10 @@ SUPPORTED_SCHEMA = 1
 # window has a much lower tolerance than a background job.
 FETCH_TIMEOUT = 6.0
 
+# Our in-process cache. Note the HOST caches too: raw.githubusercontent sends
+# Cache-Control max-age=300, so a manifest edit is visible in roughly five
+# minutes, not instantly. Anyone testing a change to it should know that before
+# concluding their edit did not take.
 CACHE_TTL = 3600.0
 
 _cache: dict[str, Any] = {}
