@@ -59,6 +59,8 @@ secrets:
     file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/oauth2_client_id
   oauth2_client_secret:
     file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/oauth2_client_secret
+  pocket_id_encryption_key:
+    file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/pocket_id_encryption_key
 
 x-common: &common
   restart: unless-stopped
@@ -131,18 +133,21 @@ services:
     networks: [edge]
     volumes:
       - ${SAMBUCA_APPDATA}/pocket-id:/app/data
+    secrets:
+      - pocket_id_encryption_key
     environment:
       TZ: ${TZ:-UTC}
+      # v2 renamed things: APP_URL is now the single URL variable and
+      # PUBLIC_APP_URL no longer exists. Verified against upstream docs when
+      # bumping v0.53 -> v2.5.0, rather than carried forward on faith.
       APP_URL: https://id.${SAMBUCA_DOMAIN:-sambuca.local}
       TRUST_PROXY: "true"
-      # NOT file-backed: Pocket ID documents no *_FILE convention. This value
-      # is therefore visible to `docker inspect`. Tracked in docs/MAINTENANCE.md
-      # Tier 5; revisit when upstream adds support.
-      ENCRYPTION_KEY: ${POCKET_ID_ENCRYPTION_KEY:?POCKET_ID_ENCRYPTION_KEY is required}
+      # v2 supports the file convention, so this is no longer visible to
+      # `docker inspect` — one of the three env-secret exceptions closed.
+      ENCRYPTION_KEY_FILE: /run/secrets/pocket_id_encryption_key
       # WebAuthn binds credentials to an origin. Changing the domain later
-      # invalidates every enrolled passkey — this is a WebAuthn property, not a
-      # sambuca limitation. Decide the domain before you enrol.
-      PUBLIC_APP_URL: https://id.${SAMBUCA_DOMAIN:-sambuca.local}
+      # invalidates every enrolled passkey — a WebAuthn property, not a sambuca
+      # limitation. Decide the domain before you enrol.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:1411/healthz"]
       interval: 30s

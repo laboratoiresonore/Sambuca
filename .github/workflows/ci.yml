@@ -57,7 +57,7 @@ jobs:
         # job verify the secret WIRING, not just the YAML.
         run: |
           mkdir -p /tmp/sambuca-secrets
-          for n in postgres_password immich_db_password vaultwarden_admin_token                    oauth2_client_id oauth2_client_secret; do
+          for n in postgres_password immich_db_password vaultwarden_admin_token                    oauth2_client_id oauth2_client_secret pocket_id_encryption_key; do
             echo "ci-dummy-not-a-real-secret" > "/tmp/sambuca-secrets/$n"
           done
           echo "SAMBUCA_SECRETS_DIR=/tmp/sambuca-secrets" >> "$GITHUB_ENV"
