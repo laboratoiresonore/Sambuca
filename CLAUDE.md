@@ -165,12 +165,38 @@ ships, that is a reason to look harder, not a reason to copy it.
 ## Mechanical checks — run these before claiming done
 
 ```bash
+ruff check apps/flasher/src apps/flasher/tests tools tests
+python -m pytest apps/flasher/tests tests -q
 bash -n engine/hardware-detect.sh && bash -n engine/provision/*.sh
 python tools/steward-lint.py
 python -c "import yaml,glob; [yaml.safe_load(open(f,encoding='utf-8')) for f in glob.glob('compose/*.yml')]"
 bash engine/hardware-detect.sh --print --force-tier 1 --no-lock --quiet
 bash tests/test-update-guard.sh
 ```
+
+**Then check CI, because local green is not CI green.** This was learned the
+expensive way: three commits went out reporting "89 tests pass" while the build
+was failing, and the step that was failing — ruff — was the one finding real
+bugs. `gh run list --limit 3` costs a second. Do not report a commit as done
+without it.
+
+- **Both test trees, and both are named above.** `tests/` holds what tests the
+  APPLIANCE; `apps/flasher/tests` holds what tests the flasher. The beacon's 21
+  tests were written, passing, and invisible to CI because the workflow named
+  only one of them — the same shape as a module with no callers.
+- **Ruff is PINNED (0.16.4) and configured once, at the repository root.** Both
+  facts are load-bearing. Unpinned, CI installed 0.16.4 while this machine had
+  0.15.8 and the two disagreed about default rules, so identical code linted
+  clean here and failed there. And configured per-package, everything outside
+  `apps/flasher/` fell back to whatever the installed ruff defaulted to.
+- **A linter finding is not automatically a style nit.** In one pass ruff found
+  a `NameError` that broke the entire x86 installer path, a duplicate function
+  definition silently shadowing another, and a minted Tailscale key computed and
+  discarded. All three were invisible to a green suite, because no test ever
+  executed those commands.
+- **A lint FIX is not automatically inert either.** Adding `# noqa: E501` to a
+  long line in `pi.py` put it inside a shell heredoc, appending it to the
+  Tailscale apt source line written to every card. Read the result.
 
 - **A conditionally-present service needs its own bundle.** A GPU overlay
   naming a service the selected bundles do not define invalidates the *entire*
