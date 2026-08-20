@@ -242,4 +242,23 @@ else
     warn "  Retrieve it later with: sambuca ca export"
 fi
 
+# ---------------------------------------------------------------------------
+# Leaf certificates for services that do not speak HTTP and so cannot get one
+# from Caddy on their own.
+#
+# The CA private key is read on the HOST and never mounted into a container.
+# The alternative — handing a service Caddy's CA directory — would let anything
+# compromising that service mint trusted certificates for every other service
+# on the appliance.
+# ---------------------------------------------------------------------------
+if [[ ",${SAMBUCA_BUNDLES}," == *",comms,"* ]]; then
+    "${_SB_SELF_DIR:-/opt/sambuca/engine}/maintenance/issue-service-cert.sh" \
+        "irc.${SAMBUCA_DOMAIN}" "${SAMBUCA_APPDATA}/ergo/tls" \
+        "${SAMBUCA_DOMAIN}" "${SAMBUCA_TS_DNSNAME:-}" \
+        || warn "could not issue the IRC certificate — TLS on 6697 will not start"
+    # Ergo runs unprivileged; it must be able to read its own key.
+    chown -R "${PUID:-1000}:${PGID:-1000}" "${SAMBUCA_APPDATA}/ergo/tls" 2>/dev/null || true
+    sb_run docker compose up -d ergo 2>/dev/null || true
+fi
+
 ok "stack running: $(docker compose ps --format '{{.Name}}' 2>/dev/null | wc -l) container(s)"

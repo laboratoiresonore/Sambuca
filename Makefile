@@ -80,6 +80,15 @@ verify-images: ## Resolve every image reference and report its digest
 		fi; \
 		exit $$rc; }
 
+.PHONY: check-upstreams
+check-upstreams: ## Probe every external coupling in docs/MAINTENANCE.md for drift
+	@python3 tools/check-upstreams.py --json $(BUILD_DIR)/drift-report.json || { \
+		rc=$$?; \
+		if [ $$rc -eq 2 ]; then \
+			echo; echo "(exit 2: known-pending only — not drift)"; \
+		fi; \
+		exit $$rc; }
+
 .PHONY: pin-images
 pin-images: ## Rewrite .env.example with @sha256: digests
 	@command -v docker >/dev/null || { echo "pin-images needs docker"; exit 1; }

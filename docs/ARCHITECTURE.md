@@ -1,5 +1,11 @@
 # Architecture
 
+> **Every coupling to something outside this repository is registered in
+> [MAINTENANCE.md](MAINTENANCE.md)** — what breaks, whether it fails loudly or
+> silently, how fast it moves, and what watches it. Components marked ⚠ below
+> have an entry there. Adding a new external dependency means adding a row in
+> the same pull request.
+
 ## The three planes
 
 ```
@@ -30,9 +36,23 @@
               └───────────┘
 ```
 
-The host itself runs only: Docker, Tailscale, CasaOS (on 8095, moved off 80),
-MergerFS/SnapRAID, and the sambuca systemd timers. Everything else is a
+The host itself runs only: Docker ⚠, Tailscale ⚠, CasaOS ⚠ (on 8095, moved off
+80), MergerFS/SnapRAID, and the sambuca systemd timers. Everything else is a
 container. The host stays thin and auditable.
+
+**⚠ CasaOS is the weakest link in the project.** It is installed by piping an
+unpinned, unsigned script into a root shell — the only remote-execution point
+here that is not signature-verified. Whoever controls that URL controls every
+appliance at install time. It is tolerated because CasaOS has no packaged
+distribution and the dashboard is optional; Caddy serves every service without
+it. See [MAINTENANCE.md](MAINTENANCE.md) Tier 2 for the fix, in preference
+order.
+
+**⚠ The messaging bridges (Signal, WhatsApp, IRC) are Tier 1** — they speak
+protocols owned by companies that do not want them spoken, they break silently,
+and WhatsApp bridging carries a real if small account-suspension risk for the
+owner. They are their own bundle, excluded from unattended updates, and must not
+ship without a health monitor and a named human watching upstream.
 
 ## Boot to working appliance
 
@@ -123,3 +143,37 @@ unexpected signature. `gitops-sync.sh` refuses an unsigned tag.
 an abnormal number of files were deleted, because syncing would overwrite the
 parity that could undo them. `restic prune` is opt-in. `WATCHTOWER_REMOVE_VOLUMES`
 is false.
+
+## The CA private key never leaves the host
+
+Caddy's internal CA signs everything on the LAN, so its key is the most
+load-bearing secret on the appliance after the disk key: whoever holds it can
+mint certificates that every device the owner set up will trust, for every
+service.
+
+**No container is ever given it, for any reason.** Services that do not speak
+HTTP — IRC today, anything similar later — get a *dedicated leaf certificate*
+minted on the host by `engine/maintenance/issue-service-cert.sh`, which reads
+the CA key as root, uses it once, and writes out only the leaf and its own key.
+
+This rule exists because the obvious shortcut was taken and shipped: Ergo was
+mounted Caddy's CA directory and told to serve `root.crt`/`root.key` as its TLS
+certificate. That handed a chat container the CA private key — one container
+escape away from total MITM of the whole appliance — and it could not have
+worked anyway, since a CA root has no hostname SAN and asserts `CA:TRUE`.
+Registered in [MAINTENANCE.md](MAINTENANCE.md) Tier 5.
+
+## Every stage tells the owner what is happening
+
+An unattended installer that prints nothing but log lines is indistinguishable
+from a hung machine, and a non-technical owner watching `exec: apt-get` scroll
+for forty minutes will eventually power-cycle it — during disk provisioning,
+which is how installs get corrupted.
+
+So every stage announces, before it starts: **what is happening, how long it
+usually takes, what the owner should do** (usually nothing, and saying so is the
+point), and **what comes next**. On failure it says what it means, that nothing
+after it has run, and the exact command to resume. The helpers are `sb_stage`,
+`sb_stage_ok` and `sb_stage_failed` in `engine/lib/common.sh`; the per-phase
+wording lives in the `STAGE_INFO` table in `first-boot.sh`, in the owner's
+language rather than ours.

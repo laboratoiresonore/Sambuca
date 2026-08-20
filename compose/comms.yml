@@ -23,7 +23,13 @@ services:
     volumes:
       - ./config/ergo/ircd.yaml:/ircd/ircd.yaml:ro
       - ${SAMBUCA_APPDATA}/ergo:/ircd/data
-      - ${SAMBUCA_APPDATA}/caddy/data/caddy/pki/authorities/local:/ircd/tls:ro
+      # A DEDICATED LEAF certificate for irc.<domain>, minted from the local CA
+      # by phase 60-stack. This mount used to be Caddy's CA directory, which
+      # handed this container the CA PRIVATE KEY — anything compromising Ergo
+      # could then mint trusted certificates for every other service on the
+      # appliance. It also could not have worked: a CA root has no hostname SAN
+      # and asserts CA:TRUE, so clients reject it as a server certificate.
+      - ${SAMBUCA_APPDATA}/ergo/tls:/ircd/tls:ro
     environment:
       TZ: ${TZ:-UTC}
     healthcheck:

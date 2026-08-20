@@ -1,0 +1,77 @@
+name: upstream-drift
+
+# Everything sambuca depends on that it does not control — container images,
+# model registry, apt repositories, remote install scripts — checked daily.
+#
+# The register is docs/MAINTENANCE.md. This workflow is the half of it a machine
+# can do; the protocol bridges in Tier 1 need a human, which is why they are
+# Tier 1.
+#
+# Drift here is usually NOT our bug. It is an upstream that moved, and the point
+# is to find out on a Tuesday morning rather than from a user whose install
+# failed halfway through.
+
+on:
+  schedule:
+    # 07:15 UTC daily. Off the hour, because everything on earth runs at :00.
+    - cron: "15 7 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      # Re-check immediately when the things being watched actually change.
+      - "compose/.env.example"
+      - "engine/profiles/*.env"
+      - "tools/check-upstreams.py"
+      - "tools/verify-images.py"
+      - "docs/MAINTENANCE.md"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    name: check every upstream coupling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: probe upstreams
+        id: probe
+        # `|| rc=$?` because steps run under `bash -e` and this script uses exit
+        # codes to distinguish real drift (1) from known-pending items (2).
+        run: |
+          rc=0
+          python tools/check-upstreams.py --json drift-report.json \
+            | tee drift.log || rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Upstream drift"
+            echo
+            echo '```'
+            tail -n 30 drift.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: |
+            drift-report.json
+            drift.log
+          retention-days: 30
+
+      - name: fail on real drift
+        if: steps.probe.outputs.rc == '1'
+        run: |
+          echo "::error::An upstream sambuca depends on has changed or disappeared."
+          echo "See docs/MAINTENANCE.md for what each coupling is and who owns it."
+          exit 1
+
+      - name: note known-pending items
+        if: steps.probe.outputs.rc == '2'
+        run: echo "::warning::Only known-pending items (first-party image unpublished)."

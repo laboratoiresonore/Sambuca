@@ -194,6 +194,77 @@ sb_single_instance() {
 }
 
 # ---------------------------------------------------------------------------
+# Stage narration.
+#
+# An unattended installer that prints nothing but log lines is terrifying to a
+# non-technical owner: a black screen scrolling `exec: apt-get` for forty
+# minutes is indistinguishable from a machine that has hung. Every stage
+# therefore announces four things, in the owner's language, before it starts:
+#
+#     WHAT is happening now
+#     HOW LONG it usually takes
+#     WHAT THE OWNER SHOULD DO (usually: nothing, and saying so matters)
+#     WHAT COMES NEXT
+#
+# and, if it fails, exactly what to do about it. This is the difference between
+# "it's working" and "I think it's broken, I'll power-cycle it" — which, during
+# disk provisioning, is how installs get corrupted.
+# ---------------------------------------------------------------------------
+SB_STAGE_TOTAL="${SB_STAGE_TOTAL:-0}"
+SB_STAGE_INDEX=0
+
+sb_stage() {
+    # sb_stage <number> <title> <what> <how-long> <your-move> <next>
+    local num="$1" title="$2" what="$3" howlong="$4" action="$5" next="$6"
+    SB_STAGE_INDEX="$num"
+    local width=72
+    local bar; bar="$(printf '%*s' "$width" '' | tr ' ' '-')"
+
+    {
+        printf '\n%s\n' "$bar"
+        if [[ ${SB_STAGE_TOTAL:-0} -gt 0 ]]; then
+            printf '  STEP %s OF %s   %s\n' "$num" "$SB_STAGE_TOTAL" "$title"
+        else
+            printf '  %s\n' "$title"
+        fi
+        printf '%s\n' "$bar"
+        printf '  What is happening : %s\n' "$what"
+        printf '  How long          : %s\n' "$howlong"
+        printf '  What you do       : %s\n' "$action"
+        [[ -n $next ]] && printf '  Next              : %s\n' "$next"
+        printf '\n'
+    } >&2
+
+    # Also to the log file, so a support conversation can reconstruct the run.
+    if [[ -n ${SB_LOG_FILE:-} ]]; then
+        mkdir -p -- "$(dirname -- "$SB_LOG_FILE")" 2>/dev/null || true
+        printf '[stage %s/%s] %s — %s\n' "$num" "${SB_STAGE_TOTAL:-?}" "$title" "$what" \
+            >>"$SB_LOG_FILE" 2>/dev/null || true
+    fi
+}
+
+sb_stage_ok() {
+    # sb_stage_ok <title> <plain-language outcome>
+    printf '\n  ✓ %s — %s\n\n' "$1" "$2" >&2
+}
+
+sb_stage_failed() {
+    # sb_stage_failed <title> <what it means> <what to do...>
+    local title="$1" meaning="$2"; shift 2
+    {
+        printf '\n%s\n' "======================================================================"
+        printf '  STEP FAILED: %s\n' "$title"
+        printf '%s\n\n' "======================================================================"
+        printf '  What this means : %s\n\n' "$meaning"
+        printf '  What to do next :\n'
+        local step
+        for step in "$@"; do printf '      %s\n' "$step"; done
+        printf '\n  Nothing after this step has run. The machine is safe to leave\n'
+        printf '  powered on while you sort it out.\n\n'
+    } >&2
+}
+
+# ---------------------------------------------------------------------------
 # Phase state — makes provisioning resumable and idempotent.
 # ---------------------------------------------------------------------------
 sb_state_done()  { [[ -f "$SB_STATE_DIR/$1.done" ]]; }

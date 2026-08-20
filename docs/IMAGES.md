@@ -1,5 +1,10 @@
 # Container image policy
 
+> Images are **Tier 3** in the [maintenance register](MAINTENANCE.md), which
+> lists every coupling to something outside this repository — bridges, install
+> scripts, apt repos, the model registry — and what watches each one. Image
+> drift is checked daily by the `upstream-drift` workflow.
+
 ## Verification status
 
 **Last verified 2026-08-19 against the live registries: 18 of 19 references

@@ -17,8 +17,12 @@ server:
     ":6667": {}
     ":6697":
       tls:
-        cert: /ircd/tls/root.crt
-        key: /ircd/tls/root.key
+        # A leaf certificate for irc.<domain>, signed by the appliance's local
+        # CA and minted by phase 60-stack. NEVER point this at the CA itself:
+        # that would both fail validation and expose the CA key to this
+        # container. See compose/comms.yml.
+        cert: /ircd/tls/cert.pem
+        key: /ircd/tls/key.pem
 
   casemapping: precis
   enforce-utf8: true

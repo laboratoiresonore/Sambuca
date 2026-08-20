@@ -180,6 +180,36 @@ surface dressed up as a convenience.
 
 ---
 
+## Known weaknesses, named rather than buried
+
+Every external coupling is registered in [MAINTENANCE.md](MAINTENANCE.md). Three
+carry security weight and are stated here so they are not discovered later:
+
+**The CasaOS installer is unverified remote code.** `curl … | bash` as root,
+unpinned and unsigned — the only remote-execution point in the project without
+signature verification. Whoever controls that URL controls every appliance at
+install time. Tolerated because CasaOS ships no packaged distribution and the
+dashboard is optional. An operator who wants no unverified code should drop
+`casaos` from provisioning; Caddy serves every service regardless.
+
+**Bridges terminate end-to-end encryption**, and WhatsApp bridging breaches
+Meta's terms of service with a real if small risk of account suspension. Both
+facts are shown to the owner in those words before pairing. The bridge running
+on the owner's own encrypted hardware is a genuine improvement over a hosted
+one — and still a change to the threat model.
+
+**Pocket ID's one-time setup token is scraped from container logs.** A log
+format change breaks identity bootstrap silently. A log line is not an API; this
+is the most fragile coupling in the repository.
+
+**Fixed 2026-08-20 — CA key exposure.** Ergo was mounted Caddy's CA directory
+and configured to serve `root.crt`/`root.key`. That gave a chat container the CA
+**private key**: one container escape would have yielded the ability to mint
+certificates trusted by every device the owner had onboarded, for every service
+on the appliance. It was also non-functional — a CA root has no hostname SAN.
+Services that cannot get a certificate from Caddy now receive a dedicated leaf
+from `issue-service-cert.sh`, and **no container is given the CA key, ever.**
+
 ## Reporting a vulnerability
 
 Open a GitHub security advisory at

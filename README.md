@@ -77,11 +77,12 @@ But there is a very fair reason for that friction: it is the literal cost of esc
 Everything above is why. Everything below is what it actually does, and how
 to run it.
 
-Deeper detail lives in four documents: [ARCHITECTURE](docs/ARCHITECTURE.md) (the
+Deeper detail lives in five documents: [ARCHITECTURE](docs/ARCHITECTURE.md) (the
 three network planes, the boot sequence, the VRAM arbitration),
 [SECURITY](docs/SECURITY.md) (the threat model and the compromises made on
-purpose), [HARDWARE](docs/HARDWARE.md) (which tier your machine lands in) and
-[IMAGES](docs/IMAGES.md) (the pinning policy).
+purpose), [MAINTENANCE](docs/MAINTENANCE.md) (**every coupling to something we
+do not control, and what watches it**), [HARDWARE](docs/HARDWARE.md) (which tier
+your machine lands in) and [IMAGES](docs/IMAGES.md) (the pinning policy).
 
 ## What it replaces
 
@@ -186,11 +187,13 @@ sambuca/
 │   └── config/                      Caddyfile, ircd.yaml, snapraid.conf template
 │
 ├── tools/
-│   └── verify-images.py             resolve every image against its registry (no docker needed)
+│   ├── verify-images.py             resolve every image against its registry (no docker needed)
+│   └── check-upstreams.py           daily drift check across every external coupling
 │
 └── docs/
     ├── ARCHITECTURE.md              the three network planes, boot sequence, VRAM arbitration
     ├── SECURITY.md                  the threat model, and the tradeoffs made on purpose
+    ├── MAINTENANCE.md               every coupling we do not control, and what watches it
     ├── HARDWARE.md                  what tier your machine lands in, and why
     ├── IMAGES.md                    image pinning policy
     └── design/
@@ -348,6 +351,15 @@ That split gives the desktop app exactly one job after the USB is written:
   *your own hardware, on your own tailnet, on an encrypted disk*. WhatsApp
   bridging also breaks Meta's terms and carries a small but real ban risk; it is
   off by default and says so in those words before showing you a QR code.
+  Bridges are **Tier 1** in the [maintenance register](docs/MAINTENANCE.md):
+  they break silently, they are the one coupling no script can watch, and they
+  do not ship without a health monitor and a named human tracking upstream.
+- **Every stage says what is happening.** An unattended installer that prints
+  nothing but log lines is indistinguishable from a hung machine, and an owner
+  who power-cycles during disk provisioning corrupts the install. So each step
+  states what it is doing, how long it takes, what you should do (usually
+  nothing — and saying so is the point) and what comes next; on failure, what it
+  means and the exact command to resume.
 
 ### 2. Security — a fortress that can also be unbricked
 

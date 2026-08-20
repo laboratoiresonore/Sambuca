@@ -170,6 +170,32 @@ in_csv() {
     return 1
 }
 
+# Plain-language narration for each phase, in the owner's words rather than
+# ours. Fields: title | what is happening | how long | what you do | what next.
+# A phase with no entry still runs; it just gets a terse banner.
+declare -A STAGE_INFO=(
+    [10-system]="Preparing the system|Setting up accounts, the clock and security updates.|about 2 minutes|Nothing — sit tight.|Installing the container engine."
+    [20-docker]="Installing the container engine|Downloading and configuring Docker, which runs every service.|2 to 5 minutes, depending on your connection|Nothing.|Setting up your graphics card, if you have one."
+    [30-gpu-runtime]="Setting up the graphics card|Installing the driver so the AI can use your GPU. Skipped if you have none.|2 to 10 minutes|Nothing. If it asks for a reboot later, that is normal.|Preparing your disks."
+    [40-storage-pool]="Preparing your disks|Combining your drives into one pool and setting up parity.|under a minute, or a few if disks are formatted|Nothing. Your existing files are not touched.|Connecting to the network."
+    [50-network]="Connecting to the network|Joining your private mesh and setting up the firewall.|about a minute|Nothing.|Starting your services."
+    [60-stack]="Starting your services|Downloading and starting files, photos, passwords, chat and the AI.|10 to 40 minutes on a first install — this is the long one|Nothing. Downloads are large; leave it running.|Downloading the AI model."
+    [70-models]="Downloading the AI model|Fetching the largest model your hardware can actually run.|10 minutes to several hours, depending on your connection|Nothing. You can close this screen; it keeps going.|Setting up sign-in."
+    [80-identity]="Setting up sign-in|Preparing passkey login for the services that need it.|under a minute|Nothing yet — you will register your passkey at the end.|Finishing up."
+    [90-report]="Finishing up|Writing your instructions and checking everything is healthy.|a few seconds|Read the summary that appears next. It has your addresses.|Done."
+)
+
+stage_banner() {
+    local name="$1" num="$2"
+    local info="${STAGE_INFO[$name]:-}"
+    if [[ -z $info ]]; then
+        log "───── phase ${name} ─────"
+        return 0
+    fi
+    IFS='|' read -r title what howlong action next <<<"$info"
+    sb_stage "$num" "$title" "$what" "$howlong" "$action" "$next"
+}
+
 run_phase() {
     local script="$1"
     local name; name="$(basename -- "$script" .sh)"
@@ -182,7 +208,8 @@ run_phase() {
         return 0
     fi
 
-    log "───── phase ${name} ─────"
+    STAGE_NUM=$((STAGE_NUM + 1))
+    stage_banner "$name" "$STAGE_NUM"
     local started; started="$(date +%s)"
 
     # Phases run in a subshell: a phase that leaks `set -x`, changes directory,
@@ -192,16 +219,31 @@ run_phase() {
     if ( set -uo pipefail; SB_TAG="$name"; source "$script" ); then
         local elapsed=$(( $(date +%s) - started ))
         [[ $SB_DRY_RUN == 1 ]] || sb_state_mark "$name"
-        ok "phase ${name} complete (${elapsed}s)"
+        local title="${STAGE_INFO[$name]%%|*}"
+        sb_stage_ok "${title:-$name}" "finished in $(fmt_duration "$elapsed")"
         return 0
     fi
 
-    err "phase ${name} FAILED"
-    err "  the system is left in the state that phase reached — nothing was rolled back."
-    err "  inspect:  journalctl -u sambuca-first-boot -n 200"
-    err "            tail -n 200 ${SB_LOG_FILE}"
-    err "  resume :  ${BASH_SOURCE[0]} --from ${name}"
+    local title="${STAGE_INFO[$name]%%|*}"
+    sb_stage_failed "${title:-$name}" \
+        "This step could not finish. Everything before it succeeded and is safe." \
+        "1. Look at what went wrong:" \
+        "     tail -n 40 ${SB_LOG_FILE}" \
+        "" \
+        "2. Most failures at this stage are the network. Check the cable or" \
+        "   Wi-Fi, then try again — it picks up where it stopped:" \
+        "     sambuca-first-boot --from ${name}" \
+        "" \
+        "3. If it fails the same way twice, report it with that log:" \
+        "     https://github.com/laboratoiresonore/Sambuca/issues"
     return 1
+}
+
+fmt_duration() {
+    local s="$1"
+    if ((s < 60)); then printf '%s seconds' "$s"
+    elif ((s < 3600)); then printf '%s minutes' "$((s / 60))"
+    else printf '%s hours %s minutes' "$((s / 3600))" "$(((s % 3600) / 60))"; fi
 }
 
 main() {
@@ -211,12 +253,38 @@ main() {
         return 0
     fi
 
-    log "sambuca first-boot starting (dry-run=${SB_DRY_RUN})"
+    # Count the stages up front so every banner can say "step 3 of 10" — an
+    # owner watching an unattended install needs to know how much is left, or
+    # a long step is indistinguishable from a hang.
+    SB_STAGE_TOTAL=1   # the profiling stage below
+    local f
+    for f in "$PHASE_DIR"/[0-9][0-9]-*.sh; do [[ -e $f ]] && ((SB_STAGE_TOTAL++)); done
+    export SB_STAGE_TOTAL
+    STAGE_NUM=0
+
+    {
+        printf '\n'
+        printf '  ========================================================\n'
+        printf '   SAMBUCA IS SETTING ITSELF UP\n'
+        printf '  ========================================================\n\n'
+        printf '  There are %s steps. Most need nothing from you.\n' "$SB_STAGE_TOTAL"
+        printf '  The whole thing usually takes 30 to 90 minutes, and longer\n'
+        printf '  on a slow connection because it downloads an AI model.\n\n'
+        printf '  You can walk away. It keeps going if you close this screen,\n'
+        printf '  and it tells you what to do at the end.\n\n'
+        printf '  Do NOT power the machine off while this runs.\n\n'
+    } >&2
+
     ingest_payload
 
     # Profile the hardware before any phase that depends on the tier. Phase
     # 30 re-runs it once the GPU driver exists and VRAM becomes readable.
-    log "───── phase 05-profile ─────"
+    STAGE_NUM=1
+    sb_stage 1 "Checking your hardware" \
+        "Measuring your processor, memory and graphics card." \
+        "a few seconds" \
+        "Nothing." \
+        "Preparing the system."
     if ! "${_SB_SELF_DIR}/hardware-detect.sh" ${SB_QUIET:+--quiet}; then
         warn "hardware profiling failed — continuing with conservative defaults"
         printf 'SAMBUCA_TIER=4\nSAMBUCA_TIER_NAME=low-resource\nSAMBUCA_GPU_PROFILE=cpu\n' \
