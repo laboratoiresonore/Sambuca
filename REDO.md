@@ -120,7 +120,7 @@ gone or is a thin call into `imager.launch()`.
 | ~~B2~~ **DONE** | **The only published release cannot flash anything.** preview1's binaries have no engine bundled, so `write` and `write-pi` both fail. | Verified by building and running the .exe. |
 | ~~B3~~ **DONE** | **The README's download links point at those broken binaries.** | `README.md:62-74`. |
 | ~~B4~~ **DONE** | `estimate` is still referenced in three places in the README and in the app's menu. | Being deleted in A5; references must go with it. |
-| ~~B5~~ **DONE** | The `_interactive` menu's options 4 and 5 print a command instead of doing anything. | *"HOW THE FUCK IS THAT HELPING A NOVICE"* — correct. |
+| ~~B5~~ **DONE (was marked done while still broken)** | The `_interactive` menu's options 4 and 5 print a command instead of doing anything. | *"HOW THE FUCK IS THAT HELPING A NOVICE"* — correct. **Marked DONE prematurely and stayed that way for some time**: both options were still printing `sambuca-flasher write --iso …` and `write-pi --image …` at people who had just double-clicked an app. Option 5's instruction was stale on top of that — `--image` had stopped being required. Actually fixed 2026-08-20: 5 runs directly, 4 downloads the ISO. Second instance of the same failure as #4/handover, which is why the audit below now exists. |
 
 **Acceptance for B1:** a tagged build produces three binaries and a release with
 `SHA256SUMS.txt`, and each binary passes the engine-bundle check that already
@@ -214,3 +214,35 @@ So the list above is not read as "nothing works":
 9. **C1, C3–C6** — the genuinely new work.
 
 Item 1 first because every other fix is invisible while the build is broken. Item 3 immediately after, because a flasher that leaves a novice alone in someone else's tool has not replaced the 855 lines — it has just moved the failure somewhere less fixable.
+
+---
+
+## The audit that should have existed from the start (2026-08-20)
+
+Two items were marked **DONE** while still broken, and neither was caught by
+tests or by review. They were caught by asking one question of every claim:
+
+> **Is it reachable from something a person can actually invoke?**
+
+- **`handover`** — fully written, twelve passing tests, and called from no
+  command. The tests are *why* it went unnoticed: green, thorough, and
+  exercising a module no owner could reach. Marked done in the task list.
+- **B5** — the menu's options 4 and 5 were still printing commands at novices
+  long after the row above said they were not.
+
+The shape is identical in both: **existence was mistaken for wiring.** A file
+that imports cleanly and passes its tests looks finished from every angle
+except the one that matters.
+
+**What now guards it:**
+
+| guard | catches |
+|---|---|
+| `tests/test_promises.py` | any `sambuca-flasher <cmd>` written anywhere that is not a real command — the failure that shipped `verify-sheet` in a message before it existed |
+| the frozen-binary smoke test in `build-flasher.yml` | new commands that break only when packaged; it now exercises `handover` and `verify-sheet`, not just the three commands that predate them |
+| an inbound-reference sweep over every module | code with no callers |
+
+**The rule this leaves behind:** *a module is not done when it is written and
+tested. It is done when something a user can type reaches it.* Status honesty
+is not paperwork here — the README's status table is the thing an owner reads
+when deciding whether to trust this with their files.

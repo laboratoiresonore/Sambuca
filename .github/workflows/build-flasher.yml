@@ -136,6 +136,41 @@ jobs:
             | grep -q "staged .* engine file" \
             || { echo "FAIL: no bundled manifest — the binary cannot work offline"; exit 1; }
 
+          # THE SAME BLIND SPOT, ONE LAYER OUT. Every check above predates
+          # verify-sheet and handover, so a frozen binary could ship with
+          # either of them broken and still pass — which is precisely how the
+          # engine-less binary shipped: the suite did not touch the thing that
+          # was wrong.
+          #
+          # verify-sheet is the one people run YEARS later, alone, holding a
+          # piece of paper and no other way in. It needs the bundled BIP-39
+          # wordlist, so this proves --collect-all mnemonic actually worked
+          # rather than assuming the flag did what it says.
+          #
+          # BOTH DIRECTIONS, because a checker that only ever says yes is
+          # worthless — and it would still pass a one-sided test.
+          #
+          # The phrases are chosen, not invented. "zebra" x24 PASSES the BIP-39
+          # checksum, which is a genuinely surprising property and was very
+          # nearly used here as the obviously-bogus input: an all-identical
+          # phrase looks fake and is not. "abandon" x24 fails. Executed rather
+          # than reasoned about, which is the only reason the right one is here.
+          ZEBRA=$(printf 'zebra %.0s' $(seq 24)); ABANDON=$(printf 'abandon %.0s' $(seq 24))
+
+          echo "$ABANDON" | "$BIN" verify-sheet 2>&1 | grep -q "DO NOT rely" \
+            || { echo "FAIL: verify-sheet accepts an invalid phrase"; exit 1; }
+
+          echo "$ZEBRA" | "$BIN" verify-sheet 2>&1 | grep -q "Fingerprint from what you typed" \
+            || { echo "FAIL: verify-sheet cannot check a valid phrase (wordlist missing?)"; exit 1; }
+
+          # handover, pointed somewhere that cannot answer. Exits 1 by design,
+          # so the exit code is not the signal — the message is. This proves
+          # its imports resolve frozen and that it fails with guidance rather
+          # than a traceback.
+          "$BIN" handover --domain sambuca-nothing-here.invalid 2>&1 \
+            | grep -q "Nothing answered yet" \
+            || { echo "FAIL: handover does not run in the frozen binary"; exit 1; }
+
           echo "the frozen binary works, engine and manifest included"
 
       - uses: actions/upload-artifact@v4
