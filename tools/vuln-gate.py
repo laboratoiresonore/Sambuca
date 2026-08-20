@@ -42,10 +42,10 @@ Exit:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import sys
-import contextlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]

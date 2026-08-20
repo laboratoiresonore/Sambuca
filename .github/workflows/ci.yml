@@ -111,7 +111,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e './apps/flasher[dev]'
-      - run: ruff check apps/flasher/src apps/flasher/tests
+      - run: ruff check apps/flasher/src apps/flasher/tests tools
       - run: python -m pytest apps/flasher/tests -q
 
   caddy:
