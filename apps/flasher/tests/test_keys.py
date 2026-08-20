@@ -9,6 +9,8 @@ orphans every existing backup, and nothing else in the system would notice.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from sambuca_flasher.keys import (
@@ -21,7 +23,6 @@ from sambuca_flasher.keys import (
     seed_fingerprint,
 )
 from sambuca_flasher.payload import ApplianceConfig, build_provision_payload
-
 
 # --------------------------------------------------------------------- HKDF
 
@@ -187,7 +188,10 @@ def test_unknown_bundle_rejected():
 
 
 def test_key_material_is_frozen():
+    """Key material must not be mutable after generation: a caller that could
+    swap the seed after the recovery PDF was rendered would produce a document
+    that does not match the machine."""
     keys = generate_key_material()
     assert isinstance(keys, KeyMaterial)
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         keys.seed_phrase = "tampered"  # type: ignore[misc]

@@ -19,8 +19,8 @@ lsblk. Each returns the same `RemovableDevice` shape.
 from __future__ import annotations
 
 import json
-import plistlib
 import platform
+import plistlib
 import subprocess
 from dataclasses import dataclass
 

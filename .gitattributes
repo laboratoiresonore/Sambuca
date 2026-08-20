@@ -1,0 +1,41 @@
+# sambuca :: line-ending policy
+#
+# EVERY text file in this repository is LF, unconditionally.
+#
+# This is not a style preference. The engine ships shell scripts that run as the
+# init path of a headless appliance, and a CRLF line ending there is not a
+# cosmetic problem — `#!/bin/sh\r` is not a valid interpreter, and `then\r` is
+# not `then`. dash rejects the file outright; bash sometimes tolerates it, which
+# is worse, because the breakage then only appears on the target machine.
+#
+# It has already happened once in this repo's history: an editing pass on
+# Windows rewrote 19 files to CRLF, and dash refused the installer's abort
+# countdown — the one script whose job is to stop an unattended disk wipe.
+#
+# `* text=auto eol=lf` normalises on commit AND checkout, so a contributor on
+# Windows with core.autocrlf=true cannot reintroduce it.
+
+* text=auto eol=lf
+
+# Explicit for the files where it is load-bearing.
+*.sh        text eol=lf
+*.bash      text eol=lf
+*.py        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.cfg       text eol=lf
+*.env       text eol=lf
+*.toml      text eol=lf
+*.md        text eol=lf
+*.service   text eol=lf
+*.timer     text eol=lf
+Makefile    text eol=lf
+Caddyfile   text eol=lf
+preseed.cfg text eol=lf
+
+# Binaries must never be touched.
+*.png    binary
+*.jpg    binary
+*.pdf    binary
+*.iso    binary
+*.bundle binary

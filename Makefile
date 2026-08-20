@@ -13,7 +13,7 @@ FLASHER_DIR := $(REPO_ROOT)/apps/flasher
 BUILD_DIR := $(REPO_ROOT)/build
 
 SHELL_SCRIPTS := $(shell find $(ENGINE_DIR) -name '*.sh' 2>/dev/null)
-COMPOSE_FILES := docker-compose.yml:ai.yml:cloud.yml:office.yml:comms.yml:gpu.cpu.yml
+COMPOSE_FILES := docker-compose.yml:ai.yml:cloud.yml:office.yml:comms.yml:gpu.cpu.ai.yml:gpu.cpu.cloud.yml
 
 .PHONY: help
 help: ## Show this help

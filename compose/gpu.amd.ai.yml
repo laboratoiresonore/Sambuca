@@ -1,4 +1,4 @@
-# sambuca :: compose/gpu.amd.yml — ROCm overlay
+# sambuca :: compose/gpu.amd.ai.yml — ROCm overlay — inference engine
 #
 # AMD compute reaches containers through device nodes and group membership,
 # not through a custom container runtime. /dev/kfd is the compute node and
@@ -7,6 +7,11 @@
 # group_add uses the numeric GIDs recorded by phase 30 in /etc/sambuca/gpu-amd.env
 # because the render group's GID differs across distributions and a hardcoded
 # 44/109 silently produces a permission error that looks like "no GPU found".
+#
+# SPLIT PER BUNDLE ON PURPOSE. A compose override that names a service the
+# selected bundles do not define makes the ENTIRE project invalid, not just
+# that service. Phase 60-stack therefore appends gpu.<profile>.<bundle>.yml
+# only for bundles that are actually enabled.
 
 services:
 
@@ -25,13 +30,3 @@ services:
       # exposed as an override rather than guessed.
       HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:-}
       ROCR_VISIBLE_DEVICES: ${ROCR_VISIBLE_DEVICES:-0}
-
-  immich-machine-learning:
-    devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    group_add:
-      - ${AMD_VIDEO_GID:-44}
-      - ${AMD_RENDER_GID:-105}
-    environment:
-      HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:-}

@@ -123,7 +123,9 @@ def _page_one(c: canvas.Canvas, keys: KeyMaterial, config: ApplianceConfig) -> N
     c.drawString(_MARGIN, y, "1.  BACKUP SEED PHRASE  (24 words)")
     y -= 5 * mm
     c.setFont(_BODY, 9)
-    c.drawString(_MARGIN, y, "Reconstructs the encrypted backup repository. Order matters — copy the numbers.")
+    c.drawString(_MARGIN, y,
+                 "Reconstructs the encrypted backup repository. "
+                 "Order matters — copy the numbers.")
     y -= 8 * mm
 
     words = keys.seed_phrase.split()
@@ -153,7 +155,8 @@ def _page_one(c: canvas.Canvas, keys: KeyMaterial, config: ApplianceConfig) -> N
     c.drawString(_MARGIN, y, "2.  ROOT PASSPHRASE  (32 characters)")
     y -= 5 * mm
     c.setFont(_BODY, 9)
-    c.drawString(_MARGIN, y, "Unlocks the encrypted disk at boot, and is the console account password.")
+    c.drawString(_MARGIN, y,
+                 "Unlocks the encrypted disk at boot, and is the console account password.")
     y -= 9 * mm
 
     c.setLineWidth(0.8)
@@ -168,7 +171,8 @@ def _page_one(c: canvas.Canvas, keys: KeyMaterial, config: ApplianceConfig) -> N
 
     c.setFont(_BODY, 8.5)
     c.setFillGray(0.3)
-    c.drawString(_MARGIN, y, "Spaces above are for reading only — type the characters with no spaces.")
+    c.drawString(_MARGIN, y,
+                 "Spaces above are for reading only — type the characters with no spaces.")
     c.setFillGray(0)
     y -= 10 * mm
 

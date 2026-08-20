@@ -36,21 +36,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: validate every bundle combination
+      - name: validate every GPU profile against every bundle subset
+        # The SUBSETS matter as much as the profiles. A compose override naming
+        # a service that the selected bundles do not define invalidates the
+        # WHOLE project, not just that service. That shipped once — the GPU
+        # overlays declared immich-machine-learning, so dropping the `cloud`
+        # bundle broke everything. This loop is why it cannot happen again.
         run: |
           cd compose
-          for gpu in gpu.cpu.yml gpu.nvidia.yml gpu.amd.yml; do
-            COMPOSE_FILE="docker-compose.yml:ai.yml:cloud.yml:office.yml:comms.yml:$gpu" \
-            COMPOSE_PATH_SEPARATOR=: \
-            docker compose --env-file .env.example config --quiet \
-              || { echo "FAILED with $gpu"; exit 1; }
-            echo "ok: $gpu"
+          fail=0
+          for gpu in cpu nvidia amd; do
+            for bundles in "" "ai" "cloud" "office" "comms"                            "ai,cloud" "cloud,office" "ai,cloud,office,comms"; do
+              chain="docker-compose.yml"
+              IFS=',' read -ra sel <<< "$bundles"
+              for b in "${sel[@]}"; do
+                [ -n "$b" ] && chain="$chain:$b.yml"
+              done
+              for b in "${sel[@]}"; do
+                if [ -n "$b" ] && [ -f "gpu.$gpu.$b.yml" ]; then
+                  chain="$chain:gpu.$gpu.$b.yml"
+                fi
+              done
+              if COMPOSE_FILE="$chain" COMPOSE_PATH_SEPARATOR=:                  docker compose --env-file .env.example config --quiet 2>/dev/null; then
+                echo "ok   gpu=$gpu bundles=[${bundles:-none}]"
+              else
+                echo "FAIL gpu=$gpu bundles=[${bundles:-none}]"
+                echo "     chain=$chain"
+                fail=1
+              fi
+            done
           done
-      - name: validate the minimal core-only chain
-        run: |
-          cd compose
-          COMPOSE_FILE="docker-compose.yml:gpu.cpu.yml" COMPOSE_PATH_SEPARATOR=: \
-            docker compose --env-file .env.example config --quiet
+          exit $fail
 
   flasher:
     name: flasher

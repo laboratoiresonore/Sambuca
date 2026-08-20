@@ -469,6 +469,7 @@ SAMBUCA_CPU_CORES=${CPU_CORES}
 SAMBUCA_CPU_THREADS=${CPU_THREADS}
 SAMBUCA_CPU_AVX2=${CPU_AVX2}
 SAMBUCA_CPU_AVX512=${CPU_AVX512}
+SAMBUCA_CPU_VIRT=${CPU_VIRT}
 SAMBUCA_RAM_TOTAL_MB=${RAM_TOTAL_MB}
 
 # --- gpu ---
@@ -495,8 +496,10 @@ SAMBUCA_MODEL_VISION=${MODEL_VISION}
 SAMBUCA_MODEL_EMBED=${MODEL_EMBED}
 
 # --- compose wiring ---
-# Selects compose/gpu.<profile>.yml in the COMPOSE_FILE chain.
-COMPOSE_GPU_OVERLAY=gpu.${GPU_PROFILE}.yml
+# Phase 60-stack appends compose/gpu.<profile>.<bundle>.yml for each ENABLED
+# bundle. It is not one file: an overlay that names a service an unselected
+# bundle does not define invalidates the whole compose project.
+SAMBUCA_COMPOSE_GPU_PROFILE=${GPU_PROFILE}
 
 # --- inference engine limits ---
 OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED}

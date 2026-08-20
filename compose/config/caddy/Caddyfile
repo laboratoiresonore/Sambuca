@@ -190,21 +190,56 @@ matrix.{$SAMBUCA_DOMAIN} {
 # break the serve mapping.
 # ═════════════════════════════════════════════════════════════════════════
 
-:8443 { import hardening
-        reverse_proxy odysseus:3000 }
-:8444 { import hardening
-        reverse_proxy nextcloud-aio:11000 }
-:8445 { import hardening
-        reverse_proxy immich-server:2283 }
-:8446 { import hardening
-        reverse_proxy vaultwarden:80 }
-:8447 { import hardening
-        reverse_proxy blinko:1111 }
-:8449 { import hardening
-        reverse_proxy bentopdf:8080 }
-:8450 { import hardening
-        reverse_proxy uptime-kuma:3001 }
-:8451 { import hardening
-        reverse_proxy pocket-id:1411 }
-:8452 { import hardening
-        reverse_proxy host.docker.internal:{$CASAOS_PORT} }
+# chat
+:8443 {
+	import hardening
+	reverse_proxy odysseus:3000
+}
+
+# files
+:8444 {
+	import hardening
+	reverse_proxy nextcloud-aio:11000
+}
+
+# photos
+:8445 {
+	import hardening
+	reverse_proxy immich-server:2283
+}
+
+# passwords
+:8446 {
+	import hardening
+	reverse_proxy vaultwarden:80
+}
+
+# notes
+:8447 {
+	import hardening
+	reverse_proxy blinko:1111
+}
+
+# pdf
+:8449 {
+	import hardening
+	reverse_proxy bentopdf:8080
+}
+
+# monitoring
+:8450 {
+	import hardening
+	reverse_proxy uptime-kuma:3001
+}
+
+# identity
+:8451 {
+	import hardening
+	reverse_proxy pocket-id:1411
+}
+
+# dashboard
+:8452 {
+	import hardening
+	reverse_proxy host.docker.internal:{$CASAOS_PORT}
+}

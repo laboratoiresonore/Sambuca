@@ -20,7 +20,6 @@ done
 : "${SAMBUCA_DOMAIN:=sambuca.local}"
 : "${SAMBUCA_DATA:=/srv/sambuca}"
 : "${SAMBUCA_BUNDLES:=ai,cloud,office,comms}"
-: "${COMPOSE_GPU_OVERLAY:=gpu.cpu.yml}"
 : "${SAMBUCA_TS_DNSNAME:=}"
 
 COMPOSE_DIR="${SAMBUCA_COMPOSE_DIR:-/opt/sambuca/compose}"
@@ -36,7 +35,11 @@ install -d -m 0700 "$SECRETS_DIR"
 # it is the classic idempotency bug in provisioning scripts.
 # ---------------------------------------------------------------------------
 secret_get() {
-    local name="$1" bytes="${2:-32}" path="${SECRETS_DIR}/${name}"
+    local name="$1" bytes="${2:-32}"
+    # Separate statement, deliberately: inside one `local`, ${name} has not yet
+    # taken effect, so every secret would resolve to the same path and overwrite
+    # the previous one. shellcheck SC2318 caught this before any hardware did.
+    local path="${SECRETS_DIR}/${name}"
     if [[ -s $path ]]; then
         cat -- "$path"
         return 0
@@ -64,21 +67,30 @@ SYNAPSE_REGISTRATION_SECRET="$(secret_get synapse_registration_secret 48)"
 # is exactly what runs.
 # ---------------------------------------------------------------------------
 chain="docker-compose.yml"
+enabled=()
 IFS=',' read -ra bundles <<<"$SAMBUCA_BUNDLES"
 for b in "${bundles[@]}"; do
     b="${b// /}"; [[ -z $b ]] && continue
     if [[ -f "${COMPOSE_DIR}/${b}.yml" ]]; then
         chain="${chain}:${b}.yml"
+        enabled+=("$b")
     else
         warn "bundle '${b}' requested but ${COMPOSE_DIR}/${b}.yml does not exist — skipping"
     fi
 done
-if [[ -f "${COMPOSE_DIR}/${COMPOSE_GPU_OVERLAY}" ]]; then
-    chain="${chain}:${COMPOSE_GPU_OVERLAY}"
-else
-    warn "GPU overlay ${COMPOSE_GPU_OVERLAY} missing — falling back to gpu.cpu.yml"
-    chain="${chain}:gpu.cpu.yml"
-fi
+
+# GPU overlays are per-bundle. A compose override naming a service the selected
+# bundles do not define invalidates the ENTIRE project, not just that service,
+# so an overlay is only appended when its bundle is actually present.
+profile="${SAMBUCA_GPU_PROFILE:-cpu}"
+[[ -f "${COMPOSE_DIR}/gpu.${profile}.ai.yml" ]] || {
+    warn "no overlay for GPU profile '${profile}' — falling back to cpu"
+    profile="cpu"
+}
+for b in "${enabled[@]}"; do
+    overlay="gpu.${profile}.${b}.yml"
+    [[ -f "${COMPOSE_DIR}/${overlay}" ]] && chain="${chain}:${overlay}"
+done
 # A local overlay the owner controls, always last so it wins.
 [[ -f "${COMPOSE_DIR}/local.yml" ]] && chain="${chain}:local.yml"
 

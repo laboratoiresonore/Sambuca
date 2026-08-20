@@ -6,7 +6,7 @@
 # touched anything, on the installer's own console.
 #
 # POSIX sh, not bash: the Debian installer environment is busybox ash. No
-# arrays, no [[ ]], no `read -t` guarantees — hence the manual tick loop.
+# arrays, no [[ ]], and no `read -t` — hence the stty/dd timed read below.
 #
 # It prints the target disk AND WHAT IS ON IT, then counts down. Any keypress
 # aborts to a shell. Printing the disk's existing contents is the whole point:
@@ -24,9 +24,9 @@ TARGET="$(debconf-get partman-auto/disk 2>/dev/null || true)"
 
 {
     printf '\n'
-    printf '===============================================================\n'
+    printf '%s\n' '==============================================================='
     printf '   SAMBUCA — UNATTENDED INSTALL\n'
-    printf '===============================================================\n\n'
+    printf '%s\n\n' '==============================================================='
     printf '  TARGET DISK:  %s\n\n' "$TARGET"
 
     if [ "$TARGET" = "UNRESOLVED" ]; then
@@ -43,25 +43,48 @@ TARGET="$(debconf-get partman-auto/disk 2>/dev/null || true)"
         fi
     fi
 
-    printf '\n---------------------------------------------------------------\n'
+    printf '\n%s\n' '---------------------------------------------------------------'
     printf '  EVERYTHING ON THIS DISK WILL BE ERASED AND ENCRYPTED.\n'
     printf '  Other disks in this machine are NOT touched by the installer.\n'
-    printf '---------------------------------------------------------------\n\n'
+    printf '%s\n\n' '---------------------------------------------------------------'
     printf '  Press ANY KEY within %s seconds to ABORT.\n\n' "$COUNTDOWN"
 } >"$CONSOLE" 2>&1
+
+# Timed single-character read, without `read -t`.
+#
+# `stty min 0 time N` + `dd` is plain POSIX and behaves the same under busybox
+# ash, dash and bash: the terminal returns after N tenths of a second with
+# whatever was typed, or with nothing. `read -t` would be shorter, but where it
+# is unimplemented `read` blocks forever, which converts this safety window into
+# a hung installer — strictly worse than having no window.
+SAVED_TTY=""
+STTY_OK=1
+SAVED_TTY="$(stty -g <"$CONSOLE" 2>/dev/null)" || STTY_OK=0
+
+if [ "$STTY_OK" != 1 ]; then
+    printf '%s\n' '  WARNING: this console cannot enter raw mode, so the countdown below' >"$CONSOLE" 2>&1
+    printf '%s\n' '           is DISPLAY ONLY - a keypress will NOT stop the install.' >"$CONSOLE" 2>&1
+    printf '%s\n' '           Power the machine off now if you did not intend to install.' >"$CONSOLE" 2>&1
+fi
+
+key_pressed_within_1s() {
+    [ "$STTY_OK" = 1 ] || { sleep 1; return 1; }
+    stty -icanon -echo min 0 time 10 <"$CONSOLE" 2>/dev/null
+    _key="$(dd bs=1 count=1 2>/dev/null <"$CONSOLE")"
+    stty "$SAVED_TTY" <"$CONSOLE" 2>/dev/null
+    [ -n "$_key" ]
+}
 
 i="$COUNTDOWN"
 while [ "$i" -gt 0 ]; do
     printf '\r  Continuing in %2s seconds...  ' "$i" >"$CONSOLE" 2>&1
 
-    # busybox `read -t 1` is unreliable across builds; poll stdin non-blockingly
-    # via a 1-second timed read on the console instead.
-    if read -t 1 -r _key <"$CONSOLE" 2>/dev/null; then
+    if key_pressed_within_1s; then
         {
             printf '\n\n'
-            printf '===============================================================\n'
+            printf '%s\n' '==============================================================='
             printf '  ABORTED BY OPERATOR — nothing has been written to any disk.\n'
-            printf '===============================================================\n\n'
+            printf '%s\n\n' '==============================================================='
             printf '  Dropping to an installer shell.\n'
             printf '    - inspect disks:   lsblk -f\n'
             printf '    - resume install:  exit\n'

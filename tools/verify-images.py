@@ -32,13 +32,11 @@ from pathlib import Path
 
 FIRST_PARTY_PREFIXES = ("ghcr.io/laboratoiresonore/",)
 
-ACCEPT = ", ".join(
-    [
-        "application/vnd.oci.image.index.v1+json",
-        "application/vnd.oci.image.manifest.v1+json",
-        "application/vnd.docker.distribution.manifest.list.v2+json",
-        "application/vnd.docker.distribution.manifest.v2+json",
-    ]
+ACCEPT = (
+    "application/vnd.oci.image.index.v1+json, "
+    "application/vnd.oci.image.manifest.v1+json, "
+    "application/vnd.docker.distribution.manifest.list.v2+json, "
+    "application/vnd.docker.distribution.manifest.v2+json"
 )
 
 TOKEN_ENDPOINTS = {

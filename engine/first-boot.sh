@@ -187,6 +187,7 @@ run_phase() {
 
     # Phases run in a subshell: a phase that leaks `set -x`, changes directory,
     # or exports something odd cannot contaminate the orchestrator.
+    # shellcheck source=/dev/null  (phase path is resolved at runtime by design)
     if ( set -uo pipefail; SB_TAG="$name"; source "$script" ); then
         local elapsed=$(( $(date +%s) - started ))
         [[ $SB_DRY_RUN == 1 ]] || sb_state_mark "$name"
@@ -217,7 +218,7 @@ main() {
     log "───── phase 05-profile ─────"
     if ! "${_SB_SELF_DIR}/hardware-detect.sh" ${SB_QUIET:+--quiet}; then
         warn "hardware profiling failed — continuing with conservative defaults"
-        printf 'SAMBUCA_TIER=4\nSAMBUCA_TIER_NAME=low-resource\nSAMBUCA_GPU_PROFILE=cpu\nCOMPOSE_GPU_OVERLAY=gpu.cpu.yml\n' \
+        printf 'SAMBUCA_TIER=4\nSAMBUCA_TIER_NAME=low-resource\nSAMBUCA_GPU_PROFILE=cpu\n' \
             | sb_atomic_write "${SB_ETC}/profile.env" 0644
     fi
 

@@ -15,17 +15,17 @@ rather than half-written garbage.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import platform
 import shutil
 import subprocess
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
-from .devices import RemovableDevice, DeviceError
+from .devices import DeviceError, RemovableDevice
 
 _CHUNK = 4 * 1024 * 1024   # 4 MiB: large enough to saturate USB 3, small enough
                            # that progress reporting stays responsive.
@@ -148,10 +148,12 @@ def inject_payload(
     for sensitive in ("provision.json", "preseed.cfg"):
         p = dest / sensitive
         if p.exists():
-            try:
+            # FAT32 cannot express Unix permissions, so this is expected to
+            # fail on the boot partition. Suppressed rather than logged because
+            # the security story does not rest on it — the recovery document
+            # tells the owner to treat the stick itself as a key.
+            with contextlib.suppress(OSError, NotImplementedError):
                 p.chmod(0o600)
-            except (OSError, NotImplementedError):
-                pass
 
     _sync()
     return dest
@@ -238,12 +240,13 @@ def _find_mount(device: RemovableDevice) -> Path | None:
             if out:
                 import plistlib
 
-                try:
+                # A partition that is not mounted YET produces malformed or
+                # partial plist output; that is the normal case on the first
+                # few polls, not an error worth surfacing.
+                with contextlib.suppress(Exception):
                     mp = plistlib.loads(out).get("MountPoint")
                     if mp:
                         return Path(mp)
-                except Exception:  # noqa: BLE001
-                    pass
         elif system == "Linux":
             out = subprocess.run(
                 ["lsblk", "-nro", "MOUNTPOINT", device.path],

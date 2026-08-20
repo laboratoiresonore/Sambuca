@@ -173,7 +173,7 @@ sambuca/
 │   ├── cloud.yml                    Vaultwarden, Nextcloud AIO, Immich
 │   ├── office.yml                   Blinko, BentoPDF
 │   ├── comms.yml                    Ergo, Synapse
-│   ├── gpu.{nvidia,amd,cpu}.yml     exactly one is selected by the hardware profile
+│   ├── gpu.<profile>.<bundle>.yml   per-bundle GPU overrides; only enabled bundles are appended
 │   ├── .env.example                 image pins — see docs/IMAGES.md before releasing
 │   └── config/                      Caddyfile, ircd.yaml, snapraid.conf template
 │

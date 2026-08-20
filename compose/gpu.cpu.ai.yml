@@ -1,4 +1,4 @@
-# sambuca :: compose/gpu.cpu.yml — no-accelerator overlay
+# sambuca :: compose/gpu.cpu.ai.yml — no-accelerator overlay — inference engine
 #
 # Selected when there is no usable GPU, when the driver has not loaded yet, or
 # when the card is an Intel iGPU that Ollama has no supported backend for.
@@ -6,6 +6,11 @@
 # This file EXISTS so the COMPOSE_FILE chain is uniform across every machine.
 # A missing overlay would make phase 60 branch, and a branch in the rendering
 # path is how "works on the test box, fails on the reclaimed laptop" happens.
+#
+# SPLIT PER BUNDLE ON PURPOSE. A compose override that names a service the
+# selected bundles do not define makes the ENTIRE project invalid, not just
+# that service. Phase 60-stack therefore appends gpu.<profile>.<bundle>.yml
+# only for bundles that are actually enabled.
 
 services:
 
@@ -19,10 +24,3 @@ services:
       resources:
         limits:
           memory: ${OLLAMA_MEM_LIMIT:-4g}
-
-  immich-machine-learning:
-    # No device reservation, and the image suffix is empty, so the CPU variant
-    # of the ML image is pulled. On tier 3/4 hardware the owner should also cap
-    # concurrency in Immich itself: Administration -> Jobs.
-    environment:
-      MACHINE_LEARNING_WORKERS: ${MACHINE_LEARNING_WORKERS:-1}

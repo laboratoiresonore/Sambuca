@@ -1,4 +1,4 @@
-# sambuca :: compose/gpu.nvidia.yml — CUDA overlay
+# sambuca :: compose/gpu.nvidia.cloud.yml — CUDA overlay — background photo ML
 #
 # Appended to the COMPOSE_FILE chain by phase 60-stack when hardware-detect.sh
 # resolved SAMBUCA_GPU_PROFILE=nvidia. Requires nvidia-container-toolkit, which
@@ -9,23 +9,13 @@
 # suffix is empty (CPU) unless total VRAM cleared IMMICH_GPU_MIN_VRAM_MB, so on
 # a 12-16 GiB card this overlay grants Immich a device it will not use, and
 # inference keeps the whole card. That is the arbitration working as designed.
+#
+# SPLIT PER BUNDLE ON PURPOSE. A compose override that names a service the
+# selected bundles do not define makes the ENTIRE project invalid, not just
+# that service. Phase 60-stack therefore appends gpu.<profile>.<bundle>.yml
+# only for bundles that are actually enabled.
 
 services:
-
-  ollama:
-    environment:
-      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      # Bound the fraction of VRAM the runner may map, leaving headroom for the
-      # KV cache growth that otherwise triggers a mid-generation OOM.
-      OLLAMA_GPU_OVERHEAD: ${OLLAMA_GPU_OVERHEAD:-0}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: ${OLLAMA_GPU_COUNT:-all}
-              capabilities: [gpu]
 
   immich-machine-learning:
     environment:

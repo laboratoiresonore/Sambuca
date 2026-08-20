@@ -51,7 +51,6 @@ PW_FILE="${SB_ETC}/secrets/restic_password"
 [[ -s $PW_FILE ]] || die "no restic password at ${PW_FILE} — run: sambuca-backup init"
 export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE="$PW_FILE"
 
-COMPOSE_DIR="${SAMBUCA_COMPOSE_DIR:-/opt/sambuca/compose}"
 DUMP_DIR="${SB_LIB}/dumps"
 install -d -m 0700 "$DUMP_DIR"
 

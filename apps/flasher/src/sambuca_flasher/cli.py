@@ -24,7 +24,7 @@ from pathlib import Path
 
 from . import __version__
 from .devices import DeviceError, RemovableDevice, list_removable_devices
-from .keys import KeyMaterial, derive_backup_password, generate_key_material
+from .keys import derive_backup_password, generate_key_material
 from .payload import ApplianceConfig, build_provision_payload, config_from_dict, render_preseed
 from .recovery_pdf import write_recovery_pdf
 from .writer import inject_payload, write_image
@@ -39,8 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_list = sub.add_parser("list", help="list writable removable devices")
-    p_list.add_argument("--allow-large", action="store_true",
-                        help="include devices over 512 GB (normally hidden — they are usually backup drives)")
+    p_list.add_argument(
+        "--allow-large", action="store_true",
+        help="include devices over 512 GB (hidden by default — usually backup drives)")
 
     p_write = sub.add_parser("write", help="build and write an installer USB")
     p_write.add_argument("--iso", type=Path, required=True, help="Debian 12 netinst ISO")
@@ -48,8 +49,9 @@ def main(argv: list[str] | None = None) -> int:
     p_write.add_argument("--config", type=Path, help="JSON appliance configuration")
     p_write.add_argument("--output-dir", type=Path, default=Path.cwd(),
                          help="where the recovery PDF is written (default: cwd)")
-    p_write.add_argument("--interactive", action="store_true",
-                         help="do NOT put the disk passphrase on the USB; the installer will prompt once")
+    p_write.add_argument(
+        "--interactive", action="store_true",
+        help="keep the disk passphrase OFF the USB; the installer prompts once")
     p_write.add_argument("--no-verify", action="store_true",
                          help="skip the readback verification pass (not recommended)")
     p_write.add_argument("--dry-run", action="store_true",

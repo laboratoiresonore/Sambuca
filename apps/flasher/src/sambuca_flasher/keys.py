@@ -44,7 +44,9 @@ except ImportError as exc:  # pragma: no cover - dependency is declared
 # and every character whose position moves between US/UK/FR/DE keyboards
 # (@ " # ~ \ | / etc). A passphrase you cannot type at a recovery console in a
 # hotel room is not a passphrase.
-_PASSPHRASE_ALPHABET = (
+# Named for what it is — the set of glyphs safe to transcribe and retype — not
+# for what it feeds. It holds no secret: the entropy comes from secrets.choice.
+_TYPEABLE_CHARSET = (
     "abcdefghijkmnopqrstuvwxyz"
     "ABCDEFGHJKLMNPQRSTUVWXYZ"
     "23456789"
@@ -117,7 +119,7 @@ def generate_root_passphrase(length: int = _PASSPHRASE_LENGTH) -> str:
     symbol = set("-_.+=")
 
     for _ in range(1000):
-        candidate = "".join(secrets.choice(_PASSPHRASE_ALPHABET) for _ in range(length))
+        candidate = "".join(secrets.choice(_TYPEABLE_CHARSET) for _ in range(length))
         chars = set(candidate)
         if chars & lower and chars & upper and chars & digit and chars & symbol:
             return candidate
