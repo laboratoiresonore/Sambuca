@@ -64,6 +64,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="recover the DISK recovery key from a seed phrase "
                         "(use when the root passphrase is lost)")
 
+    p_est = sub.add_parser("estimate",
+                           help="what will this machine be able to do? "
+                                "(check before you buy anything)")
+    p_est.add_argument("machine", nargs="*", default=[],
+                       help='e.g. "Dell OptiPlex 7060, 16GB, no graphics card"')
+
     p_boot = sub.add_parser("boot-guide",
                             help="how to boot the target machine from the USB "
                                  "(the step that defeats most people)")
@@ -91,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_derive_recovery()
         if args.command == "boot-guide":
             return _cmd_boot_guide(args)
+        if args.command == "estimate":
+            return _cmd_estimate(args)
         if args.command == "example-config":
             return _cmd_example(args)
     except DeviceError as exc:
@@ -272,6 +280,27 @@ def _cmd_derive_recovery() -> int:
     print("  sudo cryptsetup luksChangeKey <device>   # e.g. /dev/nvme0n1p3")
     print("\nIf it is rejected, this machine may predate recovery keyslots, or the")
     print("installer could not enrol one. Check: sudo cryptsetup luksDump <device>")
+    return 0
+
+
+def _cmd_estimate(args) -> int:
+    """Tell someone what a machine can do before they commit it or buy it."""
+    from . import estimate as est
+
+    machine = " ".join(args.machine).strip()
+    if not machine:
+        print("Which machine are you thinking of using?")
+        print("The brand and the rough specs are enough.")
+        print()
+        print("Examples:")
+        print("  Dell OptiPlex 7060, 16GB RAM, no graphics card")
+        print("  gaming PC with an RTX 3060 12GB")
+        print("  Raspberry Pi 5 16GB")
+        print("  old laptop")
+        print()
+        machine = input("machine: ").strip()
+
+    print(est.report(machine))
     return 0
 
 

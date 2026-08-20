@@ -248,30 +248,148 @@ sambuca/
 
 ---
 
-## Hardware tiers
+## Hardware tiers — what your machine can actually run
 
-`engine/hardware-detect.sh` runs at first boot, again after the GPU driver
-installs, and on every subsequent boot. It measures rather than assumes, and an
-unknown value downgrades the tier instead of being optimistically guessed.
+`engine/hardware-detect.sh` measures the machine at first boot and picks a tier.
+Check before you buy anything:
 
-| Tier | Trigger | Chat model | Photo ML |
-|---|---|---|---|
-| **1** heavy GPU | ≥ 24 GB VRAM | 32B q4 · 70B q4 above 40 GB | GPU |
-| **2** mid GPU | 12–23 GB VRAM | 14B q4 | **CPU** |
-| **3** cpu capable | ≥ 8 cores, ≥ 24 GB RAM | 8B q4 | CPU |
-| **4** low resource | anything else | 3B q4 | CPU |
+```bash
+sambuca-flasher estimate "Dell OptiPlex 7060, 16GB, no graphics card"
+```
+
+| Tier | What that looks like in plain language | Chat model | Speed | Photo AI |
+|---|---|---|---|---|
+| **1** — heavy GPU | A gaming or workstation PC with an RTX 3090, 4090, 5090 or two 3060s. 24 GB+ of graphics memory. | 32B, or 70B above 40 GB | Fast — faster than you read | On the GPU |
+| **2** — mid GPU | One modern gaming card: RTX 3060 12GB, 4060 Ti 16GB, 3080. | 14B | Comfortable, ~20–40 words/sec | On the CPU |
+| **3** — capable CPU | An office desktop or workstation with 8+ cores and 24 GB+ RAM, no useful graphics card. Ex-corporate Dell/HP/Lenovo towers land here. | 8B | Slow but usable, ~5–12 words/sec | On the CPU |
+| **4** — low resource | An old laptop, a mini PC, a NAS box, a Raspberry Pi 5. 4 cores, 8–16 GB RAM. | 3B | Patient — a sentence at a time | On the CPU |
+
+**The cloud half is identical on every tier.** Files, photos, passwords, notes,
+calendar, contacts and chat all behave the same on a Raspberry Pi as on a
+threadripper. Only the AI gets slower. If you are here to leave Google rather
+than to run a 70B model, **tier 4 is genuinely enough** — and it is the tier a
+£100 second-hand office PC lands in.
+
+What decides your tier, in order: **graphics memory** (not the GPU's name — a
+24 GB card beats a faster 12 GB one for this), then **RAM**, then **cores**.
 
 **The VRAM arbitration rule:** the inference engine owns the GPU; background ML
-is a guest. Below 20 GB of VRAM, Immich's face-recognition and CLIP worker is
-pinned to the CPU — no negotiation, no "try GPU first" fallback. Two allocators
-that each believe they own the card is how a self-hosted box OOMs at 3am in the
-middle of a library import. Above that threshold Immich gets the GPU, and
-Ollama's keep-alive is bounded so idle VRAM is actually returned.
+is a guest. Below 20 GB of measured VRAM, Immich's face-recognition and CLIP
+worker is pinned to the CPU — no negotiation, no "try GPU first" fallback. Two
+allocators that each believe they own the card is how a self-hosted box OOMs at
+3am mid photo-import. Above that threshold Immich gets the GPU, and Ollama's
+keep-alive is bounded so idle VRAM is actually returned.
 
 Override anything in `/etc/sambuca/profile.local.env` — it is sourced after the
 generated profile and survives regeneration.
 
----
+## What is actually installed, and what we changed
+
+Transparency first. This appliance runs other people's software, and it does not
+run it stock. Below is everything it installs, and **every deviation from what
+you would get installing these yourself** — including who makes each change and
+at which moment.
+
+Nothing here is hidden behind a "recommended settings" checkbox.
+
+### The software
+
+Every component is free software. Versions are the exact pins in
+[compose/.env.example](compose/.env.example).
+
+| Component | Version | Licence | What it does |
+|---|---|---|---|
+| **Debian** | 12 (bookworm) | free (mixed, mostly GPL) | the base system |
+| **Docker CE** | upstream apt | Apache-2.0 | runs every service |
+| **Caddy** | 2.11.4 | Apache-2.0 | the single ingress, local HTTPS |
+| **Tailscale** | upstream apt | BSD-3-Clause | encrypted remote access |
+| **CasaOS** | latest installer | Apache-2.0 | the dashboard tiles |
+| **MergerFS** | Debian package | ISC | pools mismatched disks |
+| **SnapRAID** | Debian package | GPL-3.0 | parity across those disks |
+| **restic** | Debian package | BSD-2-Clause | encrypted backups |
+| **Ollama** | 0.32.15 | MIT | the inference engine |
+| **Odysseus** | *unpublished* | AGPL-3.0 | chat and agent frontend |
+| **Nextcloud AIO** | latest | AGPL-3.0 | files, calendar, contacts |
+| **Immich** | 1.128.0 | AGPL-3.0 | photos, face recognition, search |
+| **Vaultwarden** | 1.37.1 | AGPL-3.0 | passwords |
+| **Blinko** | 1.8.8 | GPL-3.0 | AI notes |
+| **BentoPDF** | 2.8.7 | AGPL-3.0 | in-browser PDF tools |
+| **Ergo** | 2.19.1 | MIT | IRC server |
+| **Synapse** | 1.122.0 | AGPL-3.0 | Matrix homeserver |
+| **Uptime Kuma** | 1.23.17 | MIT | health monitoring |
+| **Pocket ID** | 2.5.0 | BSD-2-Clause | passkey identity |
+| **oauth2-proxy** | 7.14.2 | MIT | the auth gate |
+| **PostgreSQL** | 16.15 | PostgreSQL Licence | databases |
+| **Valkey** | 9.1.1 | BSD-3-Clause | cache — see below |
+| **pgvecto-rs** | pg14-v0.2.0 | Apache-2.0 | vector search for Immich |
+| **Watchtower** | 1.7.1 | Apache-2.0 | opt-in container updates |
+
+**Valkey instead of Redis, and why.** Redis changed licence at 7.4 to
+RSALv2/SSPLv1 — source-available, and neither OSI-approved. Redis 8 re-added
+AGPLv3, so it would also be acceptable. Valkey is the Linux Foundation's
+BSD-3-Clause fork of the last free Redis, drop-in compatible, with no ambiguity
+at all. **Writing this table is what caught it** — the pin had been `redis:7.4`,
+which is not free software, in a project whose whole premise is that you own
+what runs on your machine.
+
+### Verification status — read this before trusting the table
+
+| Level | Status |
+|---|---|
+| Every reference resolves in its registry | ✅ verified 2026-08-20, digests in [docs/IMAGES.md](docs/IMAGES.md) |
+| Vulnerability-scanned | ✅ daily, gated on regression |
+| Compose renders across all 48 profile × bundle combinations | ✅ in CI |
+| Config parses — Caddyfile, shell, YAML | ✅ in CI |
+| **Actually started, on real hardware, end to end** | ❌ **never** |
+
+**No machine has been installed from a flashed stick yet.** "Tested and working"
+is not a claim this project can make, and pretending otherwise would be the
+first dishonest thing in it. The versions are pinned, resolvable, scanned and
+they render — that is a real bar, and it is not the same bar as *runs*.
+
+### Every modification, and when it happens
+
+| # | Change | Made by | When |
+|---|---|---|---|
+| 1 | Full-disk LUKS encryption | preseed | install |
+| 2 | **Second LUKS keyslot** from your seed phrase, so a forgotten password is not total data loss | `enroll-recovery-key.sh` | install — inside the installer, so the passphrase never reaches the installed system |
+| 3 | Root login disabled; password auth off **only if** you supplied an SSH key | `10-system.sh` | first boot |
+| 4 | Security updates only — never unattended feature upgrades | `10-system.sh` | first boot |
+| 5 | `vm.swappiness=10`, inotify limits raised, `overcommit_memory=1` for Postgres | `10-system.sh` | first boot |
+| 6 | Docker logs capped at 20 MB × 5 — the commonest way a self-hosted box fills its disk | `20-docker.sh` | first boot |
+| 7 | Admin user added to the `docker` group — **equivalent to root**, and it warns you | `20-docker.sh` | first boot |
+| 8 | Existing disks **adopted, never reformatted**, if they already hold ext4/xfs | `40-storage-pool.sh` | first boot |
+| 9 | **CasaOS moved off port 80** to 8095 so Caddy can own the ingress | `50-network.sh` | first boot |
+| 10 | nftables **default-deny inbound**; only 22/80/443, mDNS and the tailnet | `50-network.sh` | first boot |
+| 11 | Tailscale joined with `--ssh`, a recovery path that survives a broken sshd | `50-network.sh` | first boot |
+| 12 | Service secrets as **files, not environment variables** — so `docker inspect` is not a credential dump | `60-stack.sh` | first boot |
+| 13 | Databases on an `internal: true` network with **no route off the host** | compose | first boot |
+| 14 | Ollama has **no `edge` membership** — nothing on the LAN reaches the model server | compose | first boot |
+| 15 | **Immich photo AI pinned to CPU** below 20 GB VRAM, so it cannot fight inference for the card | `hardware-detect.sh` | first boot, and again after the GPU driver installs |
+| 16 | Ollama keep-alive, parallelism and context sized to your tier | `hardware-detect.sh` | first boot |
+| 17 | Vaultwarden registration **closed**, invitations only | compose | first boot |
+| 18 | Synapse **federation port not published** — you are not on the public Matrix network unless you choose | compose | first boot |
+| 19 | Synapse telemetry off (`REPORT_STATS=no`) | compose | first boot |
+| 20 | Postgres initialised with `--data-checksums`; Synapse's DB forced to C collation | compose | first boot |
+| 21 | Ergo **invite-only, SASL required**, with its own leaf certificate — never the CA key | compose + `issue-service-cert.sh` | first boot |
+| 22 | Odysseus telemetry off, **remote AI providers disabled** — it cannot call out even if asked | compose | first boot |
+| 23 | Blinko's AI pointed at your local Ollama with a placeholder key, so it cannot reach a cloud model | compose | first boot |
+| 24 | BentoPDF given a **read-only filesystem** — it serves static assets and has no reason to write | compose | first boot |
+| 25 | Watchtower **label-gated**: only stateless services opt in, and it never removes volumes | compose | first boot |
+| 26 | Nextcloud AIO domain validation skipped — it cannot succeed behind a private reverse proxy | compose | first boot |
+| 27 | Caddy issues **local certificates from its own CA**; no public ACME, no port 80 open to the internet | Caddyfile | first boot |
+| 28 | Nightly signed-tag config sync, nightly encrypted backup, weekly parity scrub | systemd timers | first boot, then ongoing |
+| 29 | Update guard holds anything oversized, key-shaped, or contacting a new host | `update-guard.sh` | every night |
+| 30 | The provisioning payload is **shredded** from the boot partition | `first-boot.sh` | end of first boot |
+
+**Made by the USB maker, on your own computer, before anything boots:** the
+24-word seed, the root passphrase, the disk recovery key, the recovery PDF and
+`provision.json`. None of it is transmitted anywhere.
+
+**Made by you, afterwards:** your passkey. It cannot be automated — a WebAuthn
+credential is created by your own authenticator touching a browser, and anything
+claiming to pre-provision one has put a password-equivalent secret on disk
+instead.
 
 ## Design commitments
 

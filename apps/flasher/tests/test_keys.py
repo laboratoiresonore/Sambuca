@@ -320,3 +320,80 @@ def test_the_three_traps_are_present():
     assert "BitLocker" in g
     assert "Fast Startup" in g
     assert "Secure Boot" in g
+
+
+# ----------------------------------------------------------- the estimator
+
+
+def test_estimator_thresholds_match_the_shell_profiler():
+    """PARITY TEST. The estimator tells someone what to buy; hardware-detect.sh
+    decides what they actually get. If the two drift, the estimator lies to a
+    person spending money, which is worse than having no estimator."""
+    import re
+    from pathlib import Path
+
+    from sambuca_flasher import estimate as est
+
+    shell = (Path(__file__).resolve().parents[3] / "engine" / "hardware-detect.sh") \
+        .read_text(encoding="utf-8")
+
+    def shell_value(name: str) -> int:
+        m = re.search(rf'{name}:=(\d+)', shell)
+        assert m, f"{name} not found in hardware-detect.sh"
+        return int(m.group(1))
+
+    assert est.TIER1_VRAM_MB == shell_value("TIER1_VRAM_MB")
+    assert est.TIER2_VRAM_MB == shell_value("TIER2_VRAM_MB")
+    assert est.TIER3_CPU_CORES == shell_value("TIER3_CPU_CORES")
+    assert est.TIER3_RAM_MB == shell_value("TIER3_RAM_MB")
+    assert est.IMMICH_GPU_MIN_VRAM_MB == shell_value("IMMICH_GPU_MIN_VRAM_MB")
+
+
+def test_estimator_tiers_match_the_readme_examples():
+    from sambuca_flasher import estimate as est
+
+    cases = {
+        "gaming PC with an RTX 4090": 1,
+        "RTX 3060 12GB": 2,
+        "workstation, 16 cores, 32GB RAM, no graphics card": 3,
+        "Raspberry Pi 5 16GB": 4,
+        "old laptop": 4,
+    }
+    for text, want in cases.items():
+        got = est.estimate(est.parse(text)).tier
+        assert got == want, f"{text!r} -> tier {got}, expected {want}"
+
+
+def test_photo_ai_stays_on_cpu_below_the_vram_floor():
+    """The arbitration rule, asserted rather than described: a 12 GB card gets
+    tier 2 for chat but must NOT be handed the photo indexer as well."""
+    from sambuca_flasher import estimate as est
+
+    e = est.estimate(est.parse("RTX 3060 12GB"))
+    assert e.tier == 2
+    assert e.photo_ai == "on the CPU"
+    assert any("whole card" in c for c in e.caveats)
+
+    big = est.estimate(est.parse("RTX 4090 24GB"))
+    assert big.photo_ai == "on the GPU"
+
+
+def test_arm_is_flagged_as_not_yet_installable():
+    """The Pi guidance must not imply it works today — the engine is x86-64."""
+    from sambuca_flasher import estimate as est
+
+    r = est.report("Raspberry Pi 5 16GB")
+    assert "NOT" in r and "installable" in r
+    assert "raspberrypi.com/resellers" in r
+
+
+def test_all_console_output_is_ascii():
+    """Windows consoles render an em-dash as a replacement glyph, and these are
+    the screens someone reads when they are already stuck."""
+    from sambuca_flasher import bootguide
+    from sambuca_flasher import estimate as est
+
+    for v in bootguide.VENDORS:
+        assert bootguide.guide(v.name).isascii(), v.name
+    for m in ["Raspberry Pi 5 16GB", "RTX 4090", "old laptop", "NUC, 16GB"]:
+        assert est.report(m).isascii(), m

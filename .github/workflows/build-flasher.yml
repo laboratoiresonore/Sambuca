@@ -1,0 +1,92 @@
+name: build-flasher
+
+# Compile the flasher into a single-file executable for Windows and macOS, so
+# somebody can download one file and run it without installing Python.
+#
+# BUILT ON THE TARGET OS, NOT CROSS-COMPILED. PyInstaller freezes the running
+# interpreter and its native extensions, so a macOS binary has to be produced on
+# macOS. That is the whole reason this lives in CI rather than on a developer's
+# machine — nobody has all three.
+#
+# These are UNSIGNED. macOS Gatekeeper will refuse to open the app on a normal
+# download, and SmartScreen will warn on Windows. Signing needs an Apple
+# Developer account and a Windows code-signing certificate, neither of which
+# this project has. The release notes say so plainly rather than letting people
+# discover it — and the workaround is documented, not hidden.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    paths:
+      - "apps/flasher/**"
+      - ".github/workflows/build-flasher.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x64
+            binary: sambuca-flasher.exe
+          - os: macos-latest
+            label: macos-arm64
+            binary: sambuca-flasher
+          - os: macos-13
+            label: macos-x64          # Intel Macs are still the ones that can RUN sambuca
+            binary: sambuca-flasher
+          - os: ubuntu-latest
+            label: linux-x64
+            binary: sambuca-flasher
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install the flasher and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./apps/flasher pyinstaller
+
+      - name: freeze
+        shell: bash
+        # --collect-all mnemonic: the BIP-39 wordlist is package DATA, not code.
+        # PyInstaller's import analysis cannot see it, and a binary that ships
+        # without it fails at the exact moment it generates a seed phrase.
+        run: |
+          pyinstaller \
+            --onefile \
+            --name sambuca-flasher \
+            --collect-all mnemonic \
+            --collect-all reportlab \
+            --console \
+            apps/flasher/src/sambuca_flasher/__main__.py
+
+      - name: prove the binary actually runs
+        shell: bash
+        # A build that produces a file is not a build that produces a working
+        # program. Exercise the offline paths that need no USB and no root:
+        # every one of these would fail if a data file were missing.
+        run: |
+          BIN="dist/${{ matrix.binary }}"
+          "$BIN" --version
+          "$BIN" boot-guide "Dell XPS 15 9520" | grep -q "F12"
+          "$BIN" estimate "Raspberry Pi 5 16GB" | grep -q "Tier"
+          "$BIN" estimate "RTX 4090" | grep -q "Tier           : 1"
+          "$BIN" example-config | grep -q '"hostname"'
+          echo "the frozen binary works"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sambuca-flasher-${{ matrix.label }}
+          path: dist/${{ matrix.binary }}
+          retention-days: 30

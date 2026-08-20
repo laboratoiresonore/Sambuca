@@ -18,6 +18,8 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass, field
 
+from .console import ascii_safe
+
 
 @dataclass(frozen=True)
 class Vendor:
@@ -153,29 +155,6 @@ TRAPS: tuple[tuple[str, str], ...] = (
 )
 
 
-# ---------------------------------------------------------------------------
-# ASCII-safe output.
-#
-# This tool runs on Windows, whose console codepage renders an em-dash as a
-# replacement glyph. Sanitising at the RENDER layer rather than in the data
-# means a future contributor typing a typographic quote cannot reintroduce
-# mojibake into the one screen a stuck novice is reading.
-# ---------------------------------------------------------------------------
-_ASCII_MAP = {
-    "—": "-", "–": "-", "‘": "'", "’": "'",
-    "“": '"', "”": '"', "…": "...", "→": "->",
-    "⌥": "Option", "·": "-", " ": " ",
-}
-
-
-def _ascii(text: str) -> str:
-    for bad, good in _ASCII_MAP.items():
-        text = text.replace(bad, good)
-    # Anything still outside ASCII is dropped rather than risking a
-    # UnicodeEncodeError that would abort the guide entirely.
-    return text.encode("ascii", "replace").decode("ascii")
-
-
 def guide(model: str = "", vendor: Vendor | None = None, engine: str = "google") -> str:
     """The full printable guide for one machine."""
     v = vendor or find_vendor(model) or _BY_KEY["custom"]
@@ -241,7 +220,7 @@ def guide(model: str = "", vendor: Vendor | None = None, engine: str = "google")
     add("")
     add("=" * 68)
     add("")
-    return _ascii("\n".join(out))
+    return ascii_safe("\n".join(out))
 
 
 def _wrap(text: str, width: int) -> list[str]:

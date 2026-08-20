@@ -188,16 +188,20 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # Valkey, not Redis — see the licence note in .env.example. Drop-in
+  # compatible, so Immich still talks to it as REDIS_HOSTNAME and the binaries
+  # keep their redis-* names for compatibility. The service keeps its old
+  # container name so an existing appliance's volume path does not move.
   immich-redis:
     restart: unless-stopped
-    image: ${REDIS_IMAGE:-redis:7-alpine}
+    image: ${REDIS_IMAGE:-valkey/valkey:9.1.1-alpine}
     container_name: sambuca-immich-redis
     networks: [data]
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    command: ["valkey-server", "--save", "60", "1", "--loglevel", "warning"]
     volumes:
       - ${SAMBUCA_APPDATA}/immich/redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 30s
       timeout: 5s
       retries: 3
