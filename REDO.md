@@ -73,7 +73,7 @@ abandon" — the duty of care does not transfer with the work.**
 | # | What |
 |---|---|
 | ~~**G1**~~ **DONE** | Auto-install rpi-imager when missing, using the manifest's install command. |
-| **G2** | Pre-select device and OS so those two screens are already answered. |
+| ~~**G2**~~ **GUIDED** | Pre-select device and OS. **Not possible** — checked, not assumed: nothing upstream ever sets `default: true` (false wherever it appears, absent on the Pi 5 which is shown first), and setting it true here did not preselect on v2.0.10. Falls to the guide half, and with one device and one image the instruction is exact: *click the only entry*. |
 | ~~**G3**~~ **DONE** | Pre-fill the non-secret Customisation fields via the verified registry key. |
 | ~~**G4**~~ **DONE** | Never write the owner's password or wifi key. Ever. |
 | ~~**G5**~~ **DONE** | Guide the Storage step explicitly — the one choice that must stay human, so it gets the most words, not the fewest. |

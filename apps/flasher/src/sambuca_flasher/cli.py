@@ -969,8 +969,26 @@ def _cmd_write_pi(args) -> int:
     _say()
 
     # ---- G6: warn before the prompt, not after --------------------------
-    _say("Next, your computer will ask permission to run the Imager.")
-    _say("That prompt is expected: writing to a card needs it.")
+    # G2: PRESELECTING TURNS OUT NOT TO BE POSSIBLE, so this is the guide
+    # half — and it can be exact rather than general. Checked rather than
+    # assumed: nothing upstream ever sets `default: true` (it is false wherever
+    # it appears, and absent on the Pi 5, which is the entry shown first), and
+    # setting it true in our own list did not preselect on v2.0.10.
+    #
+    # Since the list carries ONE tested device and ONE image, "click the only
+    # entry" is a complete instruction rather than a vague one.
+    _say("The Imager will show you four screens. The first two have exactly")
+    _say("one entry each, because this list offers only tested hardware:")
+    _say()
+    _say("    DEVICE          click the only entry")
+    _say("    OS              click the only entry (the Sambuca image)")
+    _say("    STORAGE         YOUR choice — see the drives listed above")
+    _say("    CUSTOMISATION   already filled in, except wi-fi")
+    _say()
+    _say("Then press WRITE.")
+    _say()
+    _say("Your computer will ask permission to run the Imager first. That")
+    _say("prompt is expected: writing to a card needs it.")
     _say("Sambuca waits here until you close the Imager window.")
     _say()
 
