@@ -175,8 +175,45 @@ PROBE={BOOT_MOUNT}/sambuca/hardware-detect.sh
 if [ -f "$PROBE" ]; then
     if command -v bash >/dev/null 2>&1; then
         log "running hardware-detect.sh under bash"
-        bash "$PROBE" --print --no-lock >>"$LOG" 2>&1 \\
-            || log "hardware-detect exited $?"
+        PROFILE=/tmp/sambuca-profile.env
+        bash "$PROBE" --print --no-lock >"$PROFILE" 2>>"$LOG" || log "hardware-detect exited $?"
+
+        # THE VERDICT GOES FIRST. Whoever reads this file has taken the card
+        # out of a machine with no screen, because something needs explaining.
+        # Sixty lines of KEY=VALUE with the answer in the middle is not an
+        # explanation.
+        tier=$(grep -E '^SAMBUCA_TIER=' "$PROFILE" 2>/dev/null | cut -d= -f2)
+        tname=$(grep -E '^SAMBUCA_TIER_NAME=' "$PROFILE" 2>/dev/null | cut -d= -f2)
+        unsup=$(grep -E '^SAMBUCA_TIER_UNSUPPORTED=' "$PROFILE" 2>/dev/null | cut -d= -f2)
+        ram=$(grep -E '^SAMBUCA_RAM_TOTAL_MB=' "$PROFILE" 2>/dev/null | cut -d= -f2)
+        cores=$(grep -E '^SAMBUCA_CPU_CORES=' "$PROFILE" 2>/dev/null | cut -d= -f2)
+
+        log ""
+        log "=============================================================="
+        if [ "${{unsup:-0}}" = "1" ]; then
+            log "  VERDICT: THIS MACHINE IS BELOW WHAT SAMBUCA NEEDS"
+            log ""
+            log "  measured: ${{cores:-?}} cores, ${{ram:-?}} MiB of memory"
+            log ""
+            log "  That is not a slow appliance, it is one that will not come"
+            log "  up. The file server alone wants ~2000 MiB, the photo library"
+            log "  ~4000 MiB with its database, the smallest chat model ~2500."
+            log ""
+            log "  Nothing has been installed."
+            log ""
+            log "  THIS IS THE EXPECTED RESULT ON A PI ZERO 2 W (512 MiB)."
+            log "  The board is an arm64 test rig, not an appliance."
+        else
+            log "  VERDICT: tier ${{tier:-?}} (${{tname:-unknown}})"
+            log "  measured: ${{cores:-?}} cores, ${{ram:-?}} MiB of memory"
+        fi
+        log "=============================================================="
+        log ""
+
+        # The full profile still goes in, after the answer.
+        log "--- full profile ---"
+        cat "$PROFILE" >>"$LOG" 2>/dev/null
+        rm -f "$PROFILE"
     else
         log "bash NOT PRESENT — cannot run the profiler (it is not POSIX sh)"
     fi

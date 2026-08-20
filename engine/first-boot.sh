@@ -329,6 +329,40 @@ main() {
             | sb_atomic_write "${SB_ETC}/profile.env" 0644
     fi
 
+    # STOP HERE IF THE MACHINE IS BELOW THE FLOOR.
+    #
+    # hardware-detect.sh sets SAMBUCA_TIER_UNSUPPORTED and prints exactly which
+    # things will not fit — and, until now, NOTHING READ IT. The warning
+    # scrolled past and the installer carried on to fetch Docker, the whole
+    # stack and a language model onto a machine that cannot run them. A guard
+    # that never guards is worse than no guard: it produces a wall of confident
+    # output and then a box that thrashes, with the explanation thousands of
+    # lines back.
+    #
+    # Refusing is the honest outcome, and it must be REFUSAL, not a slower
+    # install. The override exists because someone testing the engine on
+    # deliberately small hardware is a real case — but they have to say so.
+    if [[ -r "${SB_ETC}/profile.env" ]]; then
+        # shellcheck source=/dev/null
+        local _unsupported
+        _unsupported="$(grep -E '^SAMBUCA_TIER_UNSUPPORTED=' "${SB_ETC}/profile.env" 2>/dev/null | cut -d= -f2)"
+        if [[ ${_unsupported:-0} == 1 && ${SAMBUCA_IGNORE_FLOOR:-0} != 1 ]]; then
+            err "This machine is below the minimum sambuca needs."
+            err ""
+            err "The reasons are in the lines above: the file server, the photo"
+            err "library and the smallest chat model each need more memory than"
+            err "this machine has in total."
+            err ""
+            err "Nothing has been installed and nothing has been changed."
+            err ""
+            err "A second-hand office desktop with 8 GB is enough, and costs"
+            err "very little. To install anyway — for engine testing on small"
+            err "hardware, knowing the services will not come up:"
+            err "    SAMBUCA_IGNORE_FLOOR=1 sambuca-first-boot"
+            return 1
+        fi
+    fi
+
     local started_at_phase=0
     [[ -z $FROM ]] && started_at_phase=1
 
