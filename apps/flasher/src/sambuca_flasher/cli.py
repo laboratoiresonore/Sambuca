@@ -146,6 +146,12 @@ def _cmd_write(args) -> int:
             print(f"  - {p}", file=sys.stderr)
         return 1
 
+    # The recovery PDF and the payload both land in --output-dir, which defaults
+    # to the current directory. If that happens to be a git working tree, a
+    # careless `git add -A` publishes a seed phrase. This repository ignores
+    # those names; a stranger's does not.
+    _warn_if_git_worktree(args.output_dir)
+
     # --- 1. keys ---
     print("\n[1/6] generating key material (offline, on this machine)")
     keys = generate_key_material()
@@ -281,6 +287,33 @@ def _cmd_derive_recovery() -> int:
     print("\nIf it is rejected, this machine may predate recovery keyslots, or the")
     print("installer could not enrol one. Check: sudo cryptsetup luksDump <device>")
     return 0
+
+
+def _warn_if_git_worktree(out_dir: Path) -> None:
+    """Refuse to be quiet about writing a seed phrase into a git repository.
+
+    Found by running the compiled binary from inside this repo: the recovery
+    PDF and the staged payload go to the current directory by default, and one
+    `git add -A` away from a public commit. This repository ignores those
+    filenames; somebody else's will not.
+    """
+    d = out_dir.resolve()
+    for parent in [d, *d.parents]:
+        if (parent / ".git").exists():
+            print()
+            print("!" * 70)
+            print("  THIS IS A GIT REPOSITORY.")
+            print(f"    {parent}")
+            print()
+            print("  Your recovery document and provisioning payload are about to be")
+            print("  written here. They contain your seed phrase, your disk passphrase")
+            print("  and your disk recovery key. One `git add -A` publishes them.")
+            print()
+            print("  Use --output-dir to put them somewhere else, or make sure both")
+            print("  are ignored:  liberator-recovery*.pdf  and  sambuca-payload-*/")
+            print("!" * 70)
+            print()
+            return
 
 
 def _cmd_estimate(args) -> int:
