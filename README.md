@@ -1,6 +1,6 @@
 # 🏰 SAMBUCA: The Open-Weights Siege Engine
 
-> *"Freedom is free. It has no flag, no race, and no borders. It has all the faces at once and none in particular."*
+> *"Freedom is free. It has no flag, no race, and no borders. It has all the faces at once and none in particular... And now it is also easy!"*
 
 Sambuca is not just a repository; it is a weaponized software appliance and a practical gateway to digital sovereignty. Named after the ancient Roman mobile siege tower that allowed armies to drop an assault bridge directly over impenetrable fortress walls, this project is built to bypass the locked gates of the corporate AI panopticon.
 
