@@ -210,13 +210,14 @@ sb_single_instance() {
 # "it's working" and "I think it's broken, I'll power-cycle it" — which, during
 # disk provisioning, is how installs get corrupted.
 # ---------------------------------------------------------------------------
+# Only the TOTAL is state here. The current index is passed in by the caller,
+# which already tracks it — keeping a second copy would give two variables that
+# can disagree about which step is running.
 SB_STAGE_TOTAL="${SB_STAGE_TOTAL:-0}"
-SB_STAGE_INDEX=0
 
 sb_stage() {
     # sb_stage <number> <title> <what> <how-long> <your-move> <next>
     local num="$1" title="$2" what="$3" howlong="$4" action="$5" next="$6"
-    SB_STAGE_INDEX="$num"
     local width=72
     local bar; bar="$(printf '%*s' "$width" '' | tr ' ' '-')"
 
