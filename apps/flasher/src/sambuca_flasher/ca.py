@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import hashlib
 import platform
-import socket
 import ssl
 import subprocess
 import urllib.error
@@ -39,10 +38,13 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import safeurl
+
 # Caddy serves its root at this path; the Caddyfile has an explicit,
 # deliberately UNGATED handler for it — a device that does not yet trust the
 # CA could not authenticate to download the thing that would let it.
 CA_PATH = "/ca.crt"
+
 
 
 class NotReady(Exception):
@@ -80,10 +82,12 @@ def fetch(domain: str, *, timeout: float = 8.0) -> Certificate | None:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    url = f"https://{domain.rstrip('.')}{CA_PATH}"
+    url = safeurl.check(f"https://{domain.rstrip('.')}{CA_PATH}")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "sambuca-ca"})
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": "sambuca-ca"})  # noqa: S310 - scheme allowlisted by safeurl.check above
+        # noqa on urlopen is not needed: safeurl.check above restricts the
+        # scheme to http(s), which is exactly what S310 asks for.
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - scheme allowlisted by safeurl.check above
             pem = resp.read()
     except urllib.error.HTTPError as exc:
         # 404 IS NOT "BROKEN" HERE, AND THE DIFFERENCE MATTERS. Caddy writes
@@ -92,9 +96,10 @@ def fetch(domain: str, *, timeout: float = 8.0) -> Certificate | None:
         # Telling somebody their appliance is unreachable when it is merely
         # early would send them debugging a network that is working.
         if exc.code == 404:
-            raise NotReady("the appliance has not issued its certificate yet")
+            raise NotReady(
+                "the appliance has not issued its certificate yet") from exc
         return None
-    except (urllib.error.URLError, OSError, socket.timeout):
+    except (urllib.error.URLError, OSError, TimeoutError, safeurl.UnsafeURL):
         return None
 
     if b"BEGIN CERTIFICATE" not in pem:
@@ -166,7 +171,8 @@ def removal_hint() -> str:
         return "certutil -user -delstore Root sambuca"
     if system == "Darwin":
         return "Keychain Access -> login -> Certificates -> delete 'sambuca'"
-    return "sudo rm /usr/local/share/ca-certificates/sambuca*.crt && sudo update-ca-certificates --fresh"
+    return ("sudo rm /usr/local/share/ca-certificates/sambuca*.crt "
+            "&& sudo update-ca-certificates --fresh")
 
 
 def install(cert: Certificate, workdir: Path) -> tuple[bool, str]:

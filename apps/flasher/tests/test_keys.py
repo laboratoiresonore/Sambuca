@@ -314,4 +314,3 @@ def test_search_url_carries_no_identifier():
 def test_the_three_traps_are_present():
     """Each produces 'the USB doesn't work' with no error message. Dropping one
     silently would remove the only warning a user gets."""
-    from sambuca_flasher import bootguide

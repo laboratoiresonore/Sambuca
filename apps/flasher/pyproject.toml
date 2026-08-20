@@ -46,6 +46,18 @@ ignore = ["S603", "S607"]   # subprocess use is intentional and argument-listed
 # it globally would also silence it in the flasher itself, where an assert in a
 # release build genuinely would be a bug.
 "tests/**" = ["S101"]
+"**/tests/**" = ["S101"]
+
+# E501 in pi.py is about SHELL, not Python. The long lines are inside the
+# first-boot script this file emits onto the card — an apt source line and a
+# sed expression — and both must stay on one line to mean what they mean.
+#
+# This is a per-file ignore rather than a noqa comment because a noqa would be
+# INSIDE the shell string: appending it put `# noqa: E501 ...` onto the end of
+# the Tailscale apt source line, which would have broken the repository
+# definition on every Pi install. Verified by reading the line afterwards
+# rather than trusting that a lint fix is inert.
+"**/sambuca_flasher/pi.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

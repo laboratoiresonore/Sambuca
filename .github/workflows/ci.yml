@@ -130,8 +130,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e './apps/flasher[dev]'
-      - run: ruff check apps/flasher/src apps/flasher/tests tools
-      - run: python -m pytest apps/flasher/tests -q
+      - run: ruff check apps/flasher/src apps/flasher/tests tools tests
+      # BOTH TEST TREES, and named as directories rather than as files.
+      # tests/ holds what tests the APPLIANCE rather than the flasher — the
+      # install beacon lives there, and it was written, passing, and invisible
+      # to CI because this line said apps/flasher/tests and nothing else.
+      # That is the same shape as a module with no callers: green locally,
+      # absent from the build. Naming directories means the next appliance-side
+      # test file is picked up without anyone remembering to edit this.
+      - run: python -m pytest apps/flasher/tests tests -q
 
   caddy:
     name: caddyfile

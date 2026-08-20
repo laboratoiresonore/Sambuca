@@ -33,6 +33,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from . import safeurl
+
 MANIFEST_URL = os.environ.get(
     "SAMBUCA_MANIFEST",
     "https://raw.githubusercontent.com/laboratoiresonore/Sambuca/main/manifest/sambuca-manifest.json",
@@ -88,10 +90,11 @@ def _load_bundled() -> dict[str, Any] | None:
 
 def _fetch(url: str, timeout: float) -> dict[str, Any] | None:
     try:
-        req = urllib.request.Request(
+        safeurl.check(url)
+        req = urllib.request.Request(  # noqa: S310 - scheme allowlisted by safeurl.check above
             url, headers={"User-Agent": "sambuca-flasher", "Accept": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - scheme allowlisted by safeurl.check above
             if resp.status != 200:
                 return None
             doc = json.loads(resp.read().decode("utf-8"))

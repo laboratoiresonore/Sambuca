@@ -36,9 +36,11 @@ import shutil
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+
+from . import safeurl
 
 _CHUNK = 1024 * 256
 _UA = "sambuca-flasher"
@@ -148,9 +150,10 @@ def fetch(
     if resume_from:
         headers["Range"] = f"bytes={resume_from}-"
 
+    safeurl.check(url)
     try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        req = urllib.request.Request(url, headers=headers)  # noqa: S310 - scheme allowlisted by safeurl.check above
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - scheme allowlisted by safeurl.check above
             # A server that ignores Range answers 200 with the WHOLE file.
             # Appending that to what we already have would produce a corrupt
             # file that is exactly the right length to look plausible.

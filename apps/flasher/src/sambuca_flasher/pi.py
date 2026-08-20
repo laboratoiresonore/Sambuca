@@ -35,14 +35,13 @@ Three consequences that shape everything below:
 from __future__ import annotations
 
 import lzma
-import os
 import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .devices import DeviceError, RemovableDevice
+from .devices import DeviceError
 
 _CHUNK = 4 * 1024 * 1024
 

@@ -15,12 +15,9 @@ always kept separate from the writing.
 from __future__ import annotations
 
 import contextlib
-import hashlib
-import os
 import platform
 import shutil
 import subprocess
-import time
 from collections.abc import Callable
 from pathlib import Path
 

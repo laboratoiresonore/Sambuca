@@ -35,6 +35,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import safeurl
+
 # Short: this runs while somebody watches, and a slow service is a finding in
 # its own right rather than something to wait patiently for.
 _TIMEOUT = 4.0
@@ -103,9 +105,10 @@ def check(link: Link, *, timeout: float = _TIMEOUT) -> Link:
     ctx.verify_mode = ssl.CERT_NONE
 
     try:
-        req = urllib.request.Request(link.url, method="GET",
+        safeurl.check(link.url)
+        req = urllib.request.Request(link.url, method="GET",  # noqa: S310 - scheme allowlisted by safeurl.check above
                                      headers={"User-Agent": "sambuca-handover"})
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - scheme allowlisted by safeurl.check above
             # Any HTTP answer means the service is up. A 401 or a redirect to
             # the sign-in page is a WORKING service behind an auth gate, which
             # is exactly how it is supposed to behave.
@@ -130,7 +133,7 @@ def check(link: Link, *, timeout: float = _TIMEOUT) -> Link:
         else:
             link.reachable = True
             link.detail = f"HTTP {exc.code}"
-    except (socket.timeout, TimeoutError):
+    except TimeoutError:
         link.reachable = False
         link.detail = "no answer (still starting?)"
     except (urllib.error.URLError, OSError) as exc:

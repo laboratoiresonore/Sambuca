@@ -24,13 +24,15 @@ import tempfile
 from pathlib import Path
 
 from . import __version__
-from .devices import DeviceError, RemovableDevice, list_removable_devices
+from .devices import DeviceError, list_removable_devices
+
 # NOT imported at module level. keys.py raises SystemExit at IMPORT time when
 # the BIP-39 library is absent, which meant `list`, `boot-guide`,
 # `example-config` and even `--version` all died demanding a package they do
 # not use — every command in the CLI died demanding a seed-phrase library.
 # Found by running `list` against a real card reader.
 from .payload import ApplianceConfig, build_provision_payload, config_from_dict, render_preseed
+
 # Imported lazily inside cmd_write, for the same reason as .keys above:
 # recovery_pdf raises SystemExit at import time when reportlab is missing, and
 # its module-level constants genuinely need reportlab's units, so the guard
@@ -301,12 +303,29 @@ def _cmd_write(args) -> int:
         print("      interactive mode: recovery keyslot must be enrolled after "
               "install\n                        (sambuca-recovery enrol)")
 
+    # repo_root WAS NEVER DEFINED. `write` — the whole x86 installer path —
+    # raised NameError here at step 2 of 6, on every single run. Found by ruff
+    # (F821), not by the test suite, because 110 passing tests never once
+    # executed this command end to end.
+    #
+    # Resolved through _find_engine so it works frozen as well as from source:
+    # a one-file binary unpacks to a temporary directory, so walking up from
+    # __file__ gives nonsense. The engine's parent is the tree that holds both
+    # engine/ and compose/, in the bundle and in the repository alike.
+    engine_dir = _find_engine(getattr(args, "engine", None))
+    if engine_dir is None:
+        print("\nerror: could not find the sambuca engine.", file=sys.stderr)
+        print("       This build should carry it; pass --engine <path> to "
+              "override.", file=sys.stderr)
+        return 1
+    repo_root = engine_dir.parent
+
     for script in ("abort-countdown.sh", "disk-select.sh", "late-command.sh",
                    "enroll-recovery-key.sh"):
-        src = repo_root / "engine" / "autoinstall" / script
+        src = engine_dir / "autoinstall" / script
         if src.is_file():
             (staging / script).write_bytes(src.read_bytes())
-    _stage_engine(repo_root, staging)
+    _stage_full_tree(repo_root, staging)
     print(f"      staged: {staging}")
 
     # --- 3. recovery document, BEFORE anything is written ---
@@ -794,7 +813,7 @@ def _cmd_handover(args) -> int:
     links = handover.check_all(handover.appliance_links(
         domain, tailnet_name=tailnet_name))
 
-    working = [l for l in links if l.reachable]
+    working = [x for x in links if x.reachable]
     for link in links:
         mark = "up  " if link.reachable else "--  "
         _say(f"    {mark}{link.name:<28} {link.url}")
@@ -906,8 +925,18 @@ def _cmd_example(args) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _stage_engine(repo_root: Path, staging: Path) -> None:
-    """Copy the engine and compose trees onto the payload."""
+def _stage_full_tree(repo_root: Path, staging: Path) -> None:
+    """Copy the whole engine and compose trees onto the x86 payload.
+
+    RENAMED BECAUSE IT WAS SHADOWED. Two functions were called _stage_engine —
+    this one, and the Pi-card variant defined 300 lines later that copies only
+    the subset a FAT partition can hold. The later definition simply replaced
+    this one at import time, so every call resolved to the Pi version with
+    entirely different semantics and a different return type.
+
+    Python does not warn about a redefinition; the name just quietly changes
+    meaning. Distinct jobs need distinct names.
+    """
     import shutil
 
     for tree in ("engine", "compose"):
@@ -1020,7 +1049,7 @@ def _settle_reachability(args) -> str:
     if st.ready:
         _say(f"  This computer is on the tailnet:  {st.tailnet}")
         _say("  The appliance will join the same one, and you will reach it")
-        _say(f"  by name — no address to remember, and it survives your")
+        _say("  by name — no address to remember, and it survives your")
         _say("  router handing out a different one.")
         _say()
         _say("  It needs a one-time key to join. Creating one takes about")
@@ -1290,7 +1319,19 @@ def _cmd_write_pi(args) -> int:
     # appliance nobody can find is not an appliance, and finding that out
     # after the card is written is the worst possible moment. This used to be
     # a tip printed halfway through, after the owner had already committed.
-    tailscale_key = "" if args.dry_run else _settle_reachability(args)
+    # ASSIGNED BACK ONTO args, WHICH IT WAS NOT. The returned key was bound to
+    # a local and then dropped: the owner was walked through installing
+    # Tailscale, signing in, and minting a pre-auth key, and the key was
+    # discarded before anything could write it to the card. Provisioning reads
+    # args.tailscale_key, so the whole reachability step - the thing that runs
+    # FIRST because an appliance nobody can find is not an appliance - ended in
+    # an appliance that never joined the tailnet.
+    #
+    # Found by ruff (F841 "assigned but never used"), not by any test. The
+    # symptom would have been an owner who did everything right and still could
+    # not reach their machine, with nothing on screen suggesting why.
+    if not args.dry_run:
+        args.tailscale_key = _settle_reachability(args)
 
     # Stage the engine first, and do it even on a dry run. This is what proves
     # a BUILT BINARY carries its engine — CI runs exactly this path, because a
