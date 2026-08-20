@@ -11,7 +11,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from sambuca_flasher import handover
 from sambuca_flasher.handover import Link
 

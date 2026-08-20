@@ -1,0 +1,41 @@
+# Ruff, configured ONCE for the whole repository.
+#
+# IT USED TO LIVE IN apps/flasher/pyproject.toml, AND THAT SPLIT THE RULES IN
+# TWO WITHOUT ANYONE CHOOSING TO. Ruff finds its configuration by walking up
+# from each file, so anything under apps/flasher/ got these settings and
+# anything at the repository root — tests/, tools/ — found no configuration at
+# all and fell back to ruff's built-in defaults.
+#
+# Which meant the rules applied to half the repository were WHATEVER THE
+# INSTALLED RUFF HAPPENED TO DEFAULT TO. CI installed 0.16.4, this machine had
+# 0.15.8, the defaults had changed between them, and CI went red on files that
+# linted clean locally. The code was identical; only the linter differed.
+#
+# One file, at the root, covering everything. And the version is pinned in
+# apps/flasher/pyproject.toml, because an unpinned linter means a release
+# somebody else cuts can break this build with no change to this repository.
+
+line-length = 100
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "BLE"]
+ignore = ["S603", "S607"]   # subprocess use is intentional and argument-listed
+
+[lint.per-file-ignores]
+# S101 flags `assert`, which is the entire mechanism of a pytest suite.
+# Silencing it globally would also silence it in the flasher itself, where an
+# assert in a release build genuinely would be a bug.
+"**/tests/**" = ["S101"]
+"tests/**" = ["S101"]
+
+# E501 in pi.py is about SHELL, not Python. The long lines are inside the
+# first-boot script this file emits onto the card — an apt source line and a
+# sed expression — and both must stay on one line to mean what they mean.
+#
+# A per-file ignore rather than a noqa comment, because a noqa would land
+# INSIDE the shell string: appending one put `# noqa: E501 ...` onto the end of
+# the Tailscale apt source line, which would have broken the repository
+# definition on every Pi install. Verified by reading the line afterwards
+# rather than trusting that a lint fix is inert.
+"**/sambuca_flasher/pi.py" = ["E501"]

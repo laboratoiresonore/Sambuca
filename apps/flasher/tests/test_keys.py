@@ -12,7 +12,6 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
-
 from sambuca_flasher.keys import (
     KeyMaterial,
     _hkdf_sha256,

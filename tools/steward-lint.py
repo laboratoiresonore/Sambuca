@@ -45,9 +45,9 @@ from pathlib import Path
 
 try:
     import yaml
-except ImportError:
+except ImportError as exc:
     print("steward-lint: pyyaml is required (pip install pyyaml)", file=sys.stderr)
-    raise SystemExit(2)
+    raise SystemExit(2) from exc
 
 CATALOGUE = Path(__file__).resolve().parent.parent / "engine" / "steward" / "verbs.yml"
 

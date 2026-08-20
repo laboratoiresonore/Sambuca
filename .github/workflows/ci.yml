@@ -102,11 +102,17 @@ jobs:
                   chain="$chain:gpu.$gpu.$b.yml"
                 fi
               done
-              if COMPOSE_FILE="$chain" COMPOSE_PATH_SEPARATOR=:                  docker compose --env-file .env.example config --quiet 2>/dev/null; then
+              # STDERR IS KEPT. It used to go to /dev/null, so a failure said
+              # only THAT it failed and never why — which made a real AMD
+              # regression undiagnosable from the log and sent somebody looking
+              # for a machine with a Radeon in it. A check that hides the
+              # reason is barely a check.
+              if err=$(COMPOSE_FILE="$chain" COMPOSE_PATH_SEPARATOR=:                  docker compose --env-file .env.example config --quiet 2>&1); then
                 echo "ok   gpu=$gpu bundles=[${bundles:-none}]"
               else
                 echo "FAIL gpu=$gpu bundles=[${bundles:-none}]"
                 echo "     chain=$chain"
+                echo "$err" | sed 's/^/     | /'
                 fail=1
               fi
             done

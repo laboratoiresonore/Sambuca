@@ -21,7 +21,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+# RUFF IS PINNED, NOT FLOATED. ">=0.6" meant CI installed whatever was
+# newest that morning: it ran 0.16.4 against code that linted clean on
+# 0.15.8 here, because the two disagree about default rules. A linter
+# release somebody else cuts must not be able to break this build.
+dev = ["pytest>=8.0", "ruff==0.16.4"]
 
 [project.scripts]
 sambuca-flasher = "sambuca_flasher.cli:main"
@@ -33,31 +37,6 @@ Source = "https://github.com/laboratoiresonore/Sambuca"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "S", "BLE"]
-ignore = ["S603", "S607"]   # subprocess use is intentional and argument-listed
-
-[tool.ruff.lint.per-file-ignores]
-# S101 flags `assert`, which is the entire mechanism of a pytest suite. Silencing
-# it globally would also silence it in the flasher itself, where an assert in a
-# release build genuinely would be a bug.
-"tests/**" = ["S101"]
-"**/tests/**" = ["S101"]
-
-# E501 in pi.py is about SHELL, not Python. The long lines are inside the
-# first-boot script this file emits onto the card — an apt source line and a
-# sed expression — and both must stay on one line to mean what they mean.
-#
-# This is a per-file ignore rather than a noqa comment because a noqa would be
-# INSIDE the shell string: appending it put `# noqa: E501 ...` onto the end of
-# the Tailscale apt source line, which would have broken the repository
-# definition on every Pi install. Verified by reading the line afterwards
-# rather than trusting that a lint fix is inert.
-"**/sambuca_flasher/pi.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -44,7 +44,8 @@ def _request(port: int, path: str, key: str | None = None,
     if key is not None:
         req.add_header("X-Sambuca-Key", key)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # noqa justified: the URL is built from a port this test just bound.
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
             body = r.read()
             return r.status, (json.loads(body) if body else {})
     except urllib.error.HTTPError as e:
@@ -180,7 +181,7 @@ class TestItLeaksNothing:
         """
         port, progress_path = beacon
         doc = json.loads(progress_path.read_text(encoding="utf-8"))
-        doc["admin_password"] = "hunter2"
+        doc["admin_password"] = "hunter2"  # noqa: S105 - the point is that it must NOT be served
         doc["log_tail"] = "/var/lib/sambuca/secret-path"
         progress_path.write_text(json.dumps(doc), encoding="utf-8")
 

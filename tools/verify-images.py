@@ -50,6 +50,17 @@ TOKEN_ENDPOINTS = {
 TIMEOUT = 30
 
 
+def _http_only(url: str) -> str:
+    """Refuse anything but http(s).
+
+    These tools read URLs out of the manifest, and urlopen honours file:.
+    A tampered manifest could point this at a local file and have it read
+    and reported as if it were fetched.
+    """
+    from urllib.parse import urlsplit
+    if urlsplit(url).scheme.lower() not in ('http', 'https'):
+        raise SystemExit(f'refusing non-http URL: {url}')
+    return url
 def parse_ref(ref: str) -> tuple[str, str, str]:
     """Split an image reference into (registry host, repository, tag-or-digest)."""
     if "@" in ref:
@@ -73,7 +84,7 @@ def get_token(host: str, repo: str) -> str | None:
     if not endpoint:
         return None
     try:
-        with urllib.request.urlopen(endpoint.format(repo=repo), timeout=TIMEOUT) as r:
+        with urllib.request.urlopen(endpoint.format(repo=repo), timeout=TIMEOUT) as r:  # noqa: S310 - scheme checked by _http_only
             body = json.load(r)
         return body.get("token") or body.get("access_token")
     except Exception:  # noqa: BLE001 - an anonymous registry needs no token
@@ -88,7 +99,7 @@ def resolve(ref: str) -> tuple[bool, str]:
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # noqa: S310 - scheme checked by _http_only
             return True, r.headers.get("Docker-Content-Digest") or "(no digest header)"
     except urllib.error.HTTPError as e:
         # GHCR answers 401 for both "private" and "does not exist". Either way an

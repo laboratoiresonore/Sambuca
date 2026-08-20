@@ -59,11 +59,26 @@ APT_REPOS = {
 OLLAMA_TAG_API = "https://registry.ollama.ai/v2/library/{name}/manifests/{tag}"
 
 
+def _http_only(url: str) -> str:
+    """Refuse anything but http(s).
+
+    These tools read URLs out of the manifest, and urlopen honours file:.
+    A tampered manifest could point this at a local file and have it read
+    and reported as if it were fetched.
+    """
+    from urllib.parse import urlsplit
+    if urlsplit(url).scheme.lower() not in ('http', 'https'):
+        raise SystemExit(f'refusing non-http URL: {url}')
+    return url
+
+
 def fetch(url: str, *, head: bool = False, accept: str | None = None):
-    req = urllib.request.Request(url, method="HEAD" if head else "GET", headers=dict(UA))
+    _http_only(url)
+    req = urllib.request.Request(url, method="HEAD" if head else "GET",  # noqa: S310 - scheme checked by _http_only
+                                 headers=dict(UA))
     if accept:
         req.add_header("Accept", accept)
-    return urllib.request.urlopen(req, timeout=TIMEOUT)
+    return urllib.request.urlopen(req, timeout=TIMEOUT)  # noqa: S310 - scheme checked by _http_only
 
 
 # --------------------------------------------------------------------- images
