@@ -157,11 +157,29 @@ jobs:
           # than reasoned about, which is the only reason the right one is here.
           ZEBRA=$(printf 'zebra %.0s' $(seq 24)); ABANDON=$(printf 'abandon %.0s' $(seq 24))
 
-          echo "$ABANDON" | "$BIN" verify-sheet 2>&1 | grep -q "DO NOT rely" \
-            || { echo "FAIL: verify-sheet accepts an invalid phrase"; exit 1; }
+          # THE OUTPUT IS PRINTED ON FAILURE, because the first version of this
+          # check swallowed it and then lied about what went wrong. On Windows
+          # it reported "verify-sheet accepts an invalid phrase" when the real
+          # behaviour was that the binary produced NO OUTPUT AT ALL — a
+          # completely different fault, and the message sent the diagnosis in
+          # the wrong direction. A check that cannot say what it saw is worth
+          # very little.
+          out=$(echo "$ABANDON" | "$BIN" verify-sheet 2>&1 || true)
+          if ! printf '%s' "$out" | grep -q "DO NOT rely"; then
+            echo "FAIL: verify-sheet did not reject an invalid phrase."
+            echo "      It should print 'DO NOT rely'. What it actually printed:"
+            printf '%s\n' "$out" | sed 's/^/      | /'
+            echo "      (empty above means it produced nothing - a different fault)"
+            exit 1
+          fi
 
-          echo "$ZEBRA" | "$BIN" verify-sheet 2>&1 | grep -q "Fingerprint from what you typed" \
-            || { echo "FAIL: verify-sheet cannot check a valid phrase (wordlist missing?)"; exit 1; }
+          out=$(echo "$ZEBRA" | "$BIN" verify-sheet 2>&1 || true)
+          if ! printf '%s' "$out" | grep -q "Fingerprint from what you typed"; then
+            echo "FAIL: verify-sheet could not check a valid phrase."
+            echo "      What it actually printed:"
+            printf '%s\n' "$out" | sed 's/^/      | /'
+            exit 1
+          fi
 
           # handover, pointed somewhere that cannot answer. Exits 1 by design,
           # so the exit code is not the signal — the message is. This proves
