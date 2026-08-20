@@ -1,0 +1,26 @@
+# sambuca :: compose/gpu.amd.image.yml — ROCm overlay — image plane
+#
+# UNVERIFIED ON REAL HARDWARE. No AMD card has run this. ROCm support for
+# diffusion models is real but the device-plumbing below is written from the
+# documented interface, not from a machine that booted — and this file says so
+# rather than letting an owner discover it.
+#
+# HSA_OVERRIDE_GFX_VERSION is the usual reason a consumer Radeon works at all:
+# ROCm ships kernels for a subset of gfx targets, and unsupported cards need to
+# masquerade as a supported one. It is left EMPTY by default because guessing
+# it wrong produces a hang rather than an error.
+
+services:
+
+  comfyui:
+    image: ${COMFYUI_ROCM_IMAGE:-yanwk/comfyui-boot:rocm-20260814}
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:-}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined

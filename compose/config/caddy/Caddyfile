@@ -184,6 +184,21 @@ pdf.{$SAMBUCA_DOMAIN} {
 	reverse_proxy bentopdf:8080
 }
 
+# The ComfyUI node graph. Deliberately NOT the way an owner makes a picture —
+# that is a sentence typed into chat. This route exists because someone who
+# already knows what a KSampler is should not have to fight the appliance to
+# reach one, and because hiding it would be a different kind of dishonesty.
+#
+# Behind `gate` like everything else. ComfyUI has no authentication of its own
+# and its API can load models and write files, so an ungated route here would
+# be a remote-code-execution surface wearing a friendly name.
+art.{$SAMBUCA_DOMAIN} {
+	import local_tls
+	import hardening
+	import gate
+	reverse_proxy comfyui:8188
+}
+
 status.{$SAMBUCA_DOMAIN} {
 	import local_tls
 	import hardening

@@ -46,6 +46,19 @@ sb_trap_err
 : "${VRAM_BUDGET_FRACTION:=85}"      # percent
 # VRAM below which Immich's ML worker is forced onto the CPU regardless of tier.
 : "${IMMICH_GPU_MIN_VRAM_MB:=20000}"
+
+# VRAM below which the image plane cannot run at all, even streaming weights
+# from system RAM. Below this the plane is disabled rather than shipped broken.
+: "${IMAGE_MIN_VRAM_MB:=6000}"
+
+# The floor below which this is not a slower appliance, it is a broken one.
+#
+# Discovered the way these things always are: someone proposed installing onto
+# a Pi Zero 2 W (512 MiB). Nextcloud alone wants ~2 GiB, the photo library
+# realistically 4, and the smallest chat model 2.5. The honest answer is not a
+# tier 5 — it is that the machine cannot host this, said clearly, before an
+# hour is spent finding out.
+: "${MIN_RAM_MB:=3500}"
 # Storage headroom multiplier applied to the estimated model-set size.
 : "${MODEL_DISK_HEADROOM_PCT:=130}"
 
@@ -295,6 +308,7 @@ probe_disk() {
 # CLASSIFY
 # ===========================================================================
 TIER=4; TIER_NAME="low-resource"; TIER_REASON=""; TIER_OVERRIDDEN=0
+TIER_UNSUPPORTED=0
 VRAM_BUDGET_MB=0
 
 classify() {
@@ -311,6 +325,17 @@ classify() {
         TIER=3; TIER_REASON="${CPU_CORES} cores / ${RAM_TOTAL_MB} MiB RAM, GPU insufficient"
     else
         TIER=4; TIER_REASON="${CPU_CORES} cores / ${RAM_TOTAL_MB} MiB RAM below tier-3 floor"
+    fi
+
+    if ((RAM_TOTAL_MB > 0)) && ((RAM_TOTAL_MB < MIN_RAM_MB)); then
+        warn "this machine has ${RAM_TOTAL_MB} MiB of RAM; sambuca needs at least ${MIN_RAM_MB} MiB"
+        warn "  that is not a slow install, it is one that will not come up:"
+        warn "    the file server alone wants ~2000 MiB"
+        warn "    the photo library wants ~4000 MiB with its database"
+        warn "    the smallest chat model wants ~2500 MiB"
+        warn "  a Pi Zero, a thin client or a 2 GiB VM is below this floor. A"
+        warn "  second-hand office desktop with 8 GiB is not, and costs very little."
+        TIER_UNSUPPORTED=1
     fi
 
     case "$TIER" in
@@ -343,6 +368,11 @@ classify() {
 # ===========================================================================
 MODEL_CHAT=""; MODEL_CODE=""; MODEL_VISION=""; MODEL_EMBED=""
 MODEL_SET_EST_MB=0; MODEL_DOWNGRADED=0
+IMAGE_ENABLED=0; IMAGE_AVAILABLE_OPT_IN=0; IMAGE_SET_EST_MB=0
+IMAGE_MODEL_NAME=""; IMAGE_MODEL_LICENCE=""; IMAGE_WORKFLOW=""; IMAGE_STEPS=4
+IMAGE_CHECKPOINT_URL=""; IMAGE_CHECKPOINT_FILE=""; IMAGE_VRAM_ARGS="--normalvram"
+IMAGE_VRAM_MB=0; IMAGE_CORESIDENT_BUDGET_MB=40000
+IMAGE_HANDOFF="none"; IMAGE_DROPPED=0
 
 select_models() {
     local profile="${_SB_SELF_DIR}/profiles/tier${TIER}.env"
@@ -365,14 +395,40 @@ select_models() {
         fi
     fi
 
-    # Disk guard: never queue a pull that cannot land.
-    local needed=$((MODEL_SET_EST_MB * MODEL_DISK_HEADROOM_PCT / 100))
+    # An owner may force the image plane on where the tier only offers it.
+    if [[ ${SAMBUCA_IMAGE_ENABLED:-} == 1 ]] && ((IMAGE_AVAILABLE_OPT_IN == 1)); then
+        IMAGE_ENABLED=1
+        log "image plane enabled by owner opt-in"
+        if ((RAM_TOTAL_MB < ${IMAGE_OPT_IN_MIN_RAM_MB:-0})); then
+            warn "image opt-in wants >= ${IMAGE_OPT_IN_MIN_RAM_MB} MiB RAM, this machine has ${RAM_TOTAL_MB} MiB"
+            warn "  generation will be slow and may be killed under memory pressure"
+        fi
+    fi
+
+    # Disk guard: never queue a pull that cannot land. The image checkpoint is
+    # counted here — it is the single largest download on the machine, and
+    # leaving it out of the sum is how a 16 GiB fetch fills the root volume at
+    # 80% through a walk-away install.
+    #
+    # DROP ORDER IS FIXED AND STATED: image plane, then vision, then code. Not
+    # because that ranking is universally right, but because a predictable rule
+    # an owner can read and override beats a clever one they cannot anticipate.
+    local needed=$(( (MODEL_SET_EST_MB + IMAGE_SET_EST_MB) * MODEL_DISK_HEADROOM_PCT / 100 ))
     if ((DISK_FREE_MB > 0)) && ((DISK_FREE_MB < needed)); then
         warn "model set needs ~${needed} MiB but only ${DISK_FREE_MB} MiB free at ${MODEL_DIR}"
-        warn "dropping the optional code/vision models to fit"
-        MODEL_CODE=""; MODEL_VISION=""
-        MODEL_DOWNGRADED=1
-        MODEL_SET_EST_MB="${MODEL_SET_EST_CHAT_ONLY_MB:-$MODEL_SET_EST_MB}"
+
+        if ((IMAGE_ENABLED == 1)); then
+            warn "dropping the image plane (${IMAGE_SET_EST_MB} MiB) to fit"
+            IMAGE_ENABLED=0; IMAGE_DROPPED=1; IMAGE_SET_EST_MB=0
+            needed=$(( MODEL_SET_EST_MB * MODEL_DISK_HEADROOM_PCT / 100 ))
+        fi
+
+        if ((DISK_FREE_MB < needed)); then
+            warn "dropping the optional code/vision models to fit"
+            MODEL_CODE=""; MODEL_VISION=""
+            MODEL_DOWNGRADED=1
+            MODEL_SET_EST_MB="${MODEL_SET_EST_CHAT_ONLY_MB:-$MODEL_SET_EST_MB}"
+        fi
     fi
     return 0
 }
@@ -396,6 +452,7 @@ select_models() {
 OLLAMA_MAX_LOADED=1; OLLAMA_PARALLEL=1; OLLAMA_KEEP_ALIVE="5m"
 OLLAMA_FLASH_ATTN=0; OLLAMA_MEM_LIMIT="4g"; OLLAMA_CTX=4096
 IMMICH_ML_DEVICE="cpu"; IMMICH_ML_IMAGE_SUFFIX=""; IMMICH_ML_MEM_LIMIT="2g"
+COMFYUI_MEM_LIMIT="12g"; COMFYUI_OUTPUT_TMPFS="2g"; COMFYUI_RESERVE_VRAM_GB=1
 IMMICH_ML_WORKERS=1; IMMICH_ML_THREADS=2
 
 arbitrate() {
@@ -416,6 +473,75 @@ arbitrate() {
         OLLAMA_MEM_LIMIT="$((half))m"
     else
         OLLAMA_MEM_LIMIT="$(( RAM_TOTAL_MB / 4 < 4096 ? 4096 : RAM_TOTAL_MB / 4 ))m"
+    fi
+
+    # --- image plane (ComfyUI) ---------------------------------------------
+    # The arbitration rule for BACKGROUND ML is "the inference engine owns the
+    # GPU, the guest yields". That rule does not transfer here, because image
+    # generation is not background work — a human is sitting there watching a
+    # progress bar. So the rule is a HANDOFF instead: whoever the owner is
+    # actively waiting on gets the card, and the other one is unloaded first.
+    #
+    #   coresident  the card fits both. Nobody yields, nothing is unloaded.
+    #   handoff     the card fits one at a time. The chat model is evicted
+    #               before a generation starts and reloads on the next message.
+    #   none        no contention (CPU generation, or no image plane at all).
+    #
+    # Without this, the two allocators each see "free VRAM" at the moment they
+    # ask, and the failure lands mid-generation as an out-of-memory abort
+    # rather than at the point where the decision was actually made.
+    # A tier is a claim about the CLASS of machine; it is not a measurement of
+    # the card in this one. A forced tier, or a card at the bottom of tier 2,
+    # can select an image model the GPU cannot hold. Check the measured budget
+    # against the model's real footprint before promising anything.
+    if ((IMAGE_ENABLED == 1)) && [[ $GPU_PROFILE != cpu ]] && ((IMAGE_VRAM_MB > 0)); then
+        if ((VRAM_BUDGET_MB < IMAGE_MIN_VRAM_MB)); then
+            warn "image plane disabled: ${VRAM_BUDGET_MB} MiB VRAM budget is below the ${IMAGE_MIN_VRAM_MB} MiB floor"
+            warn "  ${IMAGE_MODEL_NAME} needs ~${IMAGE_VRAM_MB} MiB resident, and cannot stream into this little"
+            IMAGE_ENABLED=0; IMAGE_DROPPED=1; IMAGE_SET_EST_MB=0
+        elif ((VRAM_BUDGET_MB < IMAGE_VRAM_MB)); then
+            # It fits only by streaming blocks from system RAM. That is slower,
+            # and it is the difference between a picture and an OOM abort.
+            IMAGE_VRAM_ARGS="--lowvram"
+            log "image plane: ${VRAM_BUDGET_MB} MiB < ${IMAGE_VRAM_MB} MiB needed — forcing --lowvram"
+        fi
+    fi
+
+    if ((IMAGE_ENABLED == 0)); then
+        IMAGE_HANDOFF="none"
+        # Blank the ComfyUI knobs so a reader of profile.env is not misled into
+        # thinking a disabled plane has a memory mode.
+        IMAGE_VRAM_ARGS=""; COMFYUI_MEM_LIMIT=""; COMFYUI_OUTPUT_TMPFS=""
+    elif [[ $GPU_PROFILE == cpu ]]; then
+        IMAGE_HANDOFF="none"
+        log "image plane: CPU generation — no VRAM contention, expect minutes per picture"
+    elif ((VRAM_BUDGET_MB >= IMAGE_CORESIDENT_BUDGET_MB)); then
+        IMAGE_HANDOFF="coresident"
+        log "image plane: ${VRAM_BUDGET_MB} MiB budget holds both models — no handoff needed"
+    else
+        IMAGE_HANDOFF="handoff"
+        # A 30-minute keep-alive means the first picture waits half an hour for
+        # the chat model to time out, or races it. Bound it so the card can
+        # actually change hands.
+        case "$OLLAMA_KEEP_ALIVE" in
+            30m|10m) OLLAMA_KEEP_ALIVE="5m" ;;
+        esac
+        log "image plane: ${VRAM_BUDGET_MB} MiB budget holds one model at a time — handoff mode"
+        log "  the chat model is unloaded before a picture and reloads after it"
+    fi
+
+    # ComfyUI's own ceilings. The tmpfs holds generated pictures in RAM and
+    # never on disk, so it is sized as a fraction of real memory rather than
+    # from a round number that happens to fit the developer's machine.
+    if ((IMAGE_ENABLED == 1)); then
+        local cmem=$(( RAM_TOTAL_MB / 2 ))
+        ((cmem < 8192)) && cmem=8192
+        COMFYUI_MEM_LIMIT="${cmem}m"
+        local tmpfs_mb=$(( RAM_TOTAL_MB / 16 ))
+        ((tmpfs_mb < 512))  && tmpfs_mb=512
+        ((tmpfs_mb > 4096)) && tmpfs_mb=4096
+        COMFYUI_OUTPUT_TMPFS="${tmpfs_mb}m"
+        COMFYUI_RESERVE_VRAM_GB="${COMFYUI_RESERVE_VRAM_GB:-1}"
     fi
 
     # --- background ML (Immich) --------------------------------------------
@@ -462,6 +588,7 @@ SAMBUCA_TIER=${TIER}
 SAMBUCA_TIER_NAME=${TIER_NAME}
 SAMBUCA_TIER_REASON="${TIER_REASON}"
 SAMBUCA_TIER_OVERRIDDEN=${TIER_OVERRIDDEN}
+SAMBUCA_TIER_UNSUPPORTED=${TIER_UNSUPPORTED}
 
 # --- cpu / memory ---
 SAMBUCA_CPU_MODEL="${CPU_MODEL}"
@@ -494,6 +621,23 @@ SAMBUCA_MODEL_CHAT=${MODEL_CHAT}
 SAMBUCA_MODEL_CODE=${MODEL_CODE}
 SAMBUCA_MODEL_VISION=${MODEL_VISION}
 SAMBUCA_MODEL_EMBED=${MODEL_EMBED}
+
+# --- image plane ---
+SAMBUCA_IMAGE_ENABLED=${IMAGE_ENABLED}
+SAMBUCA_IMAGE_AVAILABLE_OPT_IN=${IMAGE_AVAILABLE_OPT_IN}
+SAMBUCA_IMAGE_DROPPED=${IMAGE_DROPPED}
+SAMBUCA_IMAGE_MODEL_NAME="${IMAGE_MODEL_NAME}"
+SAMBUCA_IMAGE_MODEL_LICENCE="${IMAGE_MODEL_LICENCE}"
+SAMBUCA_IMAGE_CHECKPOINT_URL="${IMAGE_CHECKPOINT_URL}"
+SAMBUCA_IMAGE_CHECKPOINT_FILE="${IMAGE_CHECKPOINT_FILE}"
+SAMBUCA_IMAGE_WORKFLOW=${IMAGE_WORKFLOW}
+SAMBUCA_IMAGE_STEPS=${IMAGE_STEPS}
+SAMBUCA_IMAGE_SET_EST_MB=${IMAGE_SET_EST_MB}
+SAMBUCA_IMAGE_HANDOFF=${IMAGE_HANDOFF}
+COMFYUI_VRAM_ARGS="${IMAGE_VRAM_ARGS}"
+COMFYUI_MEM_LIMIT=${COMFYUI_MEM_LIMIT}
+COMFYUI_OUTPUT_TMPFS=${COMFYUI_OUTPUT_TMPFS}
+COMFYUI_RESERVE_VRAM_GB=${COMFYUI_RESERVE_VRAM_GB}
 
 # --- compose wiring ---
 # Phase 60-stack appends compose/gpu.<profile>.<bundle>.yml for each ENABLED

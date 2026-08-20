@@ -120,6 +120,7 @@ Three need attention on every bump:
 | `IMMICH_*` | Immich moves fast and changes its vector extension across releases. **The server image and DB image must be bumped together**; a mismatch fails at schema migration, not at startup, so the container looks healthy for a while first. |
 | `NEXTCLOUD_AIO_IMAGE` | `:latest` by design — AIO is a mastercontainer that manages its own children and expects to self-update. We do not pin it, and that is a deliberate exception. |
 | `ODYSSEUS_IMAGE` | First-party, **not yet published**. Reported as UNPUBLISHED, not BROKEN. |
+| `COMFYUI_IMAGE` / `_ROCM_` / `_CPU_` | **Third-party, and worth saying out loud: ComfyUI publishes no official container.** These are community builds on dated tags. They go through the same Trivy gate as everything else. Building our own from a pinned upstream git tag is the better answer and is not done. |
 
 ---
 
@@ -148,6 +149,9 @@ no compatibility guarantee at all and break at the maintainer's discretion.
 | `nextcloud_aio_mastercontainer` fixed volume name | `cloud.yml` | AIO refuses to start otherwise; not our choice |
 | Immich upload path `/usr/src/app/upload` | `cloud.yml` | changed historically |
 | Pocket ID one-time setup token, scraped from container logs | `80-identity.sh` | **most fragile thing in the repo** — a log format change breaks it silently, and the log line is not an API |
+| ComfyUI model directory layout (`models/checkpoints/…`) | `70-models.sh`, `image.yml` | a ComfyUI reorganisation moves the path; the checkpoint downloads fine and is then invisible to the loader |
+| FLUX workflow node names (`EmptySD3LatentImage`, `CheckpointLoaderSimple`) | `config/comfyui/workflows/flux-schnell.json` | a node rename fails at generation time, not at start-up — the service looks healthy |
+| `black-forest-labs/FLUX.1-schnell` is **gated**; we fetch the Comfy-Org repackage | `engine/profiles/tier*.env` | if that mirror disappears there is no ungated source for the weights, and the fallback is asking every owner for a Hugging Face account |
 
 **Secrets that remain in the environment.** Most are now file-backed via the
 `*_FILE` conventions their upstreams document, mounted through compose secrets.

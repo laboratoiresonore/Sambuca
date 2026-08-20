@@ -1,0 +1,27 @@
+# sambuca :: compose/gpu.nvidia.image.yml — CUDA overlay — image plane
+#
+# Appended alongside image.yml only when SAMBUCA_IMAGE_ENABLED=1 and the GPU
+# profile resolved to nvidia.
+#
+# THE HANDOFF. On every card below IMAGE_CORESIDENT_BUDGET_MB the chat model
+# and the image model cannot both be resident: a 32B q4 is ~20 GiB and FLUX
+# fp8 is ~17 GiB. They take turns, and the turn-taking is explicit rather than
+# left to whichever allocator fails first. See docs/design/AI-PLANE.md.
+#
+# --reserve-vram is the load-bearing flag. Without it ComfyUI will claim every
+# free byte, and the reverse proxy, the photo indexer and the desktop session
+# all fight it for the last 200 MiB.
+
+services:
+
+  comfyui:
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${COMFYUI_GPU_COUNT:-all}
+              capabilities: [gpu]

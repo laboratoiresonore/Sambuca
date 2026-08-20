@@ -74,6 +74,24 @@ SYNAPSE_REGISTRATION_SECRET="$(secret_get synapse_registration_secret 48)"
 # ---------------------------------------------------------------------------
 chain="docker-compose.yml"
 enabled=()
+
+# The image bundle is decided by the HARDWARE PROFILE, not by provision.json.
+# provision.json is written on the owner's laptop before anyone has seen the
+# target machine; hardware-detect.sh measured the card that is actually in it,
+# including the disk guard and the VRAM floor. The measurement wins, in both
+# directions: it can add the bundle and it can take it away.
+if [[ ${SAMBUCA_IMAGE_ENABLED:-0} == 1 ]]; then
+    [[ ",${SAMBUCA_BUNDLES}," == *",image,"* ]] || SAMBUCA_BUNDLES="${SAMBUCA_BUNDLES},image"
+    log "image plane enabled (${SAMBUCA_IMAGE_MODEL_NAME:-unknown model}, handoff=${SAMBUCA_IMAGE_HANDOFF:-none})"
+else
+    SAMBUCA_BUNDLES="${SAMBUCA_BUNDLES//,image/}"
+    SAMBUCA_BUNDLES="${SAMBUCA_BUNDLES//image,/}"
+    SAMBUCA_BUNDLES="${SAMBUCA_BUNDLES//image/}"
+    if [[ ${SAMBUCA_IMAGE_DROPPED:-0} == 1 ]]; then
+        warn "image plane was dropped by the hardware profile — see /etc/sambuca/profile.env"
+    fi
+fi
+
 IFS=',' read -ra bundles <<<"$SAMBUCA_BUNDLES"
 for b in "${bundles[@]}"; do
     b="${b// /}"; [[ -z $b ]] && continue

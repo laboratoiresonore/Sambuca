@@ -45,6 +45,19 @@ jobs:
         # like a working one until the day it matters.
         run: bash tests/test-update-guard.sh
 
+  steward:
+    name: steward catalogue
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyyaml
+      # The catalogue is the only thing between "speak to your server" and "a
+      # language model with a shell". Its safety properties are checked, not
+      # asserted: a disruptive verb that stops confirming fails the build.
+      - run: python tools/steward-lint.py
+
   compose:
     name: compose config
     runs-on: ubuntu-latest
@@ -72,7 +85,7 @@ jobs:
           cd compose
           fail=0
           for gpu in cpu nvidia amd; do
-            for bundles in "" "ai" "cloud" "office" "comms"                            "ai,cloud" "cloud,office" "ai,cloud,office,comms"; do
+            for bundles in "" "ai" "cloud" "office" "comms" "image"                            "ai,cloud" "cloud,office" "ai,image" "image,cloud"                            "ai,cloud,office,comms" "ai,cloud,office,comms,image"; do
               chain="docker-compose.yml"
               IFS=',' read -ra sel <<< "$bundles"
               for b in "${sel[@]}"; do

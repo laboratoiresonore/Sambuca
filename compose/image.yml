@@ -1,0 +1,82 @@
+# sambuca :: compose/image.yml — the image plane
+#
+# ITS OWN BUNDLE, ON PURPOSE. ComfyUI is present on tiers 1-2 and absent on
+# tier 4, and a compose override that names a service the selected bundles do
+# not define invalidates the ENTIRE project rather than just that service.
+# Putting a conditionally-present service inside ai.yml would mean
+# gpu.nvidia.ai.yml names a service that sometimes does not exist — which is
+# exactly the failure the split-per-bundle rule was written to prevent.
+#
+# Phase 60-stack appends this file, and gpu.<profile>.image.yml with it, only
+# when the hardware profile set SAMBUCA_IMAGE_ENABLED=1.
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ComfyUI — the image plane. Present only on tiers whose profile set
+  # IMAGE_ENABLED=1; phase 60-stack drops this service from the chain
+  # otherwise, so a tier-4 box never pulls the image.
+  #
+  # THE OWNER IS NOT MEANT TO SEE THIS. ComfyUI's node graph is a professional
+  # tool and a novice bounces off it in seconds. It runs here as a headless API
+  # behind a shipped workflow; the human surface is a sentence typed into chat.
+  # The graph is still reachable for anyone who wants it — gated, at
+  # art.<domain> — because hiding it would be a different kind of dishonesty.
+  #
+  # Hardening that differs from every ComfyUI guide you will find:
+  #   * models mounted READ-ONLY. A generation request cannot rewrite weights.
+  #   * outputs land on a tmpfs. Pictures exist in RAM until the owner saves
+  #     one, then they are gone — including on power loss. This is the
+  #     auto-deletion axis, enforced by the mount rather than by a cron job
+  #     that can silently stop running.
+  #   * the custom-node installer is not reachable. Installing a node is
+  #     arbitrary code execution as this container, and a "just paste this
+  #     node pack" instruction is the most likely way an owner gets owned.
+  #   * metadata stripped from saved PNGs by default: ComfyUI embeds the full
+  #     prompt and workflow in the file, which travels with the picture when
+  #     it is shared.
+  # ─────────────────────────────────────────────────────────────────────────
+  comfyui:
+    restart: unless-stopped
+    image: ${COMFYUI_IMAGE:-yanwk/comfyui-boot:cu126-slim-20260817}
+    container_name: sambuca-comfyui
+    networks: [edge, ai]
+    volumes:
+      - ${SAMBUCA_APPDATA}/comfyui/models:/root/ComfyUI/models:ro
+      - ${SAMBUCA_APPDATA}/comfyui/input:/root/ComfyUI/input
+      - ./config/comfyui/workflows:/root/ComfyUI/user/default/workflows:ro
+    tmpfs:
+      # Generated pictures never touch the disk. Sized from the profile: big
+      # enough for a working session, small enough that it cannot evict the
+      # inference engine from RAM.
+      - /root/ComfyUI/output:size=${COMFYUI_OUTPUT_TMPFS:-2g},mode=0755
+    environment:
+      TZ: ${TZ:-UTC}
+      CLI_ARGS: >-
+        --listen 0.0.0.0
+        --port 8188
+        --disable-auto-launch
+        --disable-metadata
+        ${COMFYUI_VRAM_ARGS:---normalvram}
+        --reserve-vram ${COMFYUI_RESERVE_VRAM_GB:-1}
+      # Read by phase 70 and by the handoff protocol. Not read by ComfyUI.
+      SAMBUCA_IMAGE_WORKFLOW: ${SAMBUCA_IMAGE_WORKFLOW:-flux-schnell.json}
+      SAMBUCA_IMAGE_STEPS: ${SAMBUCA_IMAGE_STEPS:-4}
+    deploy:
+      resources:
+        limits:
+          memory: ${COMFYUI_MEM_LIMIT:-12g}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8188/system_stats >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First start compiles kernels and can genuinely take minutes on a cold
+      # card. A short start_period here marks a healthy service as failed and
+      # restarts it into the same slow start, forever.
+      start_period: 180s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt:
+      - no-new-privileges:true

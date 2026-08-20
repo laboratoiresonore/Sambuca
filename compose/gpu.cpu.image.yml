@@ -1,0 +1,26 @@
+# sambuca :: compose/gpu.cpu.image.yml — no-accelerator overlay — image plane
+#
+# Reached only when a tier-3 owner opted in. This is minutes per picture, and
+# the setup page says the number before the owner chooses.
+#
+# This file EXISTS so the COMPOSE_FILE chain is uniform across every machine.
+# A missing overlay would make phase 60 branch, and a branch in the rendering
+# path is how "works on the test box, fails on the reclaimed laptop" happens.
+
+services:
+
+  comfyui:
+    image: ${COMFYUI_CPU_IMAGE:-yanwk/comfyui-boot:cpu-20260817}
+    environment:
+      # --cpu is what stops ComfyUI probing for a card it will not find and
+      # falling back through a 60-second timeout on every single request.
+      CLI_ARGS: >-
+        --listen 0.0.0.0
+        --port 8188
+        --disable-auto-launch
+        --disable-metadata
+        --cpu
+    deploy:
+      resources:
+        limits:
+          memory: ${COMFYUI_MEM_LIMIT:-12g}

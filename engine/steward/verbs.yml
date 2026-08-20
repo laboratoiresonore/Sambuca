@@ -1,0 +1,390 @@
+# sambuca :: engine/steward/verbs.yml — what the Steward is allowed to do
+#
+# THE STEWARD IS THE APPLIANCE'S ADMINISTRATOR, DRIVEN BY SPEECH. The owner
+# says "let my new laptop in" or "Sam has left, take his access away" and it
+# happens, without anyone having to learn what a reverse proxy is.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THE RULE THAT MAKES THIS SAFE: THE MODEL PICKS A LEVER. IT NEVER HAS HANDS.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The language model does exactly one thing: choose a verb from this file and
+# fill in its parameters. It does not emit shell. It does not emit SQL. It does
+# not compose an API call. Its entire output is validated against the schema
+# below before anything runs, and a verb that is not in this file cannot be
+# invoked by any phrasing whatsoever.
+#
+# This matters because a model that reads the owner's files, mail and calendar
+# is a model that can be talked to by anyone who can get text in front of it —
+# a filename, a calendar invite, a PDF from opposing counsel. Prompt injection
+# is not hypothetical on an appliance whose entire purpose is ingesting the
+# owner's documents.
+#
+# So the defence is structural rather than clever:
+#
+#   1. The catalogue is CLOSED. Injected text can at absolute worst cause a
+#      verb from this file to be PROPOSED. It cannot invent a new one.
+#   2. Every verb states its blast radius, and anything above `additive` is
+#      confirmed by a human reading a plain-English sentence first.
+#   3. The confirmation describes the RESOLVED action — real names, real
+#      values — not the sentence the owner typed. An injection that smuggles
+#      in different arguments has to survive the owner reading them.
+#   4. Secrets never return through the model. A verb marked
+#      `returns_secret: true` sends its output to the screen, and the audit log
+#      records that a secret was issued, not what it was.
+#   5. The excluded list at the bottom is unreachable from any verb here, and
+#      the Steward cannot edit this file.
+#
+# blast_radius:
+#   additive    creates something new; nothing existing changes.
+#   reversible  changes state, and a named verb undoes it.
+#   disruptive  interrupts service or removes access.
+#
+# Anything genuinely irreversible is not in this file at all. It is in
+# `excluded`, and the Steward's job there is to explain how the owner does it
+# themselves, then get out of the way.
+
+version: 1
+
+verbs:
+
+  # ── people ───────────────────────────────────────────────────────────────
+  - name: user.invite
+    summary: "Invite someone to use this machine"
+    speech_examples:
+      - "add my wife"
+      - "I want to give Priya an account"
+      - "set up an account for my accountant"
+    blast_radius: additive
+    confirm: none
+    reversible_by: user.remove
+    returns_secret: true          # an enrolment link, shown once, on screen
+    params:
+      - name: display_name
+        type: string
+        max_length: 64
+        prompt: "What is their name?"
+      - name: role
+        type: enum
+        values: [member, admin]
+        default: member
+    notes: >-
+      Creates the Pocket ID user record and returns a one-time enrolment link.
+      It cannot create the passkey — that happens on their device, with their
+      fingerprint. Anything claiming to pre-provision a passkey has put a
+      password-equivalent secret on a disk instead.
+
+  - name: user.remove
+    summary: "Remove someone's access entirely"
+    speech_examples:
+      - "Sam has left, take his access away"
+      - "remove the account for my old assistant"
+    blast_radius: disruptive
+    confirm: strong
+    reversible_by: null           # the account is gone; their FILES are not
+    params:
+      - name: user
+        type: user_ref
+        prompt: "Which person?"
+    notes: >-
+      Revokes access. Deliberately does NOT delete their files: an administrator
+      removing a colleague at 5pm on a Friday should not also be destroying data
+      with the same sentence. Deleting the data is a separate, excluded
+      operation the owner performs by hand.
+
+  - name: user.set_role
+    summary: "Make someone an administrator, or stop them being one"
+    speech_examples:
+      - "make Priya an admin"
+      - "Tom should not be an administrator any more"
+    blast_radius: reversible
+    confirm: strong
+    reversible_by: user.set_role
+    params:
+      - name: user
+        type: user_ref
+        prompt: "Which person?"
+      - name: role
+        type: enum
+        values: [member, admin]
+    notes: >-
+      Promoting to admin is confirmed as strongly as removal, because it grants
+      the ability to do everything else in this file. The confirmation says so
+      in those words.
+
+  - name: user.reset_access
+    summary: "Let someone enrol a new phone or security key"
+    speech_examples:
+      - "my mum lost her phone"
+      - "Priya needs to set up her new laptop"
+    blast_radius: reversible
+    confirm: standard
+    reversible_by: null
+    returns_secret: true
+    params:
+      - name: user
+        type: user_ref
+        prompt: "Which person?"
+    notes: >-
+      Issues a one-time, expiring enrolment link so the person can register a
+      new passkey. Shown on screen and never spoken back through the model; the
+      audit log records that a reset link was issued, for whom, and when — not
+      the link itself.
+
+      It does NOT invalidate their existing passkeys. Someone setting up a
+      second laptop still wants the first one to work, and a lost-phone case is
+      handled by revoking that device rather than by locking the person out of
+      everything they own.
+
+  # ── devices and network ──────────────────────────────────────────────────
+  - name: device.enrol
+    summary: "Let a new phone, laptop or tablet reach this machine from anywhere"
+    speech_examples:
+      - "add my new laptop"
+      - "I want to get at my files from my work computer"
+      - "put my phone on the network"
+    blast_radius: additive
+    confirm: none
+    reversible_by: device.revoke
+    returns_secret: true          # a single-use tailnet auth key + QR code
+    params:
+      - name: label
+        type: string
+        max_length: 32
+        prompt: "What should this device be called?"
+      - name: ephemeral
+        type: bool
+        default: false
+        prompt: "Is this a device you are borrowing?"
+    notes: >-
+      Mints a single-use, expiring tailnet auth key and renders it as a QR code
+      ON THE SCREEN. The key is never spoken back through the model and never
+      written to the audit log — the log records that a key was issued, for
+      which label, at what time.
+
+  - name: device.revoke
+    summary: "Stop a device reaching this machine"
+    speech_examples:
+      - "my old phone was stolen"
+      - "remove the work laptop"
+    blast_radius: disruptive
+    confirm: standard
+    reversible_by: device.enrol
+    params:
+      - name: device
+        type: device_ref
+        prompt: "Which device?"
+    notes: >-
+      Confirmed at `standard` rather than `strong` on purpose: this is what
+      someone runs when a phone has just been stolen, and a wall of friction at
+      that exact moment is a security failure, not a security feature. It is
+      also trivially reversible.
+
+  - name: device.list
+    summary: "Show what can currently reach this machine"
+    speech_examples:
+      - "what is connected?"
+      - "which devices have access?"
+    blast_radius: additive
+    confirm: none
+    read_only: true
+    params: []
+
+  # ── sharing ──────────────────────────────────────────────────────────────
+  - name: share.create
+    summary: "Make a private link to a file or folder for someone outside"
+    speech_examples:
+      - "send the Henderson file to opposing counsel"
+      - "share the holiday photos with my sister"
+    blast_radius: additive
+    confirm: standard             # confirmed despite being additive: see notes
+    reversible_by: share.revoke
+    returns_secret: true
+    params:
+      - name: path
+        type: path_ref
+        prompt: "Which file or folder?"
+      - name: expires
+        type: duration
+        default: 7d
+        prompt: "How long should the link work?"
+      - name: password
+        type: bool
+        default: true
+    notes: >-
+      The one additive verb that still asks. Every other additive verb adds
+      something inside the fortress; this one opens a door in the wall. The
+      confirmation names the exact resolved path and the expiry, because "share
+      the Henderson file" resolving to the wrong folder is a professional
+      indemnity claim, not an inconvenience.
+
+  - name: share.revoke
+    summary: "Kill a link you shared"
+    speech_examples:
+      - "stop sharing the Henderson file"
+    blast_radius: reversible
+    confirm: none
+    reversible_by: share.create
+    params:
+      - name: share
+        type: share_ref
+        prompt: "Which link?"
+
+  # ── the machine itself ───────────────────────────────────────────────────
+  - name: service.restart
+    summary: "Restart one of the services"
+    speech_examples:
+      - "the photos app is being weird"
+      - "restart the calendar"
+    blast_radius: disruptive
+    confirm: standard
+    reversible_by: null
+    params:
+      - name: service
+        type: service_ref
+        prompt: "Which one?"
+    notes: >-
+      A LEVER, not a hand. It restarts a named service. It cannot edit the unit
+      file, change the compose definition, or pass arguments. "Restart the
+      stack" is a lever; "edit the stack" is not, and is not here.
+
+  - name: service.status
+    summary: "Check whether everything is working"
+    speech_examples:
+      - "is everything ok?"
+      - "why is the photo app slow?"
+    blast_radius: additive
+    confirm: none
+    read_only: true
+    params: []
+
+  - name: backup.run_now
+    summary: "Run a backup immediately"
+    speech_examples:
+      - "back up now"
+      - "I am about to do something risky"
+    blast_radius: additive
+    confirm: none
+    params: []
+
+  - name: backup.verify_restore
+    summary: "Prove the backups can actually be restored"
+    speech_examples:
+      - "are my backups any good?"
+      - "test the backup"
+    blast_radius: additive
+    confirm: none
+    read_only: true
+    params: []
+    notes: >-
+      Restores a sample into a scratch area and compares it. A backup that has
+      never been restored is a hypothesis, and this project has a rule about
+      those.
+
+  - name: storage.status
+    summary: "How much room is left, and is any disk failing"
+    speech_examples:
+      - "am I running out of space?"
+      - "how are the disks?"
+    blast_radius: additive
+    confirm: none
+    read_only: true
+    params: []
+
+  - name: update.apply
+    summary: "Install the updates that are waiting"
+    speech_examples:
+      - "update everything"
+      - "install the security updates"
+    blast_radius: reversible
+    confirm: standard
+    reversible_by: update.rollback
+    params:
+      - name: scope
+        type: enum
+        values: [security, all]
+        default: security
+    notes: >-
+      Runs the same guarded path as the unattended updater, including the
+      secret scan and diff-size checks in engine/maintenance/update-guard.sh.
+      Speaking to it does not bypass a single one of those gates.
+
+  - name: update.rollback
+    summary: "Undo the last update"
+    speech_examples:
+      - "that update broke something"
+      - "put it back how it was"
+    blast_radius: reversible
+    confirm: standard
+    reversible_by: update.apply
+    params: []
+
+  - name: image.generate
+    summary: "Draw a picture"
+    speech_examples:
+      - "draw me a birthday card for my mum, she likes gardening"
+      - "I need a picture of a bicycle outside a blue door"
+    blast_radius: additive
+    confirm: none
+    params:
+      - name: description
+        type: string
+        max_length: 2000
+      - name: shape
+        type: enum
+        values: [square, landscape, portrait]
+        default: square
+    notes: >-
+      Present only when the hardware profile enabled the image plane. On tiers
+      that cannot run it the verb is absent from the catalogue entirely, so the
+      Steward says "this machine cannot do that" rather than accepting the
+      request and failing several minutes later.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXCLUDED — unreachable from any verb above, by design, at any privilege.
+#
+# These are not missing features. Each is either irreversible, or capable of
+# stranding the machine, or a change to the thing that constrains the Steward
+# itself. For each one the Steward explains how the owner does it by hand.
+# ─────────────────────────────────────────────────────────────────────────────
+excluded:
+
+  - subject: Disk encryption, key slots, the recovery key
+    reason: >-
+      A wrong move strands the machine permanently, and there is no undo that
+      does not require the thing that was just destroyed. The printed recovery
+      sheet exists precisely so that a human holds this.
+
+  - subject: The certificate authority and its private key
+    reason: >-
+      Whoever holds the CA key can impersonate every service on the appliance.
+      It is not an administrative convenience, it is the root of trust.
+
+  - subject: This verb catalogue, and the Steward's own privileges
+    reason: >-
+      Structural. A guard that can edit its own guard is not a guard. Changing
+      what the Steward may do is a git commit reviewed by a human, not a
+      sentence spoken to the thing being constrained.
+
+  - subject: The audit log
+    reason: >-
+      An actor that can erase the record of what it did has no accountability.
+      The log is append-only to the Steward, which cannot rotate, truncate or
+      redact it.
+
+  - subject: Deleting a person's files
+    reason: >-
+      Removing access is reversible; destroying data is not. They are separated
+      on purpose, so that no single spoken sentence can do both.
+
+  - subject: Firewall rules, tailnet ACLs, SSH configuration
+    reason: >-
+      The classic self-hosting catastrophe is locking yourself out of the
+      machine you are administering, remotely, with no console attached. The
+      Steward can REPORT all of this. It cannot change it.
+
+  - subject: Anything that sends data off this machine
+    reason: >-
+      Not because it endangers the machine, but because it is the one promise
+      the whole appliance makes. There is no verb for it, so there is no
+      phrasing that produces it.

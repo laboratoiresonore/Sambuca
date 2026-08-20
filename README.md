@@ -41,6 +41,11 @@ If any of these sound like you, this is what Sambuca is for.
 - You want to try a coding assistant without your employer's source code becoming somebody's training data.
 - You are writing a novel and want AI help, but not at the price of it reading your manuscript.
 - You have wanted to try self-hosting for two years and every guide starts with "first, install Docker" and ends with a broken reverse proxy.
+- You would like to generate pictures without uploading a description of what you want to somebody's server first.
+
+**And you do not want to become a system administrator**
+
+- You are happy to own a server. You are not happy to learn what a reverse proxy is, and you should not have to. On this machine you add a laptop by saying "add my laptop".
 
 **And the simplest reason of all**
 
@@ -104,7 +109,54 @@ Signing costs an Apple Developer account and a Windows code-signing certificate.
 
 Plus: the whole disk is encrypted, backups run themselves nightly, and everything is checked hourly so you find out when something breaks — instead of a year later when you need it.
 
-**The AI is the bonus, not the point.** How good it is depends on your hardware. Everything above does not.
+**None of that depends on the AI, and none of it gets worse on a slower machine.** If you came here to stop paying Google, you can stop reading at this table and you will have got what you came for.
+
+The AI is the other half. It is not a chat box bolted on the side.
+
+---
+
+# What the AI actually does
+
+Three things. The third one is the one nobody else offers, and it is the reason a novice can own a server at all.
+
+### 1. It talks
+
+A private assistant that can read your own documents and never sends a word anywhere. No per-message cost, no terms of service, no training on your manuscript.
+
+### 2. It draws
+
+You type a sentence. You get a picture.
+
+> *"a birthday card for my mum, she likes gardening"*
+
+No node graphs, no negative prompts, no hunting for models on forums. Behind that box is [ComfyUI](https://github.com/comfyanonymous/ComfyUI) driving **FLUX.1-schnell** — and the assistant quietly rewrites your sentence into the kind of prompt that model actually responds well to, because that is a skill and you should not have to learn it.
+
+The picture generator is **Apache-2.0 licensed**. That is not a detail. The obvious alternative, FLUX.1-dev, forbids commercial use — no good to the lawyer this project was built for. We took the one you are genuinely allowed to use for your own work.
+
+### 3. It runs the machine
+
+This is the part that matters.
+
+> *"add my new laptop"*
+> *"Sam has left, take his access away"*
+> *"make Priya an administrator"*
+> *"my phone was stolen"*
+> *"are my backups any good?"*
+
+Adding a device to a private mesh network, revoking someone's access across every service at once, changing who is an administrator — these are the operations that normally mean a wiki page, a terminal, and an afternoon. Here they are sentences.
+
+**A sovereign machine that only a sysadmin can administer is not sovereign.** It has just moved your dependency from Google to whoever set it up for you. That is the problem this solves.
+
+<br>
+
+> [!IMPORTANT]
+> **The AI is allowed to pull levers. It is never given hands.**
+>
+> When you speak to it, the model does exactly one thing: pick an operation from a fixed, published list and fill in the blanks. It does not write commands. It cannot invent an operation that is not on the list — [you can read the list](engine/steward/verbs.yml).
+>
+> This matters because a model that reads your files and your mail can be *talked to* by anything that gets text in front of it — a filename, a calendar invite, a PDF from the other side. So anything that removes access, interrupts a service or opens a door shows you a plain sentence with the real names filled in, and waits.
+>
+> Some things are not on the list at all and never will be: your disk encryption keys, the certificate authority, the audit log, deleting anyone's files, the firewall — and **anything that sends data off the machine**. There is no operation for it, so there is no sentence that produces it.
 
 ---
 
@@ -121,7 +173,9 @@ Pick the one that sounds like the machine you have. It expands.
 
 **This is genuinely enough if you are here to leave Google.** A £100 second-hand office PC lands here.
 
-*Raspberry Pi note: the engine is x86-64 today, so a Pi is not installable yet — [it is planned](docs/design/NEXT-STAGE.md). Run `estimate "Raspberry Pi 5 16GB"` for the buying guide.*
+**There is a floor, and it is memory.** Below about 4 GB this is not a slower appliance, it is one that will not come up: the file server alone wants ~2 GB, the photo library ~4 GB with its database, and the smallest chat model ~2.5 GB. A Pi Zero, a thin client or a 2 GB VM is under the line. The installer checks, refuses, and tells you exactly which parts would not fit rather than handing you a machine that thrashes.
+
+*Raspberry Pi note: the engine is x86-64 today, so a Pi is not installable yet — [it is planned](docs/design/NEXT-STAGE.md), and a Pi Zero 2 W is being used as the port's test rig. When it lands you will want a Pi 5 with 8 GB or more. Run `estimate "Raspberry Pi 5 16GB"` for the buying guide.*
 
 </details>
 
@@ -147,11 +201,11 @@ These are the sweet spot: they cost very little second-hand, sip power, and are 
 
 | Your card | Tier | What you get |
 |---|---|---|
-| RTX 3090, 4090, 5090, or 24 GB+ | **1** | A 32B model (70B above 40 GB). Generates faster than you can read. Photo AI on the GPU too. |
-| RTX 3060 12GB, 4060 Ti 16GB, 3080 | **2** | A 14B model at 20–40 words a second. Comfortable for real work. |
-| RTX 3060 Ti, 4060, 3070 (8 GB) | **3 or 4** | 8 GB is below the threshold; it falls back to the CPU tiers. |
+| RTX 3090, 4090, 5090, or 24 GB+ | **1** | A 32B model (70B above 40 GB), faster than you can read. **Picture generation in seconds.** Photo AI on the GPU too. |
+| RTX 3060 12GB, 4060 Ti 16GB, 3080 | **2** | A 14B model at 20–40 words a second. **Picture generation, a little slower.** Comfortable for real work. |
+| RTX 3060 Ti, 4060, 3070 (8 GB) | **3 or 4** | 8 GB is below the threshold for the big models; it falls back to the CPU tiers. |
 
-An idle gaming PC is the best AI machine most people already own.
+An idle gaming PC is the best AI machine most people already own. It is also the only class of machine that gets the whole thing — talking, drawing, and running itself by voice — without compromise.
 
 </details>
 
@@ -178,17 +232,25 @@ sambuca-flasher estimate "HP desktop, 16GB, has a graphics card I think"
 
 `engine/hardware-detect.sh` measures the real machine at first boot and picks the tier itself. This is what it decides:
 
-| Tier | The machine | Chat model | Speed | Photo AI |
+| Tier | The machine | Talking | Drawing | Running the machine |
 |---|---|---|---|---|
-| **0 — every machine** | **Anything that boots.** Files, calendar, contacts, photos, passwords, PDF tools, encrypted chat, private remote access, full-disk encryption, automatic backups. **This never gets worse on a slower machine.** | — | — | — |
-| **1 — heavy GPU** | Gaming or workstation PC, 24 GB+ graphics memory (RTX 3090/4090/5090) | 32B, or 70B above 40 GB | Faster than you read | On the GPU |
-| **2 — mid GPU** | One modern gaming card (RTX 3060 12GB, 4060 Ti 16GB, 3080) | 14B | ~20–40 words/sec | On the CPU |
-| **3 — capable CPU** | Ex-office tower, 8+ cores, 24 GB+ RAM, no useful GPU | 8B | ~5–12 words/sec | On the CPU |
-| **4 — low resource** | Old laptop, mini PC, NAS box, Pi 5. 4 cores, 8–16 GB | 3B | A sentence at a time | On the CPU |
+| **0 — every machine** | **Anything that boots** with 4 GB of memory or more. Files, calendar, contacts, photos, passwords, PDF tools, encrypted chat, private remote access, full-disk encryption, automatic backups. **This never gets worse on a slower machine.** | — | — | — |
+| **1 — heavy GPU** | Gaming or workstation PC, 24 GB+ graphics memory (RTX 3090/4090/5090) | 32B model, or 70B above 40 GB. Faster than you read | **Yes** — seconds per picture | Free-form speech |
+| **2 — mid GPU** | One modern gaming card (RTX 3060 12GB, 4060 Ti 16GB, 3080) | 14B model, ~20–40 words/sec | **Yes** — a little slower | Free-form speech |
+| **3 — capable CPU** | Ex-office tower, 8+ cores, 24 GB+ RAM, no useful GPU | 8B model, ~5–12 words/sec | Optional. **Minutes** per picture, and it tells you so before you turn it on | Speech, narrower phrasings |
+| **4 — low resource** | Old laptop, mini PC, NAS box. 4 cores, 8–16 GB | 3B model, a sentence at a time | No | Guided menus with a search box |
 
-**Tier 0 is the row that matters most.** Only the AI column changes with your hardware. If you came here to stop paying Google rather than to run a 70B model, any machine on this table does the whole job.
+**Tier 0 is the row that matters most.** Only the AI columns change with your hardware.
 
-**Why the photo AI sits on the CPU below 24 GB:** the language model owns the graphics card. Two things each believing they own it is how a self-hosted box runs out of memory at 3am in the middle of importing your photo library.
+<br>
+
+**Two things worth understanding about that table:**
+
+**The interface changes, not just the model.** The usual way self-hosted AI disappoints is that it puts the same blank chat box on every machine and lets the hardware decide whether it is any good. A small model behind a blank box is a bad product; the same model behind a narrow, well-scaffolded task is a useful one. So tier 4 gets menus that a search box *filters* — because picking one item from a list is something small models are genuinely good at — rather than a chat window pretending to be cleverer than it is. The safety rules are identical on every tier. Only the scaffolding differs.
+
+**Operations you cannot do are absent, not broken.** On a machine that cannot generate pictures, "draw me something" is not an option that fails four minutes later. It is not there at all, and the machine tells you so immediately.
+
+**Why the photo AI yields the graphics card:** the language model owns it. Two things each believing they own it is how a self-hosted box runs out of memory at 3am in the middle of importing your photo library. Picture generation is different — you are sitting there watching it — so the two take turns explicitly instead.
 
 ---
 
@@ -228,7 +290,9 @@ Under the hood, Sambuca orchestrates a robust, open-source stack that prioritize
 
 * **The Base OS:** A minimal, headless Debian 12 environment with military-grade LUKS disk encryption.
 * **The Hardware Profiler:** A dynamic auto-scaling daemon that detects your CPU, RAM, and GPU VRAM on first boot, automatically pulling the optimal quantized models to prevent out-of-memory crashes.
-* **The AI Engine:** Ollama serving as the local backend, paired with **Odysseus** as the highly capable, aesthetically pleasing web frontend for interacting with your models.
+* **The AI Engine:** Ollama as the local inference backend, paired with **Odysseus** as the web frontend. The model set is chosen per hardware tier from a catalogue held as data, not code — see [`engine/profiles/`](engine/profiles/).
+* **The Image Plane:** ComfyUI running headless behind a shipped workflow, with **FLUX.1-schnell** (Apache-2.0). Weights mounted read-only, generated pictures held on a tmpfs so they never touch the disk, embedded prompt metadata stripped, and the custom-node installer unreachable. Present only on hardware that can actually run it.
+* **The Steward:** natural-language administration over a **closed, typed catalogue of operations** ([`engine/steward/verbs.yml`](engine/steward/verbs.yml)). The model selects and fills a verb; it never emits shell. Every operation declares its blast radius, and the safety rules are enforced by [`tools/steward-lint.py`](tools/steward-lint.py) in CI rather than asserted in a comment.
 * **The Application Mesh:** A CasaOS graphical dashboard managing a pre-wired Docker Compose ecosystem.
 * **The Sovereign SaaS Suite:** Pre-configured self-hosted alternatives, including Vaultwarden (passwords), Nextcloud AIO (files/calendars), Immich (local ML photo backup), and encrypted IRC/Matrix servers.
 * **Zero-Config Networking:** Tailscale is baked directly into the core, creating a secure peer-to-peer mesh network. No opening router ports, no complex firewall rules.
@@ -600,7 +664,22 @@ resolution of every container image — digests recorded in
 [docs/IMAGES.md](docs/IMAGES.md). 25 tests pass, including pinned derivation
 vectors for both seed-derived keys.
 
-Two things are honestly outstanding:
+**Where the AI plane actually stands**, since the section above describes it as
+though it were finished and it is not:
+
+| Piece | State |
+|---|---|
+| Per-tier model catalogues, image models held as data | **Built.** Profiler runs; all four tiers verified. |
+| Memory floor, VRAM floor, disk guard, drop order | **Built and exercised.** The VRAM floor was found by running the profiler on a real 8 GB card. |
+| ComfyUI service, GPU overlays, gated route | **Written; renders in CI.** Never started on real hardware. |
+| The FLUX workflow graph | **Written against documented node interfaces. No picture has come out of it yet.** |
+| Checkpoint fetch — resumable, digest-pinned, atomic | **Built.** Digest verified against the live upstream. Not yet run end to end. |
+| GPU handoff decision | **Built.** The unload/reload protocol it describes is **not implemented**. |
+| The verb catalogue and its linter | **Built, in CI, mutation-tested** against five injected regressions. |
+| **The Steward runtime** — the thing that selects and executes verbs | **Not built.** This is the largest gap on this page. |
+| Odysseus integration for chat, pictures and the Steward | **Not built.** Blocked on publishing Odysseus. |
+
+Two further things are outstanding:
 
 - **`ODYSSEUS_IMAGE` is not published yet.** Until it is public on GHCR, the
   `ai` bundle starts Ollama with no frontend. Everything else runs.
@@ -618,7 +697,10 @@ That gap is not modesty. Every serious bug found so far was found by a machine
 running the code, not by anyone reading it: a `local` declaration that gave four
 databases the same password, CRLF line endings that made the abort countdown
 unrunnable, a `read -t` that would have hung the installer where it is not
-implemented. Reading is not verification.
+implemented, and — while writing the section above — a picture model whose
+licence was perfect and whose repository returns `401` to an anonymous download,
+which would have stalled every unattended install on earth. Reading is not
+verification.
 
 ---
 

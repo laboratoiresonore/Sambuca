@@ -86,3 +86,76 @@ fi
 
 installed="$(docker exec "$OLLAMA_CONTAINER" ollama list 2>/dev/null | awk 'NR>1{print $1}' | tr '\n' ' ' || true)"
 ok "models installed: ${installed:-none}"
+
+# ---------------------------------------------------------------------------
+# IMAGE PLANE
+#
+# Not an ollama pull — a plain HTTPS fetch of a 16 GiB file, which is the
+# largest single thing this appliance ever downloads and the one most likely to
+# arrive damaged. Three properties matter, and none of them are automatic:
+#
+#   RESUMABLE   `curl -C -` continues a partial file. A domestic connection
+#               dropping at 14 GiB should cost minutes, not the whole fetch.
+#   VERIFIED    the digest is pinned in the tier profile. An exit code of 0
+#               from curl means bytes arrived, not that the right bytes did.
+#   ATOMIC      it lands on a .part path and is renamed only once the digest
+#               matches, so ComfyUI can never open a half-written checkpoint.
+#
+# A failure here NEVER fails the install. Every other part of the appliance
+# works without picture generation, and an owner who loses their file server
+# because an optional 16 GiB download timed out would be right to be furious.
+# ---------------------------------------------------------------------------
+: "${SAMBUCA_IMAGE_ENABLED:=0}"
+
+if [[ $SAMBUCA_IMAGE_ENABLED == 1 ]]; then
+    ckpt_dir="${SAMBUCA_APPDATA:-/var/lib/sambuca/appdata}/comfyui/models/checkpoints"
+    ckpt_path="${ckpt_dir}/${SAMBUCA_IMAGE_CHECKPOINT_FILE}"
+    mkdir -p "$ckpt_dir"
+
+    verify_ckpt() {
+        [[ -f $ckpt_path ]] || return 1
+        if [[ -z ${SAMBUCA_IMAGE_CHECKPOINT_SHA256:-} ]]; then
+            warn "no digest pinned for ${SAMBUCA_IMAGE_CHECKPOINT_FILE} — cannot verify"
+            return 0
+        fi
+        local actual
+        actual="$(sha256sum "$ckpt_path" | awk '{print $1}')"
+        [[ $actual == "$SAMBUCA_IMAGE_CHECKPOINT_SHA256" ]]
+    }
+
+    if verify_ckpt; then
+        ok "image model: ${SAMBUCA_IMAGE_MODEL_NAME} already present and verified"
+    else
+        if [[ -f $ckpt_path ]]; then
+            warn "image model present but its digest does not match — refetching"
+            mv -f "$ckpt_path" "${ckpt_path}.bad"
+        fi
+        log "image model: fetching ${SAMBUCA_IMAGE_MODEL_NAME} (~$((SAMBUCA_IMAGE_SET_EST_MB / 1024)) GiB) — this is the long one"
+
+        if sb_retry 3 30 curl -fL --progress-bar -C - \
+                -o "${ckpt_path}.part" "$SAMBUCA_IMAGE_CHECKPOINT_URL"; then
+            mv -f "${ckpt_path}.part" "$ckpt_path"
+            if verify_ckpt; then
+                ok "image model: ${SAMBUCA_IMAGE_CHECKPOINT_FILE} verified"
+                rm -f "${ckpt_path}.bad"
+            else
+                err "image model: DIGEST MISMATCH after download"
+                err "  expected ${SAMBUCA_IMAGE_CHECKPOINT_SHA256}"
+                err "  got      $(sha256sum "$ckpt_path" 2>/dev/null | awk '{print $1}')"
+                err "  refusing to install it. The appliance is fine; picture generation is off."
+                rm -f "$ckpt_path"
+                SAMBUCA_IMAGE_ENABLED=0
+            fi
+        else
+            warn "image model: download failed after retries — continuing without picture generation"
+            warn "  retry later with: sambuca-first-boot --only 70-models --force"
+            rm -f "${ckpt_path}.part"
+            SAMBUCA_IMAGE_ENABLED=0
+        fi
+    fi
+
+    if [[ $SAMBUCA_IMAGE_ENABLED == 0 ]]; then
+        printf 'SAMBUCA_IMAGE_ENABLED=0\n' >>"${SB_ETC}/profile.local.env"
+        warn "image plane recorded as OFF in profile.local.env"
+    fi
+fi
