@@ -642,19 +642,47 @@ def _settle_reachability(args) -> str:
         _say("  you reach the appliance by name from anywhere, without opening")
         _say("  any ports on your router.")
         _say()
+        _say("  It is free for personal use, and you sign in with an account")
+        _say("  you already have — Google, Microsoft or GitHub. No new")
+        _say("  password, no card.")
+        _say()
         if _ask_yes("  Install it now?"):
             if tailnet.install_here():
                 _say("  installed.")
                 st = tailnet.status()
+                # Freshly installed means almost certainly not signed in, and
+                # quite likely no account either. Offer both in one step
+                # rather than falling through to a second question.
+                if not st.running and _ask_yes("  Sign in now? (opens your browser)"):
+                    _say("  Waiting for you to finish in the browser...")
+                    if tailnet.sign_in():
+                        st = tailnet.status()
+                        _say(f"  Signed in. This computer is on: {st.tailnet}")
             else:
                 _say("  Could not install it automatically. Get it from:")
                 _say("    https://tailscale.com/download")
         _say()
 
+    # FORK: installed but signed out — and, indistinguishable from here, "has
+    # never had an account at all". Both are answered by the same action, so
+    # both are offered the same way. The no-account case is named out loud,
+    # because "you need an account" reads like a wall to someone who assumes
+    # it means a form and a credit card.
     if st.installed and not st.running:
-        _say("  Tailscale is installed here but not signed in. Open it and")
-        _say("  sign in, then run this again — otherwise the appliance will")
-        _say("  join a network this computer is not on.")
+        _say("  Tailscale is installed here but not signed in.")
+        _say()
+        _say("  If you have never used it: it is free for personal use, and")
+        _say("  you sign in with an account you already have — Google,")
+        _say("  Microsoft or GitHub. There is no new password to invent.")
+        _say()
+        if _ask_yes("  Sign in now? (this opens your browser)"):
+            _say("  Waiting for you to finish in the browser...")
+            if tailnet.sign_in():
+                st = tailnet.status()
+                _say(f"  Signed in. This computer is on: {st.tailnet}")
+            else:
+                _say("  Sign-in did not finish. You can do it later — the")
+                _say("  appliance still works on this network in the meantime.")
         _say()
 
     if st.ready:

@@ -278,14 +278,37 @@ fi
 
 if command -v tailscale >/dev/null 2>&1; then
     log "joining the tailnet"
-    if tailscale up --authkey="{tailscale_key}" --hostname="{hostname}" \\
-            --ssh --accept-dns=false >/dev/null 2>&1; then
+    # Capture the reason. Discarding it leaves an owner staring at a machine
+    # that did not join, on hardware with no screen, with nothing to read.
+    joinlog=$(tailscale up --authkey="{tailscale_key}" --hostname="{hostname}" \\
+                  --ssh --accept-dns=false 2>&1)
+    if [ $? -eq 0 ]; then
         addr=$(tailscale ip -4 2>/dev/null | head -1)
         log "tailnet address: ${{addr:-unknown}}"
         log "reachable as: {hostname}"
     else
-        log "tailscale up FAILED — check the auth key has not expired"
+        log "TAILNET JOIN FAILED"
+        log "  reason: $(echo "$joinlog" | head -3 | tr '\\n' ' ')"
+        # Tell them WHICH of the three it is. They are fixed in completely
+        # different places, and guessing wastes an evening.
+        case "$joinlog" in
+            *"expired"*|*"invalid key"*|*"unauthorized"*)
+                log "  the pre-auth key was rejected - it may have expired or"
+                log "  already been used. Make a new one and re-provision."
+                ;;
+            *"timeout"*|*"no route"*|*"connection refused"*|*"dial"*)
+                log "  cannot reach the coordination server. This network may"
+                log "  block Tailscale - common on corporate and school wifi."
+                log "  The appliance still works on the LAN."
+                ;;
+            *)
+                log "  see the reason above."
+                ;;
+        esac
+        log "  NOT FATAL: the appliance is up and reachable on this network."
     fi
+else
+    log "tailscale is not installed - appliance is LAN-only"
 fi
 
 # The key has been used. It must not stay on a card that travels.
@@ -334,6 +357,17 @@ if [ -f "$CMDLINE" ]; then
     sed -i 's| systemd.run=[^ ]*||g; s| systemd.run_success_action=[^ ]*||g; s| systemd.unit=[^ ]*||g' "$CMDLINE"
     log "cmdline hook removed"
 fi
+
+# ---- how to reach this machine, whatever happened above -----------------
+# The card is the channel home, so the ADDRESS goes on it too. Otherwise
+# "reachable on the LAN" is a claim with nothing actionable behind it.
+lanip=$(hostname -I 2>/dev/null | tr ' ' '\\n' | grep -v '^$' | head -1)
+log "LAN address: ${{lanip:-unknown}}"
+log "LAN name: $(hostname).local"
+log ""
+log "To reach this machine:"
+log "  ssh $(ls /home 2>/dev/null | head -1)@${{lanip:-<address>}}"
+log "  or:  ssh $(ls /home 2>/dev/null | head -1)@$(hostname).local"
 
 log "sambuca first boot complete"
 sync

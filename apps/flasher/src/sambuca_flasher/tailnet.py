@@ -134,6 +134,52 @@ def open_key_page() -> bool:
         return False
 
 
+SIGNUP = "https://login.tailscale.com/start"
+
+
+def sign_in(timeout: int = 300) -> bool:
+    """Sign this computer in, opening the operator's own browser.
+
+    THE FORK THIS CLOSES. Being installed but signed out used to end the step
+    with "sign in and re-run" — sending someone away mid-task to do something
+    the installer can simply do. `tailscale up` opens their browser, they
+    authenticate, and the flow continues in the same session.
+
+    IT ALSO COVERS HAVING NO ACCOUNT. The same page signs in and signs up, with
+    an identity they already have — Google, Microsoft, GitHub — so there is no
+    new password to invent. That is worth SAYING, because "you need an account"
+    reads like a wall to someone who assumes it means a form and a credit card.
+
+    The timeout is generous: a human is reading a consent screen, possibly
+    finding a phone for two-factor.
+    """
+    cli = find_cli()
+    if cli is None:
+        return False
+    try:
+        proc = subprocess.run(
+            [str(cli), "up", "--accept-dns=false"],
+            timeout=timeout, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    except (subprocess.SubprocessError, OSError):
+        return False
+    if proc.returncode != 0:
+        return False
+    return status().ready
+
+
+def open_signup() -> bool:
+    """Open the page that creates an account."""
+    import webbrowser
+
+    try:
+        return webbrowser.open(SIGNUP)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def valid_key(key: str) -> bool:
     """Catch the paste that will not work, before the card is written.
 
