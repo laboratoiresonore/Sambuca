@@ -167,6 +167,7 @@ ships, that is a reason to look harder, not a reason to copy it.
 ```bash
 ruff check apps/flasher/src apps/flasher/tests tools tests
 python -m pytest apps/flasher/tests tests -q
+shellcheck --severity=warning --external-sources $(find engine -name '*.sh')
 bash -n engine/hardware-detect.sh && bash -n engine/provision/*.sh
 python tools/steward-lint.py
 python -c "import yaml,glob; [yaml.safe_load(open(f,encoding='utf-8')) for f in glob.glob('compose/*.yml')]"
@@ -194,6 +195,12 @@ without it.
   definition silently shadowing another, and a minted Tailscale key computed and
   discarded. All three were invisible to a green suite, because no test ever
   executed those commands.
+- **shellcheck is available locally** (`pip install shellcheck-py`) and is in
+  the list above because it was not, and two findings shipped to CI blind.
+  Its own comment syntax has two traps, both tripped: a `source=` directive
+  must sit IMMEDIATELY above its `source` line, and **a comment line beginning
+  with the linter's own name is parsed as a directive** — so explaining it at
+  the start of a line breaks the script.
 - **A lint FIX is not automatically inert either.** Adding `# noqa: E501` to a
   long line in `pi.py` put it inside a shell heredoc, appending it to the
   Tailscale apt source line written to every card. Read the result.

@@ -25,7 +25,7 @@ dependencies = [
 # newest that morning: it ran 0.16.4 against code that linted clean on
 # 0.15.8 here, because the two disagree about default rules. A linter
 # release somebody else cuts must not be able to break this build.
-dev = ["pytest>=8.0", "ruff==0.16.4"]
+dev = ["pytest>=8.0", "ruff==0.16.4", "pyyaml>=6.0"]
 
 [project.scripts]
 sambuca-flasher = "sambuca_flasher.cli:main"

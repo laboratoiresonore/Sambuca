@@ -85,8 +85,9 @@ sb_beacon_stop() {
 
     if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
         kill "$pid" 2>/dev/null || true
-        local i
-        for i in 1 2 3 4 5; do
+        # `_` because this is a countdown, not an index. Naming it `i`
+        # made shellcheck rightly ask what it was for.
+        for _ in 1 2 3 4 5; do
             kill -0 "$pid" 2>/dev/null || break
             sleep 1
         done

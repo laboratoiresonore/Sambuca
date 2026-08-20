@@ -28,8 +28,17 @@ SB_TAG="first-boot"
 _SB_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=engine/lib/common.sh
 source "${_SB_SELF_DIR}/lib/common.sh"
+# Exported because beacon.sh reads it as an override of its own default, and
+# the linter cannot see across a source boundary. export states out loud that
+# this is configuration for another module rather than a local.
+#
+# TWO TRAPS LEARNED HERE, BOTH BY TRIPPING THEM. A `source=` directive must sit
+# IMMEDIATELY above its source command — a comment in between stops it being
+# read. And a comment line that STARTS with the linter's own name is parsed as
+# a directive, so explaining shellcheck at the start of a line breaks the file
+# (SC1072/SC1073). Hence the careful phrasing above.
+export SB_BEACON_SCRIPT="${_SB_SELF_DIR}/beacon/sambuca-beacon.py"
 # shellcheck source=engine/lib/beacon.sh
-SB_BEACON_SCRIPT="${_SB_SELF_DIR}/beacon/sambuca-beacon.py"
 source "${_SB_SELF_DIR}/lib/beacon.sh"
 sb_trap_err
 
