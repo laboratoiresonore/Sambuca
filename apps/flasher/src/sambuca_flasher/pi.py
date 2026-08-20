@@ -140,6 +140,8 @@ def render_firstrun(
     hostname: str = "sambuca",
     run_probe: bool = True,
     enable_ssh: bool = True,
+    authorized_key: str = "",
+    tailscale_key: str = "",
 ) -> str:
     """The script the kernel executes on first boot.
 
@@ -189,6 +191,115 @@ fi
 systemctl enable ssh >/dev/null 2>&1 && log "ssh enabled" || log "could not enable ssh"
 """
 
+    # THE FIX FOR AN APPLIANCE NOBODY COULD REACH.
+    #
+    # Enabling ssh without installing a key produces a machine with the door
+    # open and no name on the list — unreachable from the very computer that
+    # wrote its card. That is what the first real card did, and the response
+    # was to ask its owner to fix it by hand.
+    #
+    # The key is installed for EVERY human account on the machine, because the
+    # username is chosen in the Imager's own screen and Sambuca does not get to
+    # see it. Iterating /home is how this works without guessing.
+    #
+    # A PUBLIC key only. The check below is not decoration: a private key on a
+    # FAT partition that travels between machines is disclosed the moment the
+    # card is lost.
+    authkey = ""
+    if enable_ssh and authorized_key:
+        authkey = f"""
+# ---- authorise the machine that wrote this card -------------------------
+KEY='{authorized_key}'
+case "$KEY" in
+    *"PRIVATE KEY"*)
+        log "REFUSING to install what looks like a PRIVATE key"
+        KEY=""
+        ;;
+esac
+
+if [ -n "$KEY" ]; then
+    installed=0
+    for home in /home/*; do
+        [ -d "$home" ] || continue
+        user=$(basename "$home")
+        mkdir -p "$home/.ssh" 2>/dev/null || continue
+        if ! grep -qsF "$KEY" "$home/.ssh/authorized_keys" 2>/dev/null; then
+            echo "$KEY" >>"$home/.ssh/authorized_keys"
+        fi
+        chmod 700 "$home/.ssh" 2>/dev/null
+        chmod 600 "$home/.ssh/authorized_keys" 2>/dev/null
+        chown -R "$user:$user" "$home/.ssh" 2>/dev/null
+        installed=$((installed + 1))
+        log "authorised the installing machine for user $user"
+    done
+    if [ "$installed" -eq 0 ]; then
+        log "NO HOME DIRECTORIES FOUND — nobody was authorised"
+    fi
+fi
+"""
+
+    # THE REDUNDANCY THAT MAKES THE APPLIANCE FINDABLE.
+    #
+    # An ssh key only helps if the installing machine can reach the box: right
+    # LAN, right IP, and that IP unchanged. A headless appliance that moved
+    # network, or whose lease rotated, is gone. Tailscale gives it a stable
+    # name from anywhere with nothing exposed to the internet.
+    #
+    # INSTALLED FROM THE APT REPOSITORY, NOT `curl | sh`. The convenience
+    # installer pipes an unpinned script into a root shell, and this project
+    # already names that pattern as the weakest link in its own supply chain
+    # (docs/MAINTENANCE.md, on the CasaOS installer). Doing it again knowingly
+    # would be worse than doing it once by accident.
+    #
+    # THE AUTH KEY IS SHREDDED AFTER USE. It sits on a FAT32 partition that
+    # travels between machines; leaving it there means the card is a credential
+    # for the tailnet for as long as the key lives.
+    tailscale = ""
+    if tailscale_key:
+        tailscale = f"""
+# ---- join the tailnet ----------------------------------------------------
+log "installing tailscale from the apt repository"
+if ! command -v tailscale >/dev/null 2>&1; then
+    codename=$(. /etc/os-release 2>/dev/null && echo "$VERSION_CODENAME")
+    [ -n "$codename" ] || codename=bookworm
+    install -d -m 0755 /usr/share/keyrings
+    if curl -fsSL "https://pkgs.tailscale.com/stable/raspbian/$codename.noarmor.gpg" \\
+            -o /usr/share/keyrings/tailscale-archive-keyring.gpg 2>/dev/null; then
+        echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/raspbian $codename main" \\
+            >/etc/apt/sources.list.d/tailscale.list
+        apt-get update -qq >/dev/null 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tailscale >/dev/null 2>&1 \\
+            && log "tailscale installed" \\
+            || log "tailscale install FAILED — the appliance is LAN-only"
+    else
+        log "could not fetch the tailscale signing key — skipping, LAN-only"
+    fi
+fi
+
+if command -v tailscale >/dev/null 2>&1; then
+    log "joining the tailnet"
+    if tailscale up --authkey="{tailscale_key}" --hostname="{hostname}" \\
+            --ssh --accept-dns=false >/dev/null 2>&1; then
+        addr=$(tailscale ip -4 2>/dev/null | head -1)
+        log "tailnet address: ${{addr:-unknown}}"
+        log "reachable as: {hostname}"
+    else
+        log "tailscale up FAILED — check the auth key has not expired"
+    fi
+fi
+
+# The key has been used. It must not stay on a card that travels.
+for f in {BOOT_MOUNT}/sambuca/tailscale.key {BOOT_MOUNT}/firstrun.sh; do
+    [ -f "$f" ] || continue
+    if command -v shred >/dev/null 2>&1; then
+        shred -u "$f" 2>/dev/null || rm -f "$f"
+    else
+        rm -f "$f"
+    fi
+done
+log "auth key removed from the card"
+"""
+
     return f"""#!/bin/sh
 # GENERATED BY sambuca-flasher. Runs once, on first boot, then removes itself.
 set -u
@@ -215,7 +326,7 @@ log "model:    $(tr -d '\\0' </proc/device-tree/model 2>/dev/null)"
 if [ "$(hostname)" != "{hostname}" ]; then
     echo "{hostname}" >/etc/hostname 2>/dev/null && log "hostname set to {hostname}"
 fi
-{ssh}{probe}
+{ssh}{authkey}{tailscale}{probe}
 # ---- disarm ---------------------------------------------------------------
 # Strip our own hook out of cmdline.txt so the next boot is a normal one.
 CMDLINE={BOOT_MOUNT}/cmdline.txt
@@ -239,6 +350,8 @@ def provision_boot_partition(
     run_probe: bool = True,
     wifi_ssid: str | None = None,
     wifi_country: str = "GB",
+    authorized_key: str = "",
+    tailscale_key: str = "",
 ) -> list[str]:
     """Write the first-boot configuration into the mounted FAT32 partition.
 
@@ -285,7 +398,9 @@ def provision_boot_partition(
     # 2. the script
     firstrun = boot / "firstrun.sh"
     firstrun.write_text(
-        render_firstrun(hostname=hostname, run_probe=run_probe, enable_ssh=enable_ssh),
+        render_firstrun(hostname=hostname, run_probe=run_probe,
+                        enable_ssh=enable_ssh, authorized_key=authorized_key,
+                        tailscale_key=tailscale_key),
         encoding="utf-8", newline="\n",
     )
     actions.append(f"wrote {firstrun.name}")
@@ -294,6 +409,17 @@ def provision_boot_partition(
     if enable_ssh:
         (boot / "ssh").write_text("", encoding="utf-8")
         actions.append("enabled ssh (marker file)")
+        if authorized_key:
+            actions.append("authorised this machine to reach the appliance")
+        if tailscale_key:
+            actions.append(
+                "will join your tailnet on first boot (key shredded after use)"
+            )
+        else:
+            actions.append(
+                "WARNING: ssh is on but NO KEY was installed — the appliance "
+                "will be unreachable from here"
+            )
 
     # 4. wifi. NO PASSWORD IS ACCEPTED HERE and none is written. A wifi
     #    pre-shared key in a plaintext file on a FAT partition, on a card that

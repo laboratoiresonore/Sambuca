@@ -79,6 +79,15 @@ def main(argv: list[str] | None = None) -> int:
     p_pi.add_argument("--wifi-ssid",
                       help="note the network name on the card. NO KEY IS WRITTEN.")
     p_pi.add_argument("--no-ssh", action="store_true")
+    p_pi.add_argument(
+        "--tailscale-key",
+        help="pre-auth key so the appliance joins your tailnet on first boot "
+             "and is reachable by name from anywhere. Shredded off the card "
+             "once used.")
+    p_pi.add_argument(
+        "--no-authorise", action="store_true",
+        help="do NOT authorise this computer on the appliance (you will need "
+             "another way in)")
     p_pi.add_argument("--no-probe", action="store_true",
                       help="do not run hardware-detect.sh on first boot")
     p_pi.add_argument("--no-verify", action="store_true",
@@ -97,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     p_prov.add_argument("--engine", type=Path)
     p_prov.add_argument("--wifi-ssid")
     p_prov.add_argument("--no-ssh", action="store_true")
+    p_prov.add_argument("--tailscale-key")
+    p_prov.add_argument("--no-authorise", action="store_true")
     p_prov.add_argument("--no-probe", action="store_true")
 
     sub.add_parser("derive-backup-key",
@@ -742,6 +753,18 @@ def _cmd_write_pi(args) -> int:
     print()
 
     # ---- G6: warn before the prompt, not after --------------------------
+    # G: do it for them, or guide them. A tailnet pre-auth key cannot be
+    # minted without the owner's own Tailscale account, so this is the guide
+    # half — with the exact link, not a vague suggestion.
+    if not getattr(args, "tailscale_key", None):
+        print("Tip: the appliance will be reachable on this network by its")
+        print("address. To reach it by NAME from anywhere — and to survive the")
+        print("address changing — create a pre-auth key and pass it in:")
+        print("    https://login.tailscale.com/admin/settings/keys")
+        print("    sambuca-flasher write-pi --tailscale-key tskey-auth-...")
+        print("  The key is used once on first boot and then shredded off the card.")
+        print()
+
     print("Next, your computer will ask permission to run the Imager.")
     print("That prompt is expected: writing to a card needs it.")
     print("Sambuca waits here until you close the Imager window.")
@@ -820,6 +843,36 @@ def _cmd_provision_pi(args) -> int:
     staged = _stage_engine(engine_dir, staging / "sambuca")
     print(f"staged {staged} engine file(s)")
 
+    # ACCESS IS NOT AN AFTERTHOUGHT. An appliance with ssh enabled and nobody
+    # authorised is unreachable from the machine that built it — which is what
+    # the first real card produced, and it is an installer defect, not a chore
+    # for its owner.
+    authorized_key = ""
+    if not args.no_ssh and not getattr(args, "no_authorise", False):
+        from . import access
+
+        key = access.operator_key()
+        if key is None:
+            print("\nwarning: no ssh key on this computer and one could not be",
+                  file=sys.stderr)
+            print("         generated. The appliance will be unreachable from here.",
+                  file=sys.stderr)
+        elif access.looks_like_private_key(key.public_key):
+            # Cannot happen through operator_key(), which only returns lines
+            # beginning with a public key type. Checked anyway: a private key
+            # on a card that travels between machines is disclosed the moment
+            # the card is lost.
+            print("\nrefusing to write what looks like a PRIVATE key",
+                  file=sys.stderr)
+        else:
+            authorized_key = key.public_key
+            if key.generated:
+                print(f"\nCreated an ssh key so this computer can reach the "
+                      f"appliance:\n  {key.path}")
+            else:
+                print(f"\nUsing your existing ssh key so this computer can "
+                      f"reach the appliance:\n  {key.path}")
+
     actions = pi.provision_boot_partition(
         boot,
         payload_dir=staging / "sambuca",
@@ -827,6 +880,8 @@ def _cmd_provision_pi(args) -> int:
         enable_ssh=not args.no_ssh,
         run_probe=not args.no_probe,
         wifi_ssid=args.wifi_ssid,
+        authorized_key=authorized_key,
+        tailscale_key=getattr(args, "tailscale_key", "") or "",
     )
     for a in actions:
         print(f"  {a}")
