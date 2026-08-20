@@ -45,6 +45,7 @@ import argparse
 import json
 import re
 import sys
+import contextlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -66,9 +67,12 @@ def read_scan(scan_dir: Path) -> dict[str, dict[str, int]]:
     """Read Trivy JSON reports into {repo: {high, critical}}."""
     found: dict[str, dict[str, int]] = {}
     for f in sorted(scan_dir.glob("*.json")):
-        try:
+        # An unparseable report is a scanner problem, not a vulnerability, and
+        # must not be counted as either a finding or a clean result.
+        data = None
+        with contextlib.suppress(Exception):
             data = json.loads(f.read_text(encoding="utf-8", errors="replace"))
-        except Exception:  # noqa: BLE001 — an unparseable report is not a finding
+        if data is None:
             continue
         high = crit = 0
         for result in data.get("Results") or []:
