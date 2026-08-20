@@ -286,7 +286,7 @@ need it to start — not because it is optional reading before you trust the
 thing with your files.
 
 > [!TIP]
-> **In plain English:** Sambuca does not write your file server, your photo app or
+> Sambuca does not write your file server, your photo app or
 > your password manager. It assembles software other people already built — all of
 > it free and open source — into one appliance that replaces the commercial,
 > non-private services you pay for now. The section below lists every one of those
@@ -312,7 +312,7 @@ Nothing here is hidden behind a "recommended settings" checkbox.
 
 ### The software
 
-💡 **In plain English:** these are the actual programs that end up on your
+💡 These are the actual programs that end up on your
 machine, who wrote them, and what each replaces. All of it is free software —
 you could install any of it yourself, today, for nothing. Sambuca's job is that
 you do not have to.
@@ -358,7 +358,7 @@ what runs on your machine.
 
 ### Verification status — read this before trusting the table
 
-💡 **In plain English:** how much we have actually checked, and how much we have
+💡 How much we have actually checked, and how much we have
 not. Short version: the versions are real, current and scanned for known
 security holes — and **nobody has installed the whole thing on a real computer
 yet.** We would rather say so than let you find out.
@@ -379,7 +379,7 @@ they render — that is a real bar, and it is not the same bar as *runs*.
 
 ### Every modification, and when it happens
 
-💡 **In plain English:** every change Sambuca makes to that software before you
+💡 Every change Sambuca makes to that software before you
 get it, why, and at which moment — on your own computer while writing the USB
 stick, during installation, or at the machine's first start-up. Most of them
 close a door the software leaves open by default. None of it is hidden behind a
@@ -431,7 +431,7 @@ instead.
 </details>
 
 > [!TIP]
-> **In plain English:** the promises this project makes about how it behaves, and
+> The promises this project makes about how it behaves, and
 > what each one costs. Things like: it never sends anything anywhere, the printed
 > sheet alone is enough to get your files back, and when something breaks it says
 > so loudly instead of pretending it worked.
@@ -486,7 +486,7 @@ applies, validates, and rolls back on failure.
 </details>
 
 > [!TIP]
-> **In plain English:** a map of the code, for anyone who wants to read it before
+> A map of the code, for anyone who wants to read it before
 > running it. You do not need this to use Sambuca. It is here because "trust us"
 > is not a security model, and you should be able to check.
 
@@ -580,7 +580,7 @@ sambuca/
 </details>
 
 > [!TIP]
-> **In plain English:** what genuinely works, what is untested, and what is still
+> What genuinely works, what is untested, and what is still
 > missing. The headline: every change is checked automatically, and **nobody has
 > yet installed the whole thing on a real computer from start to finish.** Treat
 > this as an early preview, not a finished product.
@@ -625,7 +625,7 @@ implemented. Reading is not verification.
 </details>
 
 > [!TIP]
-> **In plain English:** what is being built next, and why. Three goals — make it
+> What is being built next, and why. Three goals — make it
 > simple enough for someone who has never installed an operating system, make it
 > genuinely secure including when you lose your password, and never ship software
 > with sloppy defaults when a safer version exists.
