@@ -591,6 +591,128 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
+def _say(text: str = "") -> None:
+    """print(), but safe on a Windows console.
+
+    The default codepage renders typographic characters as replacement glyphs.
+    Sanitising at the RENDER layer means a contributor typing an em-dash cannot
+    reintroduce the problem — which is exactly what happened to the guided
+    output the first time it was written.
+    """
+    from .console import ascii_safe
+
+    print(ascii_safe(text) if text else "")
+
+
+def _settle_reachability(args) -> str:
+    """STEP 1: how will you reach the machine you are about to build?
+
+    Runs BEFORE the engine is staged, before the Imager is touched, before
+    anything is written. Reachability is a prerequisite, not a footnote — an
+    appliance nobody can find is not an appliance, and discovering that after
+    the card is finished is the worst possible moment.
+
+    Returns a tailnet pre-auth key, or "" if the owner chose to go without.
+    """
+    from . import tailnet
+
+    supplied = (getattr(args, "tailscale_key", None) or "").strip()
+    if supplied:
+        if not tailnet.valid_key(supplied):
+            print("\nThat does not look like a Tailscale pre-auth key.", file=sys.stderr)
+            print("They begin with 'tskey-'. Create one at:", file=sys.stderr)
+            print(f"  {tailnet.KEY_PAGE}", file=sys.stderr)
+            raise SystemExit(1)
+        return supplied
+
+    _say()
+    _say("=" * 68)
+    _say("  STEP 1 of 2 — how you will reach the machine you are building")
+    _say("=" * 68)
+    _say()
+    _say("  Once this card is written, the appliance runs headless: no screen,")
+    _say("  no keyboard. You reach it over the network — so that has to be")
+    _say("  settled BEFORE it is built, not after.")
+    _say()
+
+    st = tailnet.status()
+
+    if not st.installed:
+        _say("  Tailscale is not installed on this computer. It is what lets")
+        _say("  you reach the appliance by name from anywhere, without opening")
+        _say("  any ports on your router.")
+        _say()
+        if _ask_yes("  Install it now?"):
+            if tailnet.install_here():
+                _say("  installed.")
+                st = tailnet.status()
+            else:
+                _say("  Could not install it automatically. Get it from:")
+                _say("    https://tailscale.com/download")
+        _say()
+
+    if st.installed and not st.running:
+        _say("  Tailscale is installed here but not signed in. Open it and")
+        _say("  sign in, then run this again — otherwise the appliance will")
+        _say("  join a network this computer is not on.")
+        _say()
+
+    if st.ready:
+        _say(f"  This computer is on the tailnet:  {st.tailnet}")
+        _say("  The appliance will join the same one, and you will reach it")
+        _say(f"  by name — no address to remember, and it survives your")
+        _say("  router handing out a different one.")
+        _say()
+        _say("  It needs a one-time key to join. Creating one takes about")
+        _say("  fifteen seconds and I can open the page for you.")
+        _say()
+        if _ask_yes("  Open the key page in your browser?"):
+            if tailnet.open_key_page():
+                _say("  opened. Choose 'Generate auth key', leave the defaults,")
+                _say("  and copy the key it shows you.")
+            else:
+                _say(f"  Could not open a browser. The page is:\n    {tailnet.KEY_PAGE}")
+        else:
+            _say(f"  The page is:  {tailnet.KEY_PAGE}")
+        _say()
+
+        try:
+            key = input("  Paste the key (or press Enter to skip): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            key = ""
+
+        if key and tailnet.valid_key(key):
+            _say("  Key accepted. The appliance will join your tailnet on first")
+            _say("  boot, and the key is shredded off the card afterwards.")
+            return key
+        if key:
+            _say("  That does not look like a pre-auth key — they begin with")
+            _say("  'tskey-'. Continuing without one.")
+
+    _say()
+    _say("  Continuing WITHOUT a tailnet key.")
+    _say("  The appliance will still work, and will still be reachable on")
+    _say("  this network by its address — but you will have to find that")
+    _say("  address, and it can change.")
+    _say()
+    return ""
+
+
+def _ask_yes(question: str, *, default: bool = True) -> bool:
+    """A yes/no that never blocks a non-interactive run."""
+    suffix = " [Y/n] " if default else " [y/N] "
+    try:
+        from .console import ascii_safe
+
+        answer = input(ascii_safe(question + suffix)).strip().lower()
+    except (EOFError, KeyboardInterrupt, OSError):
+        return default
+    if not answer:
+        return default
+    return answer.startswith("y")
+
+
+
 def _find_engine(explicit: Path | None) -> Path | None:
     """Locate the engine directory, working BOTH from source and frozen.
 
@@ -676,6 +798,12 @@ def _cmd_write_pi(args) -> int:
 
     from . import imager
 
+    # STEP 1, BEFORE ANYTHING ELSE. Reachability is a prerequisite: an
+    # appliance nobody can find is not an appliance, and finding that out
+    # after the card is written is the worst possible moment. This used to be
+    # a tip printed halfway through, after the owner had already committed.
+    tailscale_key = "" if args.dry_run else _settle_reachability(args)
+
     # Stage the engine first, and do it even on a dry run. This is what proves
     # a BUILT BINARY carries its engine — CI runs exactly this path, because a
     # binary that starts but cannot find its payload is the failure that shipped
@@ -683,28 +811,28 @@ def _cmd_write_pi(args) -> int:
     engine_dir = _find_engine(args.engine)
     if engine_dir is None:
         print("\nerror: could not find the sambuca engine.", file=sys.stderr)
-        print("       This build should carry it; pass --engine <path> to override.",
+        _say("       This build should carry it; pass --engine <path> to override.",
               file=sys.stderr)
         return 1
 
     staging = Path(tempfile.mkdtemp(prefix="sambuca-pi-"))
     staged = _stage_engine(engine_dir, staging / "sambuca")
-    print(f"\nstaged {staged} engine file(s) from {engine_dir}")
+    _say(f"\nstaged {staged} engine file(s) from {engine_dir}")
 
     if args.dry_run:
-        print("\ndry run: no device was touched, and Raspberry Pi Imager was "
+        _say("\ndry run: no device was touched, and Raspberry Pi Imager was "
               "not started.")
-        print(f"  staging: {staging}")
+        _say(f"  staging: {staging}")
         return 0
 
     # ---- G1: get the tool. Do not tell them to go and get it. -----------
     if imager.find_imager() is None:
-        print("\nRaspberry Pi Imager does the writing, and it is not installed.")
-        print("Installing it now. This takes a minute.\n")
+        _say("\nRaspberry Pi Imager does the writing, and it is not installed.")
+        _say("Installing it now. This takes a minute.\n")
         if not imager.try_install():
             print(imager.install_hint(), file=sys.stderr)
             return 1
-        print("  installed.\n")
+        _say("  installed.\n")
 
     # ---- G3: answer the Customisation screen before they see it ---------
     from . import customisation as cust
@@ -719,20 +847,20 @@ def _cmd_write_pi(args) -> int:
             ssh_username="sambuca",
         ))
         if ok:
-            print("Filled in the Imager's Customisation screen for you:")
+            _say("Filled in the Imager's Customisation screen for you:")
             for line in changed:
-                print(f"    {line}")
-            print()
-            print("  Your password and wi-fi key are NOT set here. The Imager")
-            print("  asks you for those itself, and Sambuca never stores them.")
-            print()
+                _say(f"    {line}")
+            _say()
+            _say("  Your password and wi-fi key are NOT set here. The Imager")
+            _say("  asks you for those itself, and Sambuca never stores them.")
+            _say()
 
     # ---- G5: the one choice that stays yours ----------------------------
     # Storage is the destructive step, so it gets the MOST words, not the
     # fewest. Naming what is attached, by size and label, is the difference
     # between picking a card and picking a backup drive.
-    print("When the Imager asks for STORAGE, this is what is plugged in now:")
-    print()
+    _say("When the Imager asks for STORAGE, this is what is plugged in now:")
+    _say()
     try:
         drives = list_removable_devices(allow_large=True)
     except DeviceError:
@@ -740,35 +868,23 @@ def _cmd_write_pi(args) -> int:
 
     if drives:
         for d in drives:
-            print(f"    {d.size_human:>10}   {d.label}")
-        print()
+            _say(f"    {d.size_human:>10}   {d.label}")
+        _say()
         if len(drives) == 1:
-            print("  That is the only removable drive attached, so it is almost")
-            print("  certainly your card. Check the size looks right anyway.")
+            _say("  That is the only removable drive attached, so it is almost")
+            _say("  certainly your card. Check the size looks right anyway.")
         else:
-            print(f"  {len(drives)} removable drives are attached. Match the SIZE to")
-            print("  your card. EVERYTHING on the one you choose is erased.")
+            _say(f"  {len(drives)} removable drives are attached. Match the SIZE to")
+            _say("  your card. EVERYTHING on the one you choose is erased.")
     else:
-        print("    (nothing detected — insert your card before continuing)")
-    print()
+        _say("    (nothing detected — insert your card before continuing)")
+    _say()
 
     # ---- G6: warn before the prompt, not after --------------------------
-    # G: do it for them, or guide them. A tailnet pre-auth key cannot be
-    # minted without the owner's own Tailscale account, so this is the guide
-    # half — with the exact link, not a vague suggestion.
-    if not getattr(args, "tailscale_key", None):
-        print("Tip: the appliance will be reachable on this network by its")
-        print("address. To reach it by NAME from anywhere — and to survive the")
-        print("address changing — create a pre-auth key and pass it in:")
-        print("    https://login.tailscale.com/admin/settings/keys")
-        print("    sambuca-flasher write-pi --tailscale-key tskey-auth-...")
-        print("  The key is used once on first boot and then shredded off the card.")
-        print()
-
-    print("Next, your computer will ask permission to run the Imager.")
-    print("That prompt is expected: writing to a card needs it.")
-    print("Sambuca waits here until you close the Imager window.")
-    print()
+    _say("Next, your computer will ask permission to run the Imager.")
+    _say("That prompt is expected: writing to a card needs it.")
+    _say("Sambuca waits here until you close the Imager window.")
+    _say()
 
     try:
         imager.launch(wait=True)
@@ -777,28 +893,28 @@ def _cmd_write_pi(args) -> int:
         return 1
 
     # ---- G7: provisioning follows automatically -------------------------
-    print()
-    print("Imager finished. Adding Sambuca's own configuration to the card...")
+    _say()
+    _say("Imager finished. Adding Sambuca's own configuration to the card...")
     rc = _cmd_provision_pi(args)
     if rc != 0:
         return rc
 
     # ---- G8: close the loop ---------------------------------------------
-    print()
-    print("=" * 68)
-    print("  DONE — what happens next")
-    print("=" * 68)
-    print("  1. Put the card in the Raspberry Pi and switch it on.")
-    print("  2. It configures itself and reboots once. Give it a few minutes.")
-    print("  3. It writes what it found BACK ONTO THE CARD.")
-    print()
-    print("  To read that: switch the Pi off, put the card back in this")
-    print("  computer, and open  sambuca-firstboot.log  on the drive that")
-    print("  appears.")
-    print()
-    print("  The Pi needs no screen, keyboard or network for you to find out")
-    print("  whether it worked.")
-    print("=" * 68)
+    _say()
+    _say("=" * 68)
+    _say("  DONE — what happens next")
+    _say("=" * 68)
+    _say("  1. Put the card in the Raspberry Pi and switch it on.")
+    _say("  2. It configures itself and reboots once. Give it a few minutes.")
+    _say("  3. It writes what it found BACK ONTO THE CARD.")
+    _say()
+    _say("  To read that: switch the Pi off, put the card back in this")
+    _say("  computer, and open  sambuca-firstboot.log  on the drive that")
+    _say("  appears.")
+    _say()
+    _say("  The Pi needs no screen, keyboard or network for you to find out")
+    _say("  whether it worked.")
+    _say("=" * 68)
     return 0
 
 

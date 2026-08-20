@@ -79,6 +79,8 @@ abandon" — the duty of care does not transfer with the work.**
 | ~~**G5**~~ **DONE** | Guide the Storage step explicitly — the one choice that must stay human, so it gets the most words, not the fewest. |
 | ~~**G6**~~ **DONE** | Warn before the UAC prompt appears. |
 | ~~**G7**~~ **DONE** | Detect completion and provision automatically; no second command. |
+| **G10** **DONE** | Settle reachability FIRST: detect the tailnet, offer to install Tailscale, open the key page, accept the key — before anything is written. |
+| **G11** **DONE** | Authorise the installing machine on the appliance by default. An installer must not build something it cannot reach. |
 | ~~**G8**~~ **DONE** | Close the loop: what the card does next, and where to read the result. |
 | ~~**G9**~~ **DONE** | Record the rule in `CLAUDE.md` under axis 1, so the next wrapper does not repeat this. |
 
