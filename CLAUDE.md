@@ -43,6 +43,42 @@ declared and never compared against the card actually present.
 
 ## Axis 1 — user-friendliness
 
+**THE RULE, ABOVE EVERYTHING ELSE IN THIS SECTION:**
+
+> **1. Do it for the user.**
+> **2. If you cannot do it for the user, GUIDE THEM THROUGH EVERY STEP.**
+
+There is no third option. Silence is not an option. Printing a command for them
+to type is not an option — it is the failure wearing a helpful face.
+
+**DELEGATING THE WORK DOES NOT DELEGATE THE DUTY OF CARE.** This was learned by
+getting it wrong: Sambuca correctly stopped reimplementing Raspberry Pi Imager
+and started launching it instead — and then walked away, leaving a novice alone
+in front of five unexplained screens and expecting them to know to run a second
+command afterwards. The verdict was *"I ran Pi Imager 100% unassisted"*, and it
+was right. Wrapping a mature tool is correct; abandoning someone inside it is
+not. The project had become a bookmark.
+
+So for every step of every flow, answer in order:
+
+1. **Can this be done for them?** Then do it — pre-select, pre-fill,
+   auto-install, auto-continue. Check what the tool exposes: rpi-imager takes
+   `--repo`, honours `default: true` on a device, and reads its Customisation
+   settings from a registry key that can be written in advance.
+2. **If not, is it deliberately human?** Some choices must stay with the person
+   — which disk gets erased is the obvious one. Those get MORE words, not
+   fewer: name what was found, name the likely answer, and say plainly what
+   will be destroyed.
+3. **Is anything about to surprise them?** A UAC prompt from an app they did not
+   knowingly start looks like malware. Warn first.
+4. **Does the flow end, or just stop?** Say what happens next and where the
+   result appears.
+
+**Never automate away a secret.** The same registry key that makes Customisation
+pre-fillable also stores a password hash and a wifi PSK. Pre-fill the harmless
+fields; let the tool's own UI collect the secrets. Convenience is not a reason
+to handle someone's wifi key.
+
 **The audience is someone who has never installed an operating system.** Not a
 developer in a hurry. Write for the person who got the "storage full" email and
 has an old desktop under the stairs.

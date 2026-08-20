@@ -36,6 +36,56 @@ already profiles itself correctly at first boot.
 
 ---
 
+## 0. THE RULE — do it for them, or guide every step
+
+**Reported after the first end-to-end attempt: "I ran Pi Imager 100%
+unassisted."** That is a failure, and a worse one than the code it replaced.
+
+The rule, in the owner's words:
+
+> **1. Do it for the user.**
+> **2. If you cannot do it for the user, GUIDE THEM THROUGH EVERY STEP.**
+
+There is no third option. Silence is not an option, and neither is a printed
+command. Not writing the image writer was right; leaving someone alone inside
+someone else's tool was not. **"Wrap, don't rewrite" does not mean "delegate and
+abandon" — the duty of care does not transfer with the work.**
+
+### Every step of the flow, against the rule
+
+| Step | Can it be done FOR them? | What must happen |
+|---|---|---|
+| **Install rpi-imager** | **Yes** | Detect it; if absent, install it via the manifest's command. Never print "go install this". |
+| **Device** | **Yes** | The OS list already carries one tested device, and the catalogue supports `default: true`. It should arrive selected. |
+| **OS** | **Yes** | One entry, ours, pre-selected. |
+| **Storage** | **No — and deliberately not** | This is the destructive choice. **GUIDE:** say how many removable drives were seen, name the likely one by size and label, and say plainly that everything on it will be erased. |
+| **Customisation** | **Mostly** | VERIFIED pre-fillable at `HKCU\Software\Raspberry Pi\Raspberry Pi Imager\imagecustomization`: hostname, timezone, keyboard, `sshEnabled`, `sshUserName`. **GUIDE** for the rest. |
+| **The owner's secrets** | **No, and must not be** | That key also holds a password hash and a wifi PSK. Sambuca never writes them; rpi-imager's own UI collects them. Matches the existing rule in `pi.py` that no wifi key is ever written to a card. |
+| **Writing** | **Yes** | rpi-imager's own progress. Sambuca stays on screen saying what is happening and how long it takes. |
+| **Provisioning after** | **Yes** | Must follow automatically. `provision-pi` as a separate command a novice cannot know about is exactly the failure being fixed. |
+| **UAC prompt** | **No** | **GUIDE:** warn before it appears. An elevation prompt from an app they did not knowingly start looks like malware. |
+| **What now?** | **Yes** | Say what to do with the card, what will happen on first boot, and where the result appears. |
+
+### Items
+
+| # | What |
+|---|---|
+| **G1** | Auto-install rpi-imager when missing, using the manifest's install command. |
+| **G2** | Pre-select device and OS so those two screens are already answered. |
+| **G3** | Pre-fill the non-secret Customisation fields via the verified registry key. |
+| **G4** | Never write the owner's password or wifi key. Ever. |
+| **G5** | Guide the Storage step explicitly — the one choice that must stay human, so it gets the most words, not the fewest. |
+| **G6** | Warn before the UAC prompt appears. |
+| **G7** | Detect completion and provision automatically; no second command. |
+| **G8** | Close the loop: what the card does next, and where to read the result. |
+| **G9** | Record the rule in `CLAUDE.md` under axis 1, so the next wrapper does not repeat this. |
+
+**Acceptance:** someone who has never seen Raspberry Pi Imager goes from opening
+Sambuca to a provisioned card without reading documentation, without typing a
+command, and without making a single choice they were not told how to make.
+
+---
+
 ## A. Delete — code that exists and should not
 
 | # | What | Lines | Why |
@@ -149,7 +199,9 @@ So the list above is not read as "nothing works":
 
 1. **B1** — nobody can get a working binary until the build works.
 2. **A1–A4, A6** — delete the writer while the reason is fresh.
-3. **C2** — provisioning should follow writing without the user knowing a second command.
+3. **G1–G8** — do it for them, or guide every step. Without this the project
+   does not do its job, whoever writes the bytes. Ahead of everything that is
+   not simply broken.
 4. **A5, A7, B4** — remove the estimator and its references together.
 5. **D1, D2, D6** — make the README describe what exists.
 6. **B2, B3** — cut a release that works, then point the README at it.
@@ -157,4 +209,4 @@ So the list above is not read as "nothing works":
 8. **D3, D5** — reconcile the design docs and the coupling register.
 9. **C1, C3–C6** — the genuinely new work.
 
-Item 1 first because every other fix is invisible while the build is broken.
+Item 1 first because every other fix is invisible while the build is broken. Item 3 immediately after, because a flasher that leaves a novice alone in someone else's tool has not replaced the 855 lines — it has just moved the failure somewhere less fixable.
