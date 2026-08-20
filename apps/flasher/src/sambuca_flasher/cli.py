@@ -54,15 +54,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_write = sub.add_parser("write", help="build and write an installer USB")
     p_write.add_argument("--iso", type=Path, required=True, help="Debian 12 netinst ISO")
-    p_write.add_argument("--device", help="target device path (from `list`)")
     p_write.add_argument("--config", type=Path, help="JSON appliance configuration")
     p_write.add_argument("--output-dir", type=Path, default=Path.cwd(),
                          help="where the recovery PDF is written (default: cwd)")
     p_write.add_argument(
         "--interactive", action="store_true",
         help="keep the disk passphrase OFF the USB; the installer prompts once")
-    p_write.add_argument("--no-verify", action="store_true",
-                         help="skip the readback verification pass (not recommended)")
     p_write.add_argument("--dry-run", action="store_true",
                          help="generate keys, payload and PDF; do not touch any device")
 
@@ -72,10 +69,13 @@ def main(argv: list[str] | None = None) -> int:
     # NOT REQUIRED. rpi-imager downloads the image itself, from the OS list
     # Sambuca publishes. Demanding a file here made the first command anybody
     # runs refuse to start, asking for something they neither have nor need.
+    # rpi-imager selects the device and verifies its own write. Arguments for
+    # both used to sit here doing nothing, which is the same fault as a
+    # negative-prompt box: a control that changes no behaviour is worse than
+    # no control, because someone will reasonably assume it works.
     p_pi.add_argument("--image", type=Path,
                       help="a local image to write instead of the one rpi-imager "
                            "downloads (rarely needed)")
-    p_pi.add_argument("--device", help="target device path (from `list`)")
     p_pi.add_argument("--hostname", default="sambuca")
     p_pi.add_argument("--engine", type=Path,
                       help="engine directory to stage onto the card "
@@ -94,15 +94,12 @@ def main(argv: list[str] | None = None) -> int:
              "another way in)")
     p_pi.add_argument("--no-probe", action="store_true",
                       help="do not run hardware-detect.sh on first boot")
-    p_pi.add_argument("--no-verify", action="store_true",
-                      help="skip the readback pass (not recommended)")
     p_pi.add_argument("--dry-run", action="store_true",
                       help="stage and report; do not touch any device")
 
     p_prov = sub.add_parser(
         "provision-pi",
         help="add sambuca first-boot provisioning to an already-written Pi card")
-    p_prov.add_argument("--device", help="target device path (from `list`)")
     p_prov.add_argument("--boot", type=Path,
                         help="path to the mounted FAT32 boot partition, if you "
                              "already know it")
@@ -362,6 +359,23 @@ def _cmd_write(args) -> int:
     print(f"\n  Recovery document: {pdf_path}")
     print("  Print it, then delete the file. Boot the target machine from this USB.")
     print("  You get 30 seconds at the console to abort before any disk is touched.")
+
+    # VERIFY THE SHEET WHILE IT IS STILL IN THEIR HAND.
+    #
+    # An untested recovery key is a hypothesis, and it gets tested for the
+    # first time on the day the disk will not unlock — months later, under
+    # stress, when being wrong costs everything the appliance was built to
+    # protect. This is the only moment anybody is well placed to test it.
+    #
+    # It checks the PAPER, not the PDF. That the file rendered proves nothing
+    # about a smudged word or a line the printer ate, and those failures leave
+    # a perfect-looking file beside a useless sheet.
+    # KeyMaterial is frozen, deliberately — the secrets in it must not be
+    # mutable after generation. So the path is passed, not attached.
+    if not _verify_recovery_sheet(keys, pdf_path):
+        print()
+        print("  The sheet is UNVERIFIED. Everything else is done, but please")
+        print("  check it against the document before you rely on it.")
     return 0
 
 
@@ -546,55 +560,6 @@ def _stage_engine(repo_root: Path, staging: Path) -> None:
         )
 
 
-def _resolve_device(requested: str | None) -> RemovableDevice | None:
-    devices = list_removable_devices()
-    if requested:
-        for d in devices:
-            if d.path == requested:
-                return d
-        print(f"error: {requested} is not in the removable-device list.", file=sys.stderr)
-        print("Run `sambuca-flasher list`. Internal disks are excluded by design.",
-              file=sys.stderr)
-        return None
-
-    if not devices:
-        print("error: no removable devices found.", file=sys.stderr)
-        return None
-    if len(devices) == 1:
-        print(f"      only one candidate: {devices[0].describe()}")
-        return devices[0]
-
-    print("\nmultiple devices found:\n")
-    for i, d in enumerate(devices, 1):
-        print(f"  {i}. {d.describe()}")
-    choice = input("\nselect (number, or blank to abort): ").strip()
-    if not choice.isdigit() or not (1 <= int(choice) <= len(devices)):
-        return None
-    return devices[int(choice) - 1]
-
-
-def _confirm_destruction(device: RemovableDevice) -> bool:
-    print("\n" + "!" * 70)
-    print(f"  ALL DATA ON {device.path} WILL BE DESTROYED")
-    print(f"  {device.label}  ({device.size_human})")
-    print("!" * 70)
-    # A typed word, not y/N. A default-yes prompt on a destructive operation is
-    # how somebody's photo archive ends up as a Debian installer.
-    answer = input("\nType ERASE to continue: ").strip()
-    return answer == "ERASE"
-
-
-def _progress(done: int, total: int) -> None:
-    pct = done * 100 // max(total, 1)
-    bar = "#" * (pct // 2) + "-" * (50 - pct // 2)
-    print(f"\r      [{bar}] {pct:3d}%  {done / 1024**2:.0f}/{total / 1024**2:.0f} MB",
-          end="", flush=True)
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-
-
 def _say(text: str = "") -> None:
     """print(), but safe on a Windows console.
 
@@ -743,6 +708,73 @@ def _ask_yes(question: str, *, default: bool = True) -> bool:
         return default
     return answer.startswith("y")
 
+
+
+def _verify_recovery_sheet(keys, pdf_path=None, *, sample: int = 3) -> bool:
+    """Ask the owner to read a few words off the printed sheet.
+
+    AN UNTESTED RECOVERY KEY IS A HYPOTHESIS. This is the only moment anyone
+    is well placed to test it: the sheet is in their hand, nothing has gone
+    wrong, and there is no pressure on the answer. The alternative is finding
+    out on the day the disk will not unlock.
+
+    It checks the SHEET, not the PDF. That the file rendered proves nothing
+    about whether a human can read a smudged word, or whether the printer ate
+    a line — and those failures produce a perfect-looking file and a useless
+    piece of paper.
+
+    A few positions, not all twenty-four: a check people skip is worth nothing,
+    and spot-checking still catches the failures that actually occur.
+    """
+    import random
+
+    words = keys.seed_phrase.split()
+    if len(words) != 24:
+        return False
+
+    _say()
+    _say("=" * 68)
+    _say("  CHECK THE SHEET BEFORE YOU PUT IT AWAY")
+    _say("=" * 68)
+    _say()
+    _say("  That paper is the only way back into this machine if the password")
+    _say("  is lost. It has never been tested, and the usual moment to")
+    _say("  discover a problem with it is the worst one possible.")
+    _say()
+    _say("  Read a few words off it. Not to prove the file is correct — to")
+    _say("  prove the PAPER can be read and typed.")
+    _say()
+
+    positions = sorted(random.sample(range(1, 25), sample))
+    wrong = []
+    for pos in positions:
+        try:
+            got = input(f"  Word {pos:>2} on the sheet: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            _say()
+            _say("  Skipped. The sheet is UNVERIFIED — please check it yourself.")
+            return False
+        if got != words[pos - 1].lower():
+            wrong.append(pos)
+
+    _say()
+    if wrong:
+        _say(f"  MISMATCH at word{'s' if len(wrong) > 1 else ''} "
+             f"{', '.join(str(w) for w in wrong)}.")
+        _say()
+        _say("  Either the sheet did not print correctly, or it is a sheet")
+        _say("  from a different machine. Do not rely on it.")
+        _say()
+        _say("  Print it again from:")
+        _say(f"    {pdf_path or 'the recovery document'}")
+        return False
+
+    _say("  Verified. Those words match, so the sheet is readable and it is")
+    _say("  the right sheet for this machine.")
+    _say()
+    _say("  Put it somewhere you would keep a passport. Not in the same room")
+    _say("  as the appliance — a fire that takes one should not take both.")
+    return True
 
 
 def _find_engine(explicit: Path | None) -> Path | None:

@@ -96,12 +96,12 @@ command, and without making a single choice they were not told how to make.
 |---|---|---|---|
 | ~~A1~~ **DONE** | `winraw.py` | 379 | Windows raw device access. rpi-imager does this. |
 | ~~A2~~ **DONE** | `writer.py` — the write and verify path | ~200 of 280 | Same. **Keep `inject_payload`**, which is ours. |
-| A3 | `devices.py` — the target-picker half | ~150 of 196 | rpi-imager picks the device. **Keep boot-partition lookup**, needed after writing. |
+| ~~A3~~ **KEPT** | `devices.py` | — | **Audited and KEPT.** It is not dead: `list_removable_devices` powers the storage guidance that names every attached drive before the erase choice. The dead part was three unused helpers in cli.py, removed under A8. |
 | ~~A4~~ **DONE** | `pi.py` — `write_raspios`, `_restore_disk` | ~120 of 495 | Same. **Keep `render_firstrun` and `provision_boot_partition`.** |
 | ~~A5~~ **DONE** | `estimate.py` | 319 | Conceptually wrong: guesses about a different machine from a typed sentence. |
 | ~~A6~~ **DONE** | `tests/test_winraw.py` | 90 | Tests A1. |
 | ~~A7~~ **DONE** | `tests/test_estimate_parsing.py` | 110 | Tests A5. |
-| A8 | `cli.py` — `write`/`write-pi` device handling, the `_interactive` menu's dead options | ~200 of 891 | Superseded by launching rpi-imager. |
+| ~~A8~~ **DONE** | `cli.py` — `write`/`write-pi` device handling, the `_interactive` menu's dead options | ~200 of 891 | Superseded by launching rpi-imager. |
 
 **Roughly 1,500 of 4,217 lines go.** Deleting rather than archiving, per the
 repository's DEAD-CODE-GETS-DELETED rule; git history is the safety net.
