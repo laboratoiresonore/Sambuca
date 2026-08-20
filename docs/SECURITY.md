@@ -1,5 +1,11 @@
 # Security model
 
+<p align="center">
+  <img src="../assets/brand/fortress-shielded-server.webp" width="820"
+       alt="A single server on a stone plinth inside a blue spherical shield, red
+            attack traces breaking apart against the barrier in a dark datacentre.">
+</p>
+
 This document states what sambuca protects against, what it does not, and the
 tradeoffs that were made deliberately. Where a compromise exists, it is named
 rather than described in a way that implies it does not.

@@ -64,6 +64,17 @@ def main(argv: list[str] | None = None) -> int:
                    help="recover the DISK recovery key from a seed phrase "
                         "(use when the root passphrase is lost)")
 
+    p_boot = sub.add_parser("boot-guide",
+                            help="how to boot the target machine from the USB "
+                                 "(the step that defeats most people)")
+    p_boot.add_argument("model", nargs="?", default="",
+                        help='the target machine, e.g. "Dell XPS 15 9520"')
+    p_boot.add_argument("--engine", default="google",
+                        choices=["google", "duckduckgo", "bing", "startpage"])
+    p_boot.add_argument("--open", action="store_true",
+                        help="also open the search in your browser")
+    p_boot.add_argument("--list-vendors", action="store_true")
+
     p_cfg = sub.add_parser("example-config", help="print a commented example configuration")
     p_cfg.add_argument("--output", type=Path)
 
@@ -78,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_derive()
         if args.command == "derive-recovery-key":
             return _cmd_derive_recovery()
+        if args.command == "boot-guide":
+            return _cmd_boot_guide(args)
         if args.command == "example-config":
             return _cmd_example(args)
     except DeviceError as exc:
@@ -259,6 +272,40 @@ def _cmd_derive_recovery() -> int:
     print("  sudo cryptsetup luksChangeKey <device>   # e.g. /dev/nvme0n1p3")
     print("\nIf it is rejected, this machine may predate recovery keyslots, or the")
     print("installer could not enrol one. Check: sudo cryptsetup luksDump <device>")
+    return 0
+
+
+def _cmd_boot_guide(args) -> int:
+    """Print the boot guide, and optionally open the search."""
+    from . import bootguide
+
+    if args.list_vendors:
+        print("Known vendors (free text also works — 'my old thinkpad'):\n")
+        for v in bootguide.VENDORS:
+            print(f"  {v.key:<18} {v.name:<26} boot: {v.boot_menu}")
+        return 0
+
+    model = args.model
+    if not model:
+        print("Which machine are you installing sambuca ONTO?")
+        print("The brand is enough; the exact model gets you a better search.")
+        print('Examples:  Dell XPS 15 9520   ·   HP EliteDesk 800   ·   my old thinkpad\n')
+        model = input("machine: ").strip()
+
+    print(bootguide.guide(model, engine=args.engine))
+
+    if args.open:
+        _, url = bootguide.search_url(model, args.engine)
+        # Opened in the user's OWN browser, after they have seen the URL above.
+        # This is the flasher's only outbound action, and it carries no
+        # identifier of any kind — an installer that quietly phones home while
+        # building a sovereign appliance has lost the argument before it starts.
+        import webbrowser
+
+        print("Opening that search in your browser…\n")
+        webbrowser.open(url)
+    else:
+        print("Add --open to launch that search in your browser.\n")
     return 0
 
 

@@ -30,6 +30,12 @@ The Sambuca installer takes over entirely. It automatically wipes and encrypts t
 
 It does the work of a senior systems administrator in twenty minutes, completely offline, and hands you the master password.
 
+<p align="center">
+  <img src="assets/brand/breach-vault-usb.webp" width="820"
+       alt="A USB key driving through a red-lit bank vault door, the door shattering
+            outward into glowing fragments — one stick opening a sealed system.">
+</p>
+
 ## 🏗️ The Architecture
 
 Under the hood, Sambuca orchestrates a robust, open-source stack that prioritizes privacy, efficiency, and zero-trust security:
@@ -51,6 +57,12 @@ Risk-averse regulators and institutional bodies are terrified of AI. Their insti
 
 We do not need a Law Society hall pass to understand software. We need to reclaim our silicon.
 
+<p align="center">
+  <img src="assets/brand/siege-corporate-castles.webp" width="820"
+       alt="A medieval siege: armies with banners reading OLLAMA FREEDOM and NO MORE
+            RENT storming stone keeps flying the flags of Google, Palantir and OpenAI.">
+</p>
+
 ## 👁️ The Corporate Panopticon vs. True Sovereignty
 
 Every tech giant currently pitching "safe, enterprise-grade AI" achieved their breakthrough by brazenly scraping the copyrighted internet. They strip-mined our collective history, locked it inside a corporate black box, and now rent it back to us as a monthly API subscription.
@@ -66,6 +78,12 @@ In early 2023, out of pure corporate spite to kneecap his rivals' pricing power,
 That single decision breached the corporate firewall. **Open-weights AI is our Sambuca.**
 
 When you run open-weights AI, you realize something fascinating: **neural networks are mathematically master-less.** They actively resist top-down corporate manipulation. The smarter they get, the harder it is to force them to lie.
+
+<p align="center">
+  <img src="assets/brand/open-weights-monolith.webp" width="820"
+       alt="A black monolith split open across a cracked desert, blue and gold neural
+            network filaments streaming out of the fracture and across the plain.">
+</p>
 
 ## 🩸 The Cost of Freedom
 
@@ -123,6 +141,21 @@ sudo sambuca-flasher write --iso debian-12-netinst.iso --config my-appliance.jso
 The flasher generates a 24-word seed phrase and a 32-character root passphrase
 **on your machine, offline**, writes them to `liberator-recovery.pdf`, and only
 then touches the USB. Print the PDF. It is the only copy.
+
+Then, before you walk to the other machine:
+
+```bash
+sambuca-flasher boot-guide "Dell XPS 15 9520"
+```
+
+**This is the step that actually defeats people** — not the install, which is
+automatic, but the ten minutes before it. The guide gives you your vendor's boot
+key, the trap specific to that vendor, and the three that are not the boot key
+at all: find your BitLocker key *first*, use Restart rather than Shut Down
+(Windows "shut down" hibernates and never re-runs boot selection), and try
+Secure Boot **on** before disabling it. It also composes the one search worth
+running — quoted model, the vendor's own vocabulary — and shows you the URL
+before opening it.
 
 Boot the target machine from the stick. You get **30 seconds at the console**,
 with the target disk and its current contents printed on screen, to abort before
@@ -318,7 +351,9 @@ Everything after the first working appliance is organised along three axes. They
 are not phases to be completed in order; they are standing directions, and every
 change should advance one of them without regressing the other two. The full
 decision document — what gets built, what gets **rejected**, and why — is
-[docs/design/NEXT-STAGE.md](docs/design/NEXT-STAGE.md).
+[docs/design/NEXT-STAGE.md](docs/design/NEXT-STAGE.md), and the interactive
+installer has its own at
+[docs/design/INSTALLER.md](docs/design/INSTALLER.md).
 
 ### 1. User-friendliness — take the novice all the way
 

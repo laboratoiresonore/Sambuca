@@ -251,3 +251,72 @@ def test_key_material_is_frozen():
     assert isinstance(keys, KeyMaterial)
     with pytest.raises(dataclasses.FrozenInstanceError):
         keys.seed_phrase = "tampered"  # type: ignore[misc]
+
+
+# ------------------------------------------------------------- the boot guide
+
+
+def test_every_guide_is_pure_ascii():
+    """This prints to a Windows console, whose default codepage turns an
+    em-dash into a replacement glyph. Mojibake on the one screen a stuck novice
+    is reading is not cosmetic."""
+    from sambuca_flasher import bootguide
+
+    for v in bootguide.VENDORS:
+        assert bootguide.guide(v.name).isascii(), f"non-ASCII in {v.name} guide"
+
+
+def test_free_text_matches_a_vendor():
+    from sambuca_flasher import bootguide
+
+    cases = {
+        "my old thinkpad": "Lenovo ThinkPad",
+        "Acer Aspire 5 A515": "Acer",
+        "MacBook Pro 2019": "Apple (Intel Mac)",
+        "Dell XPS 15 9520": "Dell",
+        "ASUS ROG Strix": "ASUS",
+    }
+    for text, expected in cases.items():
+        v = bootguide.find_vendor(text)
+        assert v is not None and v.name == expected, f"{text} -> {v and v.name}"
+
+
+def test_unknown_machine_falls_back_rather_than_guessing():
+    from sambuca_flasher import bootguide
+
+    assert bootguide.find_vendor("some random beige box") is None
+    # ...and the guide still renders, using the self-built entry.
+    assert "Self-built" in bootguide.guide("some random beige box")
+
+
+def test_search_query_quotes_the_model():
+    """The phrasing is the feature: an unquoted model returns a decade of forum
+    threads about other people's machines."""
+    from sambuca_flasher import bootguide
+
+    q, url = bootguide.search_url("Dell XPS 15 9520")
+    assert '"Dell XPS 15 9520"' in q
+    assert "BIOS boot menu key" in q
+    assert url.startswith("https://")
+    assert "%22Dell+XPS+15+9520%22" in url
+
+
+def test_search_url_carries_no_identifier():
+    """The flasher's only outbound action must leak nothing about the user or
+    the install. A tracking parameter here would undo the entire premise."""
+    from sambuca_flasher import bootguide
+
+    _, url = bootguide.search_url("Dell XPS 15")
+    query_part = url.split("?", 1)[1]
+    assert query_part.count("=") == 1, f"unexpected extra parameters: {query_part}"
+
+
+def test_the_three_traps_are_present():
+    """Each produces 'the USB doesn't work' with no error message. Dropping one
+    silently would remove the only warning a user gets."""
+    from sambuca_flasher import bootguide
+
+    g = bootguide.guide("Dell XPS 15")
+    assert "BitLocker" in g
+    assert "Fast Startup" in g
+    assert "Secure Boot" in g
