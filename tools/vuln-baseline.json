@@ -1,0 +1,73 @@
+{
+  "_comment": "Recorded vulnerability floor per image REPOSITORY. The gate fails on regression against these numbers, not on their absolute value \u2014 see tools/vuln-gate.py. Regenerate deliberately with `make vuln-baseline` and review the diff.",
+  "images": {
+    "blinkospace_blinko": {
+      "high": 121,
+      "critical": 16
+    },
+    "caddy": {
+      "high": 19,
+      "critical": 0
+    },
+    "containrrr_watchtower": {
+      "high": 46,
+      "critical": 5
+    },
+    "ghcr.io_alam00000_bentopdf-simple": {
+      "high": 0,
+      "critical": 0
+    },
+    "ghcr.io_element-hq_synapse": {
+      "high": 133,
+      "critical": 7
+    },
+    "ghcr.io_ergochat_ergo": {
+      "high": 19,
+      "critical": 0
+    },
+    "ghcr.io_immich-app_immich-machine-learning": {
+      "high": 72,
+      "critical": 5
+    },
+    "ghcr.io_immich-app_immich-server": {
+      "high": 161,
+      "critical": 10
+    },
+    "ghcr.io_pocket-id_pocket-id": {
+      "high": 60,
+      "critical": 4
+    },
+    "louislam_uptime-kuma": {
+      "high": 167,
+      "critical": 9
+    },
+    "nextcloud_all-in-one_latest": {
+      "high": 31,
+      "critical": 0
+    },
+    "ollama_ollama": {
+      "high": 41,
+      "critical": 0
+    },
+    "postgres": {
+      "high": 21,
+      "critical": 1
+    },
+    "quay.io_oauth2-proxy_oauth2-proxy": {
+      "high": 39,
+      "critical": 4
+    },
+    "redis": {
+      "high": 0,
+      "critical": 0
+    },
+    "tensorchord_pgvecto-rs_pg14-v0.2.0": {
+      "high": 117,
+      "critical": 9
+    },
+    "vaultwarden_server": {
+      "high": 0,
+      "critical": 0
+    }
+  }
+}

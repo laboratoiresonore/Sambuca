@@ -2,30 +2,33 @@ name: image-scan
 
 # Vulnerability scan of every image the appliance actually runs.
 #
-# This is the highest-signal "is this genuinely secure" check available, and it
-# is the one most self-hosted projects skip — they pin an image once, ship it,
-# and it quietly accumulates known-exploitable CVEs for two years.
+# GATED ON REGRESSION, NOT ON ABSOLUTE STATE — and that is a correction to how
+# this started. The first version failed on any fixable HIGH/CRITICAL, reasoning
+# that "fixable" meant a patch existed so bumping the pin was a real remedy.
+# Running it disproved that: fixable means the PACKAGE has a patch, not that the
+# image PUBLISHER has rebuilt. Once we are on the newest published tag there is
+# nothing left to bump, so the job goes red every day — and a job that is red
+# every day is one everybody clicks past, which costs the attention a genuine
+# regression would need.
 #
-# FAILS ONLY ON FIXABLE HIGH/CRITICAL. A scanner that reports every unfixable
-# CVE in a base image produces a wall of red nobody can act on, and a check
-# nobody can act on is a check everyone learns to ignore. Fixable means an
-# upstream patch exists, which means bumping the pin is a real remedy.
+# So: absolute counts are always REPORTED, and the build fails only when an
+# image gets worse than a committed baseline. See tools/vuln-gate.py.
 
 on:
   schedule:
-    # 07:45 UTC — half an hour after upstream-drift, so a morning's alerts
+    # 07:45 UTC, half an hour after upstream-drift, so a morning's findings
     # arrive together rather than trickling.
     - cron: "45 7 * * *"
   workflow_dispatch:
   push:
     paths:
       - "compose/.env.example"
+      - "tools/vuln-baseline.json"
+      - "tools/vuln-gate.py"
       - ".github/workflows/image-scan.yml"
-      - "tools/scan-images.sh"
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   scan:
@@ -34,12 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: collect the image list
         id: images
-        # Straight from the file the appliance actually renders from, so the
-        # scan can never drift out of sync with what gets deployed. First-party
-        # images that are not published yet are skipped rather than failing the
-        # job — that state is already tracked by upstream-drift.
+        # Straight from the file the appliance renders from, so the scan cannot
+        # drift out of sync with what actually deploys. First-party images that
+        # are not published yet are skipped — that state is already tracked by
+        # the upstream-drift workflow.
         run: |
           {
             echo 'list<<EOF'
@@ -51,78 +58,51 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: scan each image
+        # --exit-code 0 throughout: this step COLLECTS, it does not judge. One
+        # unscannable image must not hide the results for the other eighteen.
         run: |
           mkdir -p reports
-          fail=0
-          # No `set -e`: one broken image must not hide the results for the
-          # other eighteen.
           while read -r img; do
             [ -n "$img" ] || continue
             safe="$(echo "$img" | tr '/:@' '___')"
             echo "::group::$img"
-            if docker run --rm \
-                 -v /var/run/docker.sock:/var/run/docker.sock \
-                 -v "$PWD/reports:/reports" \
-                 aquasec/trivy:latest image \
-                   --scanners vuln \
-                   --severity HIGH,CRITICAL \
-                   --ignore-unfixed \
-                   --exit-code 1 \
-                   --format table \
-                   --output "/reports/${safe}.txt" \
-                   --timeout 10m \
-                   "$img"; then
-              echo "clean: $img"
-            else
-              rc=$?
-              if [ $rc -eq 1 ]; then
-                echo "::warning::fixable HIGH/CRITICAL findings in $img"
-                cat "reports/${safe}.txt" || true
-                fail=1
-              else
-                echo "::warning::trivy could not scan $img (exit $rc) — not treated as a finding"
-              fi
-            fi
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$PWD/reports:/reports" \
+              aquasec/trivy:latest image \
+                --scanners vuln \
+                --severity HIGH,CRITICAL \
+                --ignore-unfixed \
+                --exit-code 0 \
+                --format json \
+                --output "/reports/${safe}.json" \
+                --timeout 10m \
+                "$img" \
+              || echo "::warning::could not scan $img — not treated as a finding"
             echo "::endgroup::"
           done <<< "${{ steps.images.outputs.list }}"
-          echo "SCAN_FAIL=$fail" >> "$GITHUB_ENV"
 
-      - name: summarise
-        if: always()
+      - name: gate on regression against the committed baseline
         run: |
+          rc=0
+          python tools/vuln-gate.py reports | tee gate.log || rc=$?
           {
             echo "## Image vulnerability scan"
             echo
-            echo "Fixable HIGH/CRITICAL only. Unfixable findings are omitted:"
-            echo "there is no action to take on them, and a check nobody can act"
-            echo "on is a check everyone learns to ignore."
-            echo
-            for f in reports/*.txt; do
-              [ -e "$f" ] || continue
-              if [ -s "$f" ]; then
-                echo "<details><summary>$(basename "$f" .txt)</summary>"
-                echo
-                echo '```'
-                head -c 20000 "$f"
-                echo '```'
-                echo
-                echo "</details>"
-              fi
-            done
+            echo '```'
+            cat gate.log
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ $rc -ne 0 ]; then
+            echo "::error::An image regressed past its accepted vulnerability floor."
+          fi
+          exit $rc
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: vulnerability-reports
-          path: reports/
+          path: |
+            reports/
+            gate.log
           retention-days: 30
-
-      - name: fail if anything fixable was found
-        if: env.SCAN_FAIL == '1'
-        run: |
-          echo "::error::One or more images have FIXABLE high/critical vulnerabilities."
-          echo "Bump the pin in compose/.env.example — a fixable finding means an"
-          echo "upstream patch exists, so this is actionable rather than noise."
-          echo "See docs/MAINTENANCE.md Tier 3."
-          exit 1

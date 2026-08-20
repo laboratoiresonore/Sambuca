@@ -62,6 +62,12 @@ test-guard: ## Feed the update guard poisoned updates and assert it refuses them
 scan-images: ## Scan the running images for fixable HIGH/CRITICAL vulnerabilities
 	@bash tools/scan-images.sh --json $(BUILD_DIR)/vuln-report.json
 
+.PHONY: vuln-baseline
+vuln-baseline: ## Re-record the accepted vulnerability floor (review the diff!)
+	@echo "This LOWERS OR RAISES the floor the CI gate enforces."
+	@echo "Raising it hides a regression. Review the diff before committing."
+	@python3 tools/vuln-gate.py $(BUILD_DIR)/trivy-reports --update
+
 .PHONY: check
 check: lint test ## Everything CI runs
 

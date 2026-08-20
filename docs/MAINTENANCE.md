@@ -97,9 +97,17 @@ delete one, and two machines flashed a month apart then run different software.
 
 - **Watched by:** `tools/verify-images.py`, daily in CI, and `make verify-images`.
 - **Scanned by:** the `image-scan` workflow daily, and `make scan-images` /
-  `tools/scan-images.sh` on the appliance itself. Fixable HIGH/CRITICAL only —
-  a base image always carries unfixable CVEs, and a report with no available
-  action is a report everybody learns to skip.
+  `tools/scan-images.sh` on the appliance itself.
+- **Gated on REGRESSION, not absolute state.** "Fixable" means the *package*
+  has a patch — not that the image *publisher* has rebuilt. Once we are on the
+  newest published tag, a remaining fixable CVE is not actionable by us, and
+  gating on it makes the job red every day. A job that is red every day is one
+  everybody clicks past, which costs the attention a real regression needs. So
+  counts are always reported and the build fails only when an image gets worse
+  than `tools/vuln-baseline.json`. Improvements are reported but the floor is
+  **never lowered automatically** — `make vuln-baseline` is deliberate, and the
+  diff has to be reviewed, because a baseline that silently follows reality
+  down can silently follow it up.
 - **Policy and digests:** [IMAGES.md](IMAGES.md).
 - **Fails:** loudly at pull time, or *silently* if a tag is repointed to a newer
   incompatible version — which is why pinning to digests before a release tag is
