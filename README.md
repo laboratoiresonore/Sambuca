@@ -1,11 +1,198 @@
 <p align="center">
-  <img src="assets/brand/sambuca-header.svg" width="800"
-       alt="Sambuca — the open-weights siege engine">
+  <img src="assets/brand/sambuca-header.svg" width="900"
+       alt="Sambuca — the open-weights siege engine: a steel zero slashed open by a glowing red ramp">
 </p>
 
 # 🏰 SAMBUCA: The Open-Weights Siege Engine
 
 > *"Freedom is free. It has no flag, no race, and no borders. It has all the faces at once and none in particular... And now it is also easy!"*
+
+---
+
+# Is this you?
+
+> ### *"I'm a lawyer. I depend on Google for my calendar and to get at my files when I'm out of the office — and I'm increasingly uncomfortable with what that means for client confidentiality."*
+
+If any of these sound like you, this is what Sambuca is for.
+
+**You handle other people's confidential information**
+
+- A therapist whose session notes sit in Google Drive, under a privacy policy you did not write and cannot negotiate.
+- An accountant holding four hundred clients' tax records on somebody else's server.
+- A journalist who would rather not learn, in court, exactly what their cloud provider retains.
+- A doctor, a notary, a social worker — anyone whose professional duty of confidentiality quietly stops at the login screen.
+
+**You are tired of renting your own life back**
+
+- You got the "your storage is full" email again and realised you will be paying that, monthly, forever.
+- Fifteen years of family photos live in Google Photos and you have never once been able to just *hold* them.
+- Your account was locked for a week with no human to appeal to, and you understood how much of your life was on the wrong side of that login.
+- You run a small business and pay per seat, per month, for a shared drive that should be a hard disk in a cupboard.
+
+**You have a computer doing nothing**
+
+- There is an old office desktop under your desk. It is a perfectly good file server, photo library and password manager. It is doing nothing.
+- The last laptop still works fine. It just has an old battery.
+- You bought a NAS and use 4% of what it can do.
+
+**You have a gaming PC and you are curious about AI** 👾
+
+- Your RTX 3080 sits idle nineteen hours a day. It could be running a real language model, locally, that costs nothing per message and sends nothing anywhere.
+- You want to try a coding assistant without your employer's source code becoming somebody's training data.
+- You are writing a novel and want AI help, but not at the price of it reading your manuscript.
+- You have wanted to try self-hosting for two years and every guide starts with "first, install Docker" and ends with a broken reverse proxy.
+
+**And the simplest reason of all**
+
+- You would just rather not be the product.
+
+---
+
+## Get it
+
+Sambuca is **one program you run on your normal computer**. It writes a USB stick. You put that stick in a *different, spare* machine, turn it on, and walk away.
+
+| Your everyday computer | Download |
+|---|---|
+| 🪟 **Windows** | [sambuca-flasher-windows-x64.exe](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/sambuca-flasher-windows-x64.exe) |
+| 🍎 **Mac** (Apple Silicon) | [sambuca-flasher-macos-arm64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/sambuca-flasher-macos-arm64) |
+| 🐧 **Linux** | [sambuca-flasher-linux-x64](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/sambuca-flasher-linux-x64) |
+
+**Try it before committing anything.** This asks your computer nothing, touches no disk, and needs no USB stick — it just tells you what a machine could do:
+
+```powershell
+.\sambuca-flasher-windows-x64.exe estimate "my old Dell desktop, 16GB RAM"
+```
+
+```bash
+chmod +x ./sambuca-flasher-macos-arm64 && ./sambuca-flasher-macos-arm64 estimate "my old Dell desktop, 16GB RAM"
+```
+
+<details>
+<summary><b>⚠️ Your computer will warn you about this file. Here is why, and what to do.</b></summary>
+
+<br>
+
+These downloads are **unsigned**, and we are telling you rather than letting you find out.
+
+- **Windows** — SmartScreen says "unrecognised app". Click **More info** → **Run anyway**.
+- **macOS** — Gatekeeper refuses to open it. **Right-click the file → Open**, then confirm. Or in Terminal: `xattr -d com.apple.quarantine ./sambuca-flasher-macos-arm64`
+- **macOS / Linux** — make it runnable first: `chmod +x ./sambuca-flasher-...`
+
+Signing costs an Apple Developer account and a Windows code-signing certificate. This project has neither, and would rather say so than pretend the warning is a glitch. You can check the file matches what we built against [SHA256SUMS.txt](https://github.com/laboratoiresonore/Sambuca/releases/download/v0.1.0-preview1/SHA256SUMS.txt) — though note a checksum published next to a file proves it arrived intact, not who made it.
+
+**No Intel Mac build** — GitHub's last Intel build machine has been retired. Install from source instead: `pip install ./apps/flasher`
+
+</details>
+
+> **⚠️ This is a preview.** Everything is reviewed, linted, vulnerability-scanned and tested in CI — and **no machine has been installed end to end from a flashed stick yet**. That is not the same bar. If you are the first to try a real install, please [open an issue](https://github.com/laboratoiresonore/Sambuca/issues) either way.
+
+---
+
+## What you actually get
+
+**Every machine gets all of this, even the oldest one you own.** None of it involves AI. This is the part most people are actually here for:
+
+| Instead of | You get | What that means in practice |
+|---|---|---|
+| Google Drive / Dropbox / OneDrive | **Your own drive** | Your files, on a disk you own, reachable from your phone and laptop anywhere in the world — with no monthly fee and no storage limit but the size of the disk. |
+| Google Calendar & Contacts | **Your own calendar** | Syncs to your iPhone or Android exactly like Google's does. Same apps, same reminders. Just not on their server. |
+| Google Photos / iCloud Photos | **Your own photo library** | Automatic phone backup, searchable by face and by "beach" or "dog", and it never asks you to upgrade. |
+| 1Password / LastPass | **Your own password manager** | Browser extensions and phone apps, all the usual ones. Your vault stays on your machine. |
+| Paying for a VPN or opening ports | **Private remote access** | An encrypted private network between your devices. Nothing is exposed to the public internet — no port forwarding, no dynamic DNS, nothing to be scanned. |
+| Notion, Acrobat online, Slack | **Notes, PDF tools, encrypted chat** | Including PDF editing where the document never leaves your browser tab. |
+
+Plus: the whole disk is encrypted, backups run themselves nightly, and everything is checked hourly so you find out when something breaks — instead of a year later when you need it.
+
+**The AI is the bonus, not the point.** How good it is depends on your hardware. Everything above does not.
+
+---
+
+## Which machine should I use?
+
+Pick the one that sounds like the machine you have. It expands.
+
+<details>
+<summary>💻 <b>An old laptop, a mini PC, a Raspberry Pi, or a NAS box</b></summary>
+
+<br>
+
+**Tier 4.** Everything in the table above works perfectly — files, calendar, photos, passwords, remote access, chat. The AI runs a small 3B model, about a sentence at a time. Fine for short questions, not for essays.
+
+**This is genuinely enough if you are here to leave Google.** A £100 second-hand office PC lands here.
+
+*Raspberry Pi note: the engine is x86-64 today, so a Pi is not installable yet — [it is planned](docs/design/NEXT-STAGE.md). Run `estimate "Raspberry Pi 5 16GB"` for the buying guide.*
+
+</details>
+
+<details>
+<summary>🖥️ <b>An ex-office desktop — a Dell OptiPlex, HP EliteDesk, Lenovo ThinkCentre</b></summary>
+
+<br>
+
+**Tier 3, if it has 8 or more CPU cores and 24 GB or more of RAM.** Otherwise tier 4, which is still fine.
+
+The AI runs an 8B model at roughly 5–12 words a second — slow but genuinely usable. Everything non-AI is identical to the biggest machine.
+
+These are the sweet spot: they cost very little second-hand, sip power, and are built to run continuously for a decade.
+
+</details>
+
+<details>
+<summary>🎮 <b>A gaming PC with a graphics card</b></summary>
+
+<br>
+
+**Depends entirely on the graphics memory — not the card's name, and not the CPU.**
+
+| Your card | Tier | What you get |
+|---|---|---|
+| RTX 3090, 4090, 5090, or 24 GB+ | **1** | A 32B model (70B above 40 GB). Generates faster than you can read. Photo AI on the GPU too. |
+| RTX 3060 12GB, 4060 Ti 16GB, 3080 | **2** | A 14B model at 20–40 words a second. Comfortable for real work. |
+| RTX 3060 Ti, 4060, 3070 (8 GB) | **3 or 4** | 8 GB is below the threshold; it falls back to the CPU tiers. |
+
+An idle gaming PC is the best AI machine most people already own.
+
+</details>
+
+<details>
+<summary>🤷 <b>I have no idea what is in my computer</b></summary>
+
+<br>
+
+You need three things: **how much RAM**, **how many CPU cores**, and **whether there is a graphics card**.
+
+- **Windows** — press `Ctrl+Shift+Esc` → **Performance** tab. It shows CPU cores, Memory, and GPU.
+- **Mac** — Apple menu →  **About This Mac**.
+- Or search: [how to check my PC specs](https://duckduckgo.com/?q=how+to+check+how+much+RAM+and+what+graphics+card+my+PC+has)
+
+Then just describe it in plain English — the tool is generous about phrasing:
+
+```
+sambuca-flasher estimate "HP desktop, 16GB, has a graphics card I think"
+```
+
+</details>
+
+### The full tier table
+
+`engine/hardware-detect.sh` measures the real machine at first boot and picks the tier itself. This is what it decides:
+
+| Tier | The machine | Chat model | Speed | Photo AI |
+|---|---|---|---|---|
+| **0 — every machine** | **Anything that boots.** Files, calendar, contacts, photos, passwords, PDF tools, encrypted chat, private remote access, full-disk encryption, automatic backups. **This never gets worse on a slower machine.** | — | — | — |
+| **1 — heavy GPU** | Gaming or workstation PC, 24 GB+ graphics memory (RTX 3090/4090/5090) | 32B, or 70B above 40 GB | Faster than you read | On the GPU |
+| **2 — mid GPU** | One modern gaming card (RTX 3060 12GB, 4060 Ti 16GB, 3080) | 14B | ~20–40 words/sec | On the CPU |
+| **3 — capable CPU** | Ex-office tower, 8+ cores, 24 GB+ RAM, no useful GPU | 8B | ~5–12 words/sec | On the CPU |
+| **4 — low resource** | Old laptop, mini PC, NAS box, Pi 5. 4 cores, 8–16 GB | 3B | A sentence at a time | On the CPU |
+
+**Tier 0 is the row that matters most.** Only the AI column changes with your hardware. If you came here to stop paying Google rather than to run a 70B model, any machine on this table does the whole job.
+
+**Why the photo AI sits on the CPU below 24 GB:** the language model owns the graphics card. Two things each believing they own it is how a self-hosted box runs out of memory at 3am in the middle of importing your photo library.
+
+---
+
+## Why this exists
 
 Sambuca is not just a repository; it is a weaponized software appliance and a practical gateway to digital sovereignty. Named after the ancient Roman mobile siege tower that allowed armies to drop an assault bridge directly over impenetrable fortress walls, this project is built to bypass the locked gates of the corporate AI panopticon.
 
@@ -31,9 +218,8 @@ The Sambuca installer takes over entirely. It automatically wipes and encrypts t
 It does the work of a senior systems administrator in twenty minutes, completely offline, and hands you the master password.
 
 <p align="center">
-  <img src="assets/brand/breach-vault-usb.webp" width="820"
-       alt="A USB key driving through a red-lit bank vault door, the door shattering
-            outward into glowing fragments — one stick opening a sealed system.">
+  <img src="assets/brand/usb-breaches-rack.webp" width="820"
+       alt="A sambuca USB key driven into a server rack, its slashed-zero mark lit, a burst of red light where it meets the machine.">
 </p>
 
 ## 🏗️ The Architecture
@@ -58,9 +244,8 @@ Risk-averse regulators and institutional bodies are terrified of AI. Their insti
 We do not need a Law Society hall pass to understand software. We need to reclaim our silicon.
 
 <p align="center">
-  <img src="assets/brand/siege-corporate-castles.webp" width="820"
-       alt="A medieval siege: armies with banners reading OLLAMA FREEDOM and NO MORE
-            RENT storming stone keeps flying the flags of Google, Palantir and OpenAI.">
+  <img src="assets/brand/tower-leaking-data.webp" width="820"
+       alt="A corporate tower under a storm, streams of blue and gold data pouring out of it and away across the city below.">
 </p>
 
 ## 👁️ The Corporate Panopticon vs. True Sovereignty
@@ -80,9 +265,8 @@ That single decision breached the corporate firewall. **Open-weights AI is our S
 When you run open-weights AI, you realize something fascinating: **neural networks are mathematically master-less.** They actively resist top-down corporate manipulation. The smarter they get, the harder it is to force them to lie.
 
 <p align="center">
-  <img src="assets/brand/open-weights-monolith.webp" width="820"
-       alt="A black monolith split open across a cracked desert, blue and gold neural
-            network filaments streaming out of the fracture and across the plain.">
+  <img src="assets/brand/ring-breached.webp" width="820"
+       alt="A vast dark ring, the closed corporate loop, split open by a red beam with debris and blue energy escaping through the breach.">
 </p>
 
 ## 🩸 The Cost of Freedom
@@ -92,198 +276,24 @@ Is digital sovereignty entirely "free"? No.
 Sambuca solves the software friction—you no longer have to lose entire weekends screaming at your terminal wrestling with Python dependencies. But the hardware still demands a sacrifice. Buying a high-end graphics card to run massive AI models locally will burn a smoking hole in your wallet.
 
 But there is a very fair reason for that friction: it is the literal cost of escaping the corporate panopticon. You are buying your way out of the matrix.
-
 ---
 
-# Reference
+# The technical half
 
-Everything above is why. Everything below is what it actually does, and how
-to run it.
+Everything above is what it does. Everything below is how, and every
+promise it makes about itself. It is folded away because a novice does not
+need it to start — not because it is optional reading before you trust the
+thing with your files.
 
-Deeper detail lives in five documents: [ARCHITECTURE](docs/ARCHITECTURE.md) (the
-three network planes, the boot sequence, the VRAM arbitration),
-[SECURITY](docs/SECURITY.md) (the threat model and the compromises made on
-purpose), [MAINTENANCE](docs/MAINTENANCE.md) (**every coupling to something we
-do not control, and what watches it**), [HARDWARE](docs/HARDWARE.md) (which tier
-your machine lands in) and [IMAGES](docs/IMAGES.md) (the pinning policy).
+<details>
+<summary><b>📦 What is actually installed, and every change we make to it</b></summary>
 
-## What it replaces
+<br>
 
-| You were paying for | It runs |
-|---|---|
-| ChatGPT / Claude subscriptions | **Ollama + Odysseus** — 3B to 70B, sized to your hardware |
-| Google Drive / Dropbox / M365 | **Nextcloud AIO** — files, docs, calendar, contacts |
-| Google Photos / iCloud Photos | **Immich** — local face recognition and semantic search |
-| 1Password / LastPass | **Vaultwarden** |
-| Notion / Obsidian Sync | **Blinko** — notes, with the local model doing the AI part |
-| Adobe Acrobat online | **BentoPDF** — in-browser, the file never leaves the tab |
-| Slack / Discord | **Ergo IRC** + **Matrix Synapse** |
-| A NAS vendor's cloud | **MergerFS + SnapRAID** on whatever mismatched disks you have |
-| Cloudflare Tunnel / a VPS | **Tailscale + Caddy** |
-| Uptime monitoring SaaS | **Uptime Kuma** |
+Transparency first: every component, its licence, and all thirty
+deviations from stock — each attributed to what makes it and when.
 
----
-
-## Quickstart
-
-```bash
-pip install ./apps/flasher
-```
-
-```bash
-sambuca-flasher example-config --output my-appliance.json
-```
-
-```bash
-sudo sambuca-flasher write --iso debian-12-netinst.iso --config my-appliance.json
-```
-
-The flasher generates a 24-word seed phrase and a 32-character root passphrase
-**on your machine, offline**, writes them to `liberator-recovery.pdf`, and only
-then touches the USB. Print the PDF. It is the only copy.
-
-Then, before you walk to the other machine:
-
-```bash
-sambuca-flasher boot-guide "Dell XPS 15 9520"
-```
-
-**This is the step that actually defeats people** — not the install, which is
-automatic, but the ten minutes before it. The guide gives you your vendor's boot
-key, the trap specific to that vendor, and the three that are not the boot key
-at all: find your BitLocker key *first*, use Restart rather than Shut Down
-(Windows "shut down" hibernates and never re-runs boot selection), and try
-Secure Boot **on** before disabling it. It also composes the one search worth
-running — quoted model, the vendor's own vocabulary — and shows you the URL
-before opening it.
-
-Boot the target machine from the stick. You get **30 seconds at the console**,
-with the target disk and its current contents printed on screen, to abort before
-anything is written.
-
-Then it installs itself. First boot pulls models and starts the stack — an hour
-on a good connection, longer on a slow one — and prints a completion report
-telling you where everything is.
-
----
-
-## Repository layout
-
-```
-sambuca/
-├── apps/flasher/                    Cross-platform USB writer (Windows/macOS/Linux)
-│   ├── src/sambuca_flasher/
-│   │   ├── keys.py                  BIP-39 seed + root passphrase + backup key derivation
-│   │   ├── payload.py               provision.json construction + the secret-leak guard
-│   │   ├── recovery_pdf.py          the printed recovery document
-│   │   ├── devices.py               removable-device enumeration (internal disks never listed)
-│   │   ├── writer.py                raw image write + readback verification
-│   │   └── cli.py                   the write flow, in the order it must happen
-│   └── tests/
-│
-├── engine/
-│   ├── autoinstall/                 Unattended Debian 12 installation
-│   │   ├── preseed.cfg              full-disk LUKS, no hardcoded target disk
-│   │   ├── disk-select.sh           resolves the target, or REFUSES — never guesses
-│   │   ├── abort-countdown.sh       the 30-second fail-safe
-│   │   ├── late-command.sh          stages the engine into the installed system
-│   │   ├── enroll-recovery-key.sh   adds the seed-derived SECOND LUKS keyslot, in the installer
-│   │   ├── luks-tpm-enroll.sh       optional TPM 2.0 auto-unlock (opt-in, with the tradeoff stated)
-│   │   └── build-iso.sh             rebuild a netinst ISO with the payload embedded
-│   │
-│   ├── hardware-detect.sh           ★ the profiler: CPU/RAM/VRAM → tier → model set → resource limits
-│   ├── first-boot.sh                ★ the provisioning orchestrator (resumable, idempotent)
-│   ├── lib/common.sh                logging, error traps, atomic writes, single-instance enforcement
-│   ├── profiles/tier{1..4}.env      the model catalogue, as data
-│   │
-│   ├── provision/                   phases, run in order by first-boot.sh
-│   │   ├── 10-system.sh             base OS, users, ssh, sysctl, unattended security upgrades
-│   │   ├── 20-docker.sh             Docker CE + compose plugin + daemon hardening
-│   │   ├── 30-gpu-runtime.sh        NVIDIA/ROCm runtime, then RE-PROFILES the hardware
-│   │   ├── 40-storage-pool.sh       MergerFS union + SnapRAID parity (never formats a disk with data)
-│   │   ├── 50-network.sh            Tailscale, CasaOS port move, nftables default-deny
-│   │   ├── 60-stack.sh              renders .env, validates, brings the mesh up, health-gates
-│   │   ├── 70-models.sh             pulls the tier's models, then proves generation works
-│   │   ├── 80-identity.sh           Pocket ID bootstrap (one attended step, honestly labelled)
-│   │   └── 90-report.sh             the completion report
-│   │
-│   └── maintenance/
-│       ├── gitops-sync.sh           signed-tag-only config sync, with a forbidden-path review gate
-│       ├── backup.sh                restic, with correct exit-3 handling and restore verification
-│       ├── snapraid-sync.sh         parity sync with a deletion threshold that aborts
-│       ├── recovery-key.sh          sambuca-recovery {status,enrol,verify} — prove the key works
-│       └── systemd/                 units and timers
-│
-├── compose/
-│   ├── docker-compose.yml           core: Caddy, Pocket ID, oauth2-proxy, Uptime Kuma, Watchtower
-│   ├── ai.yml                       Ollama + Odysseus
-│   ├── cloud.yml                    Vaultwarden, Nextcloud AIO, Immich
-│   ├── office.yml                   Blinko, BentoPDF
-│   ├── comms.yml                    Ergo, Synapse
-│   ├── gpu.<profile>.<bundle>.yml   per-bundle GPU overrides; only enabled bundles are appended
-│   ├── .env.example                 image pins — see docs/IMAGES.md before releasing
-│   └── config/                      Caddyfile, ircd.yaml, snapraid.conf template
-│
-├── apps/companion/
-│   └── setup/index.html             the setup screen the owner watches while it provisions
-│
-├── assets/brand/
-│   ├── sambuca-header.svg           README header
-│   ├── sambuca-mark.svg             square mark: favicon, tray, avatar
-│   └── loading-treads.*             the siege-tread loop shown during long steps
-│
-├── tools/
-│   ├── verify-images.py             resolve every image against its registry (no docker needed)
-│   └── check-upstreams.py           daily drift check across every external coupling
-│
-└── docs/
-    ├── ARCHITECTURE.md              the three network planes, boot sequence, VRAM arbitration
-    ├── SECURITY.md                  the threat model, and the tradeoffs made on purpose
-    ├── MAINTENANCE.md               every coupling we do not control, and what watches it
-    ├── HARDWARE.md                  what tier your machine lands in, and why
-    ├── IMAGES.md                    image pinning policy
-    └── design/
-        └── NEXT-STAGE.md            the three development axes, as decisions
-```
-
----
-
-## Hardware tiers — what your machine can actually run
-
-`engine/hardware-detect.sh` measures the machine at first boot and picks a tier.
-Check before you buy anything:
-
-```bash
-sambuca-flasher estimate "Dell OptiPlex 7060, 16GB, no graphics card"
-```
-
-| Tier | What that looks like in plain language | Chat model | Speed | Photo AI |
-|---|---|---|---|---|
-| **1** — heavy GPU | A gaming or workstation PC with an RTX 3090, 4090, 5090 or two 3060s. 24 GB+ of graphics memory. | 32B, or 70B above 40 GB | Fast — faster than you read | On the GPU |
-| **2** — mid GPU | One modern gaming card: RTX 3060 12GB, 4060 Ti 16GB, 3080. | 14B | Comfortable, ~20–40 words/sec | On the CPU |
-| **3** — capable CPU | An office desktop or workstation with 8+ cores and 24 GB+ RAM, no useful graphics card. Ex-corporate Dell/HP/Lenovo towers land here. | 8B | Slow but usable, ~5–12 words/sec | On the CPU |
-| **4** — low resource | An old laptop, a mini PC, a NAS box, a Raspberry Pi 5. 4 cores, 8–16 GB RAM. | 3B | Patient — a sentence at a time | On the CPU |
-
-**The cloud half is identical on every tier.** Files, photos, passwords, notes,
-calendar, contacts and chat all behave the same on a Raspberry Pi as on a
-threadripper. Only the AI gets slower. If you are here to leave Google rather
-than to run a 70B model, **tier 4 is genuinely enough** — and it is the tier a
-£100 second-hand office PC lands in.
-
-What decides your tier, in order: **graphics memory** (not the GPU's name — a
-24 GB card beats a faster 12 GB one for this), then **RAM**, then **cores**.
-
-**The VRAM arbitration rule:** the inference engine owns the GPU; background ML
-is a guest. Below 20 GB of measured VRAM, Immich's face-recognition and CLIP
-worker is pinned to the CPU — no negotiation, no "try GPU first" fallback. Two
-allocators that each believe they own the card is how a self-hosted box OOMs at
-3am mid photo-import. Above that threshold Immich gets the GPU, and Ollama's
-keep-alive is bounded so idle VRAM is actually returned.
-
-Override anything in `/etc/sambuca/profile.local.env` — it is sourced after the
-generated profile and survives regeneration.
-
-## What is actually installed, and what we changed
+### What is actually installed, and what we changed
 
 Transparency first. This appliance runs other people's software, and it does not
 run it stock. Below is everything it installs, and **every deviation from what
@@ -391,7 +401,14 @@ credential is created by your own authenticator touching a browser, and anything
 claiming to pre-provision one has put a password-equivalent secret on disk
 instead.
 
-## Design commitments
+</details>
+
+<details>
+<summary><b>🛡️ Design commitments — the decisions this is built around</b></summary>
+
+<br>
+
+### Design commitments
 
 These are the decisions the code is built around. Each one costs something.
 
@@ -432,7 +449,102 @@ applies, validates, and rolls back on failure.
 
 ---
 
-## Status
+</details>
+
+<details>
+<summary><b>📁 Repository layout</b></summary>
+
+<br>
+
+### Repository layout
+
+```
+sambuca/
+├── apps/flasher/                    Cross-platform USB writer (Windows/macOS/Linux)
+│   ├── src/sambuca_flasher/
+│   │   ├── keys.py                  BIP-39 seed + root passphrase + backup key derivation
+│   │   ├── payload.py               provision.json construction + the secret-leak guard
+│   │   ├── recovery_pdf.py          the printed recovery document
+│   │   ├── devices.py               removable-device enumeration (internal disks never listed)
+│   │   ├── writer.py                raw image write + readback verification
+│   │   └── cli.py                   the write flow, in the order it must happen
+│   └── tests/
+│
+├── engine/
+│   ├── autoinstall/                 Unattended Debian 12 installation
+│   │   ├── preseed.cfg              full-disk LUKS, no hardcoded target disk
+│   │   ├── disk-select.sh           resolves the target, or REFUSES — never guesses
+│   │   ├── abort-countdown.sh       the 30-second fail-safe
+│   │   ├── late-command.sh          stages the engine into the installed system
+│   │   ├── enroll-recovery-key.sh   adds the seed-derived SECOND LUKS keyslot, in the installer
+│   │   ├── luks-tpm-enroll.sh       optional TPM 2.0 auto-unlock (opt-in, with the tradeoff stated)
+│   │   └── build-iso.sh             rebuild a netinst ISO with the payload embedded
+│   │
+│   ├── hardware-detect.sh           ★ the profiler: CPU/RAM/VRAM → tier → model set → resource limits
+│   ├── first-boot.sh                ★ the provisioning orchestrator (resumable, idempotent)
+│   ├── lib/common.sh                logging, error traps, atomic writes, single-instance enforcement
+│   ├── profiles/tier{1..4}.env      the model catalogue, as data
+│   │
+│   ├── provision/                   phases, run in order by first-boot.sh
+│   │   ├── 10-system.sh             base OS, users, ssh, sysctl, unattended security upgrades
+│   │   ├── 20-docker.sh             Docker CE + compose plugin + daemon hardening
+│   │   ├── 30-gpu-runtime.sh        NVIDIA/ROCm runtime, then RE-PROFILES the hardware
+│   │   ├── 40-storage-pool.sh       MergerFS union + SnapRAID parity (never formats a disk with data)
+│   │   ├── 50-network.sh            Tailscale, CasaOS port move, nftables default-deny
+│   │   ├── 60-stack.sh              renders .env, validates, brings the mesh up, health-gates
+│   │   ├── 70-models.sh             pulls the tier's models, then proves generation works
+│   │   ├── 80-identity.sh           Pocket ID bootstrap (one attended step, honestly labelled)
+│   │   └── 90-report.sh             the completion report
+│   │
+│   └── maintenance/
+│       ├── gitops-sync.sh           signed-tag-only config sync, with a forbidden-path review gate
+│       ├── backup.sh                restic, with correct exit-3 handling and restore verification
+│       ├── snapraid-sync.sh         parity sync with a deletion threshold that aborts
+│       ├── recovery-key.sh          sambuca-recovery {status,enrol,verify} — prove the key works
+│       └── systemd/                 units and timers
+│
+├── compose/
+│   ├── docker-compose.yml           core: Caddy, Pocket ID, oauth2-proxy, Uptime Kuma, Watchtower
+│   ├── ai.yml                       Ollama + Odysseus
+│   ├── cloud.yml                    Vaultwarden, Nextcloud AIO, Immich
+│   ├── office.yml                   Blinko, BentoPDF
+│   ├── comms.yml                    Ergo, Synapse
+│   ├── gpu.<profile>.<bundle>.yml   per-bundle GPU overrides; only enabled bundles are appended
+│   ├── .env.example                 image pins — see docs/IMAGES.md before releasing
+│   └── config/                      Caddyfile, ircd.yaml, snapraid.conf template
+│
+├── apps/companion/
+│   └── setup/index.html             the setup screen the owner watches while it provisions
+│
+├── assets/brand/
+│   ├── sambuca-header.svg           README header
+│   ├── sambuca-mark.svg             square mark: favicon, tray, avatar
+│   └── loading-treads.*             the siege-tread loop shown during long steps
+│
+├── tools/
+│   ├── verify-images.py             resolve every image against its registry (no docker needed)
+│   └── check-upstreams.py           daily drift check across every external coupling
+│
+└── docs/
+    ├── ARCHITECTURE.md              the three network planes, boot sequence, VRAM arbitration
+    ├── SECURITY.md                  the threat model, and the tradeoffs made on purpose
+    ├── MAINTENANCE.md               every coupling we do not control, and what watches it
+    ├── HARDWARE.md                  what tier your machine lands in, and why
+    ├── IMAGES.md                    image pinning policy
+    └── design/
+        └── NEXT-STAGE.md            the three development axes, as decisions
+```
+
+---
+
+</details>
+
+<details>
+<summary><b>🚦 Status — what is proven and what is not</b></summary>
+
+<br>
+
+### Status
 
 Early, but not vapour. **CI is green** — shellcheck, the flasher suite on
 Linux/macOS/Windows across Python 3.11 and 3.13, Caddyfile validation, compose
@@ -463,7 +575,14 @@ implemented. Reading is not verification.
 
 ---
 
-## 🧭 Where this is going — three development axes
+</details>
+
+<details>
+<summary><b>🧭 Where this is going — the three development axes</b></summary>
+
+<br>
+
+### 🧭 Where this is going — three development axes
 
 Everything after the first working appliance is organised along three axes. They
 are not phases to be completed in order; they are standing directions, and every
@@ -600,6 +719,8 @@ project needs most: nobody has yet installed it end-to-end from a flashed stick.
 
 ---
 
+</details>
+
 ## 🚀 Call to Action
 
 Do not wait for a tech company to tell you where North is. Do not wait for a regulator to rubber-stamp your tools.
@@ -611,6 +732,8 @@ Do not wait for a tech company to tell you where North is. Do not wait for a reg
 Humanity stands at a critical fork in history. A choice between unprecedented empowerment on a corporate dog leash, or true, sovereign capability. The siege engine is built. The bridge is primed.
 
 **Drop the ramp.**
+
+---
 
 ---
 

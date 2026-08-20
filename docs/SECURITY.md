@@ -2,8 +2,7 @@
 
 <p align="center">
   <img src="../assets/brand/fortress-shielded-server.webp" width="820"
-       alt="A single server on a stone plinth inside a blue spherical shield, red
-            attack traces breaking apart against the barrier in a dark datacentre.">
+       alt="A single server on a stone plinth inside a blue spherical shield, red attack traces breaking apart against the barrier.">
 </p>
 
 This document states what sambuca protects against, what it does not, and the

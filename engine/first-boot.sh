@@ -262,21 +262,48 @@ main() {
     export SB_STAGE_TOTAL
     STAGE_NUM=0
 
-    # The console is a TTY: no images, so the mark is drawn in box characters.
-    # Same silhouette as assets/brand/sambuca-mark.svg — tower, ramp, nodes.
+    # The console is a TTY: no images, so the mark is drawn in plain ASCII.
+    # Same silhouette as assets/brand/sambuca-mark.svg - the closed corporate
+    # loop, broken open by the ramp. ASCII rather than box-drawing characters
+    # because the Debian installer console is not guaranteed to be in a UTF-8
+    # locale, and a mojibake logo is a worse first impression than a plain one.
     {
-        printf '\n'
-        printf '   ██▀▀██▀▀██\n'
-        printf '   ██      ██\n'
-        printf '   ██      ██▄▄\n'
-        printf '   ██      ██  ▀▀▄▄▄        ○────○\n'
-        printf '   ██      ██       ▀▀▄▄▄  ╱ ╲  ╱ ╲\n'
-        printf '   ██      ██            ▀○   ○    ○\n'
-        printf '   ╚═(O)══(O)═╝               ╲  ╱\n'
-        printf '                               ○\n\n'
-        printf '   S A M B U C A\n'
-        printf '   the open-weights siege engine\n'
-        printf '  ────────────────────────────────────────────────────────\n\n'
+        printf '
+'
+        printf '                              /
+'
+        printf '        .d888888b.          /
+'
+        printf '      d88P"    "Y88b      /
+'
+        printf '     d88P         Y8/b  /
+'
+        printf '     888          /888 /
+'
+        printf '     888         / 888/
+'
+        printf '     888        /  /88
+'
+        printf '     Y88b      /  d88P
+'
+        printf '      "Y88b.  /.d88P"
+'
+        printf '        "Y8/8888P"
+'
+        printf '        /
+'
+        printf '      /
+'
+        printf '    /
+'
+        printf '   S A M B U C A
+'
+        printf '   the open-weights siege engine
+'
+        printf '  --------------------------------------------------------
+'
+        printf '
+'
         printf '  There are %s steps. Most need nothing from you.\n' "$SB_STAGE_TOTAL"
         printf '  The whole thing usually takes 30 to 90 minutes, and longer\n'
         printf '  on a slow connection because it downloads an AI model.\n\n'

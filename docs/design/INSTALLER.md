@@ -1,8 +1,8 @@
 # The interactive installer
 
 <p align="center">
-  <img src="../../assets/brand/breach-vault-usb.webp" width="760"
-       alt="A USB key driving through a red-lit vault door, the door shattering outward.">
+  <img src="../../assets/brand/usb-breaches-rack.webp" width="760"
+       alt="A sambuca USB key driven into a server rack, a burst of red light where it meets the machine.">
 </p>
 
 A decision document for the desktop app. Every section is measured against the
