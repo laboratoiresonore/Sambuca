@@ -137,6 +137,20 @@ no compatibility guarantee at all and break at the maintainer's discretion.
 | Immich upload path `/usr/src/app/upload` | `cloud.yml` | changed historically |
 | Pocket ID one-time setup token, scraped from container logs | `80-identity.sh` | **most fragile thing in the repo** — a log format change breaks it silently, and the log line is not an API |
 
+**Secrets that remain in the environment.** Most are now file-backed via the
+`*_FILE` conventions their upstreams document, mounted through compose secrets.
+Three are not, because their images support no such convention — and an
+environment variable is readable by `docker inspect`, by anything that can read
+`/proc/<pid>/environ`, and by every child process the service spawns:
+
+| Variable | Service | Why not file-backed |
+|---|---|---|
+| `ENCRYPTION_KEY` | Pocket ID | no `*_FILE` support documented |
+| `SYNAPSE_REGISTRATION_SHARED_SECRET` | Synapse | config generated from env on first run; can be removed after init |
+| `NEXTAUTH_SECRET`, `DATABASE_URL` | Blinko | no `*_FILE` support; the URL embeds the password by construction |
+
+Re-check these on every image bump — if upstream adds `*_FILE`, convert.
+
 **Fixed 2026-08-20:** Ergo was mounted Caddy's CA *directory* and told to serve
 `root.crt`/`root.key` as its TLS certificate. That handed a chat container the
 CA **private key** — anything compromising Ergo could mint certificates trusted

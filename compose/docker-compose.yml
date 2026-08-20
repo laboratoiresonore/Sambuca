@@ -27,6 +27,39 @@ networks:
     driver: bridge
     internal: true
 
+# ---------------------------------------------------------------------------
+# SECRETS AS FILES, NOT ENVIRONMENT VARIABLES.
+#
+# An environment variable is readable by anyone who can run `docker inspect`,
+# by anything that can read /proc/<pid>/environ, and by every child process the
+# service spawns. It lands in crash dumps and in `docker compose config` output.
+# For database passwords on a machine holding the owner's documents, that is a
+# credential dump waiting for one compromised container.
+#
+# Compose bind-mounts these at /run/secrets/<name>. The files live in
+# /etc/sambuca/secrets, which is mode 0700 — so on the HOST, traversal is
+# blocked for everyone but root. The files themselves are 0644 because the
+# daemon mounts them into containers that run as non-root service users, and a
+# 0600 root-owned file is unreadable to postgres inside its own container.
+# Directory permissions do the confinement; file permissions only govern the
+# mounted copy.
+#
+# Only images whose upstream documents the *_FILE convention are converted.
+# Where it is unsupported the variable stays in the environment WITH A COMMENT
+# saying so, rather than being quietly left to look intentional.
+# ---------------------------------------------------------------------------
+secrets:
+  postgres_password:
+    file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/postgres_password
+  immich_db_password:
+    file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/immich_db_password
+  vaultwarden_admin_token:
+    file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/vaultwarden_admin_token
+  oauth2_client_id:
+    file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/oauth2_client_id
+  oauth2_client_secret:
+    file: ${SAMBUCA_SECRETS_DIR:-/etc/sambuca/secrets}/oauth2_client_secret
+
 x-common: &common
   restart: unless-stopped
   environment:
@@ -102,6 +135,9 @@ services:
       TZ: ${TZ:-UTC}
       APP_URL: https://id.${SAMBUCA_DOMAIN:-sambuca.local}
       TRUST_PROXY: "true"
+      # NOT file-backed: Pocket ID documents no *_FILE convention. This value
+      # is therefore visible to `docker inspect`. Tracked in docs/MAINTENANCE.md
+      # Tier 5; revisit when upstream adds support.
       ENCRYPTION_KEY: ${POCKET_ID_ENCRYPTION_KEY:?POCKET_ID_ENCRYPTION_KEY is required}
       # WebAuthn binds credentials to an origin. Changing the domain later
       # invalidates every enrolled passkey — this is a WebAuthn property, not a
@@ -149,12 +185,15 @@ services:
       - --redirect-url=https://auth.${SAMBUCA_DOMAIN:-sambuca.local}/oauth2/callback
     environment:
       TZ: ${TZ:-UTC}
-      OAUTH2_PROXY_CLIENT_ID_FILE: /run/secrets/client_id
-      OAUTH2_PROXY_CLIENT_SECRET_FILE: /run/secrets/client_secret
+      OAUTH2_PROXY_CLIENT_ID_FILE: /run/secrets/oauth2_client_id
+      OAUTH2_PROXY_CLIENT_SECRET_FILE: /run/secrets/oauth2_client_secret
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?OAUTH2_PROXY_COOKIE_SECRET is required}
-    volumes:
-      - /etc/sambuca/secrets/oauth2_client_id:/run/secrets/client_id:ro
-      - /etc/sambuca/secrets/oauth2_client_secret:/run/secrets/client_secret:ro
+    # Was two hardcoded host bind mounts. Moved onto the same secrets
+    # mechanism as everything else so there is ONE way secrets reach a
+    # container, and so the path is not baked into the file.
+    secrets:
+      - oauth2_client_id
+      - oauth2_client_secret
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4180/ping"]
       interval: 30s

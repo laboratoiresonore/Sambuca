@@ -36,6 +36,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: stage dummy secret files
+        # Compose resolves `secrets: file:` sources. Real secrets live in
+        # /etc/sambuca/secrets on an appliance and obviously are not in the
+        # repository, so CI materialises throwaway ones — which also makes this
+        # job verify the secret WIRING, not just the YAML.
+        run: |
+          mkdir -p /tmp/sambuca-secrets
+          for n in postgres_password immich_db_password vaultwarden_admin_token                    oauth2_client_id oauth2_client_secret; do
+            echo "ci-dummy-not-a-real-secret" > "/tmp/sambuca-secrets/$n"
+          done
+          echo "SAMBUCA_SECRETS_DIR=/tmp/sambuca-secrets" >> "$GITHUB_ENV"
+
       - name: validate every GPU profile against every bundle subset
         # The SUBSETS matter as much as the profiles. A compose override naming
         # a service that the selected bundles do not define invalidates the

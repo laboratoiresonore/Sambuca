@@ -184,6 +184,56 @@ rolls back on a failed health check. Next:
 - **Rollback proven, not assumed** — exercised in CI against a deliberately
   poisoned update, because a recovery path nobody has run does not work.
 
+### DECIDED — health alerting, and why automatic shutdown is NOT the default
+
+The flasher already collects contact details, so alerting is wired in by default
+rather than being a thing the owner discovers they never set up. It rides the
+same SMTP submission credentials the mail stack uses — no new egress path, no
+third-party notification service, nothing that requires an account anywhere.
+
+Monitored: disk space and SMART health, memory pressure, temperature, failed
+logins, backup outcome, **engine-tree integrity**, and **firewall ruleset
+drift** — alongside the service healthchecks Uptime Kuma already runs.
+
+**The response ladder, and the argument for it.**
+
+The instinct to shut the machine down on anomaly is the right instinct pointed
+at the wrong action. Two things make automatic shutdown the worst available
+response:
+
+1. **A shut-down appliance cannot be restarted remotely.** A false positive at
+   2am becomes a self-inflicted outage that ends only when someone physically
+   walks to the machine — while their photos, passwords and documents are
+   offline. The "safety" measure causes the harm.
+2. **Autonomous self-healing acting on false positives is a documented,
+   repeatedly-observed failure mode**, not a hypothetical. Guards that restart
+   healthy services on a bad signal, and patches that fight the fix they were
+   meant to apply, are how this class of automation actually behaves in the
+   field.
+
+So responses are graduated, and **severity is matched to confidence**:
+
+| Confidence | Example | Response |
+|---|---|---|
+| Informational | disk 80% full; partial backup | alert only |
+| Degraded | service unhealthy; bridge down; backup failed | alert + **one** bounded restart, never a loop |
+| Suspicious | new outbound host; unexpected listening port; burst of failed logins | alert + tighten — rate-limit or block that flow |
+| High-confidence compromise | engine tree modified; a LUKS keyslot we did not add; a new key in authorized_keys; firewall ruleset replaced | **ISOLATE** — drop everything but the tailnet. Fully reversible, and the owner can still get in to look. |
+| Irreversible threat only | repeated failed unlock attempts suggesting the machine is not where it should be | power off — **after** an alert with a hold window the owner can cancel |
+
+**Isolate, not shutdown, is the top of the automatic ladder.** It stops an
+attacker's traffic, preserves forensic state, keeps the data intact, and leaves
+the owner a way in. Shutdown throws away the running state that would explain
+what happened and guarantees a physical trip.
+
+**Firewall failure is a repair, not a shutdown.** If the ruleset fails to load
+or has drifted from what we wrote, the response is to re-apply the known-good
+ruleset — and only if *that* fails, isolate.
+
+**Every automatic action is announced and reversible**, and every alert says
+what was done, why, and the exact command to undo it. An appliance that acts
+without telling you is the thing this project exists to replace.
+
 ### Rescue mode
 
 Boot the same USB, unlock with any of the three secrets, get a menu: repair the
@@ -193,6 +243,51 @@ passphrase. Driven by the desktop app, which by then is the recovery tool.
 ---
 
 ## Axis 3 — perfected setup
+
+### HOW AMBITIOUS SHOULD THE SUBSTRATE BE? — the decision that shapes the rest
+
+The tempting answer to "make it a titan" is orchestration: k3s instead of
+Compose, Proxmox and VMs, an immutable OS, a service mesh with mTLS everywhere.
+**That is rejected, and the reason matters more than the conclusion.**
+
+Complexity is only free when it stays hidden. k3s does not stay hidden. It
+surfaces the moment anything goes wrong, on a reclaimed office PC, in front of
+someone who left Google because the alternative "required compiling kernels in a
+terminal". It adds failure modes that need a specialist to diagnose, eats memory
+that a tier-4 machine does not have, and makes the recovery story — the thing
+principle 2 says must always work — dramatically worse. A cluster orchestrator
+on a single box buys resilience the box cannot use and costs recoverability the
+owner desperately needs.
+
+**So the ambition goes into hardening, not orchestration.** The test for any
+"titan" feature is one question:
+
+> Does the owner ever have to know it is there?
+
+Yes to everything that passes:
+
+| Ambition that stays invisible | What it buys |
+|---|---|
+| Drop **all** capabilities, re-add only what each service needs | a compromised container cannot mount, trace or raw-socket |
+| `read_only` rootfs + explicit tmpfs | malware cannot persist in the container it landed in |
+| User-namespace remapping | container root is not host root |
+| **Secrets as files, not environment variables** | `docker inspect` and `/proc/<pid>/environ` stop being credential dumps |
+| Per-image CVE scanning, in CI and on-device | the single highest-signal "is this actually secure" check available |
+| Per-session ephemeral containers | nothing to exfiltrate later, because nothing survives |
+| Signed-tag updates with diff review and proven rollback | supply chain, which is the realistic attack |
+
+No to everything that fails it: cluster orchestration, VM-per-service,
+custom Secure Boot keys, a service mesh. Each is defensible on a rack. On one
+reclaimed desktop with one owner, each trades a large amount of recoverability
+for a small amount of isolation the threat model does not need.
+
+**The one genuine gap this exposes, found while writing it down:** service
+secrets are currently passed as **environment variables**. Anyone who can run
+`docker inspect`, read `/proc/<pid>/environ`, or receive a crash dump gets the
+database passwords. That undercuts the fortress claim more than any missing
+orchestrator does, and it is fixed by configuration rather than architecture —
+exactly the kind of ambition worth having.
+
 
 ### DECIDED — ephemerality by container lifecycle, not by timer
 
@@ -225,6 +320,44 @@ bargain for this machine.
 
 This model generalises. Any component whose defaults keep data around gets the
 same treatment rather than a bespoke cleanup script.
+
+### DECIDED — stock Tor Browser, one click, ephemeral
+
+A slow but anonymous browser, always one click away from the control panel. It
+belongs here because it is the perfect example of the axis-3 rule: a thing that
+is genuinely annoying to set up correctly, and trivial once someone has done it
+properly on your behalf.
+
+**STOCK AND UNMODIFIED IS THE SECURITY REQUIREMENT, not a shortcut.** Tor
+Browser's protection comes from every user presenting an *identical*
+fingerprint. A customised build — different fonts, a tweaked window size, an
+added extension, a "helpful" default — makes its user more identifiable, not
+less. The single most damaging thing this project could do here is improve it.
+
+So:
+
+- **The official binary**, fetched at image-build time and **verified against
+  the Tor Project's signing key**. Not a repackage, not a fork, not a patch.
+- **Ephemeral by construction**, exactly like the generative stack: a
+  per-session container, the browser profile on tmpfs, destroyed on exit. No
+  history, no cookies, no cache surviving the session — which is the behaviour
+  Tor Browser wants anyway.
+- **No shared state with anything else on the appliance.** Its own volume-less
+  container, its own network namespace, egress only through Tor.
+- **Delivered over the tailnet**, so the LAN leg is encrypted and the appliance
+  is not exposing a remote-desktop surface to the local network.
+
+**What it honestly gives you, and what it does not.** It anonymises you from the
+destination site: the site sees a Tor exit, not your address, and each session
+starts clean. It is *not* the full Tor Browser threat model against a global
+passive adversary, because you are driving it remotely rather than running it on
+the machine in front of you. For "read something without it being logged against
+me", it is exactly right. For "my life depends on this", use Tor Browser on a
+laptop, on Tails, and do not take routing advice from a README.
+
+That paragraph ships with the feature. A privacy tool that overstates itself is
+worse than no privacy tool, because people calibrate their behaviour to what
+they were told.
 
 ### Lean by default; spare memory becomes storage
 

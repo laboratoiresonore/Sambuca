@@ -45,7 +45,13 @@ secret_get() {
         return 0
     fi
     local value; value="$(sb_secret "$bytes")"
-    printf '%s' "$value" | sb_atomic_write "$path" 0600
+    # 0644, not 0600 — deliberately, and only safe because of the directory.
+    # Compose bind-mounts these into containers that run as non-root service
+    # users (postgres, node); a root-owned 0600 file is unreadable there and the
+    # database simply fails to start. ${SECRETS_DIR} is 0700, so on the HOST
+    # traversal is still blocked for everyone but root. The directory does the
+    # confinement; the file mode only governs the mounted copy.
+    printf '%s' "$value" | sb_atomic_write "$path" 0644
     log "generated new secret: ${name} (${bytes} chars, stored 0600)"
     printf '%s' "$value"
 }

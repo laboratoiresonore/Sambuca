@@ -61,6 +61,11 @@ services:
       SYNAPSE_SERVER_NAME: ${SAMBUCA_TS_DNSNAME:-${SAMBUCA_DOMAIN:-sambuca.local}}
       SYNAPSE_REPORT_STATS: "no"
       SYNAPSE_CONFIG_DIR: /data
+      # NOT file-backed: the Synapse image generates homeserver.yaml from the
+      # environment on first run and documents no *_FILE convention. The value
+      # is therefore visible to `docker inspect`. It is only consumed at config
+      # generation, so it can be removed from the environment once the server
+      # has initialised. Tracked in docs/MAINTENANCE.md Tier 5.
       SYNAPSE_REGISTRATION_SHARED_SECRET: ${SYNAPSE_REGISTRATION_SECRET:?SYNAPSE_REGISTRATION_SECRET is required}
       UID: ${PUID:-1000}
       GID: ${PGID:-1000}
@@ -82,11 +87,13 @@ services:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: sambuca-synapse-db
     networks: [data]
+    secrets:
+      - postgres_password
     volumes:
       - ${SAMBUCA_APPDATA}/synapse/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: synapse
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: synapse
       # Synapse REQUIRES C collation. Without these two arguments the schema
       # creates successfully and then corrupts state-group ordering later.

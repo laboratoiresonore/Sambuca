@@ -22,6 +22,11 @@ services:
       NODE_ENV: production
       NEXTAUTH_URL: https://notes.${SAMBUCA_DOMAIN:-sambuca.local}
       NEXT_PUBLIC_BASE_URL: https://notes.${SAMBUCA_DOMAIN:-sambuca.local}
+      # NOT file-backed: Blinko documents no *_FILE convention, and its
+      # DATABASE_URL embeds the password by construction. Both are visible to
+      # `docker inspect`. This is the weakest of the three exceptions — Blinko
+      # holds notes rather than credentials, and it is on the `data` network
+      # with no route off the host. Tracked in docs/MAINTENANCE.md Tier 5.
       NEXTAUTH_SECRET: ${BLINKO_JWT_SECRET:?BLINKO_JWT_SECRET is required}
       DATABASE_URL: postgresql://blinko:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@blinko-postgres:5432/blinko
       # Blinko's AI features point at the local engine. There is no cloud
@@ -50,11 +55,13 @@ services:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: sambuca-blinko-db
     networks: [data]
+    secrets:
+      - postgres_password
     volumes:
       - ${SAMBUCA_APPDATA}/blinko/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: blinko
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: blinko
       POSTGRES_INITDB_ARGS: "--data-checksums"
     healthcheck:
