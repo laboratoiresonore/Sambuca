@@ -21,6 +21,18 @@ services:
       - /dev/dri
     group_add:
       - video
+    # ONLY THE ADDITION. Compose APPENDS list values when it merges overlays,
+    # it does not replace them — so repeating no-new-privileges:true here (which
+    # image.yml already sets) produced the same entry twice, and compose rejects
+    # a security_opt list with duplicates outright: "items at 0 and 1 are equal".
+    #
+    # That invalidated the WHOLE project, not just this service, so every
+    # AMD + image combination failed to start at all. The base entry is
+    # inherited; this only adds what ROCm needs on top.
+    #
+    # seccomp:unconfined IS A REAL WEAKENING and is here because ROCm's
+    # userspace needs ioctls the default profile blocks. It is scoped to this
+    # one service on one GPU profile, and no-new-privileges still applies —
+    # which is precisely why it must not be dropped by accident.
     security_opt:
-      - no-new-privileges:true
       - seccomp:unconfined
