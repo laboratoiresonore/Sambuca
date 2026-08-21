@@ -3,8 +3,17 @@
 JSON has no comments, so the reasoning lives here.
 
 These are ComfyUI **API-format** graphs — the shape ComfyUI accepts at
-`POST /prompt`, not the editor's save format. The orchestrator loads the file,
-substitutes the `%PLACEHOLDER%` tokens, and posts it.
+`POST /prompt`, not the editor's save format.
+
+> [!IMPORTANT]
+> **Nothing loads these yet.** The orchestrator that would substitute the
+> `%PLACEHOLDER%` tokens and post the graph is **not built**, so no picture has
+> come out of this workflow. The file below is the intended contract, written
+> in advance — not a description of something running.
+>
+> This paragraph used to describe the orchestrator in the present tense, which
+> read as though the path worked. The whole status discipline of this project
+> rests on an owner being able to trust that distinction.
 
 ## Why the owner never edits this
 

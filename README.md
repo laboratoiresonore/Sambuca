@@ -287,9 +287,12 @@ Sambuca is designed to completely obliterate that barrier. It is a turn-key inst
 4. Walk away.
 
 > [!NOTE]
-> **Step 2 is not yet as guided as it should be.** Sambuca launches the Imager
-> and tells you what to expect, but does not yet pre-select everything for you.
-> The gap is written down in [REDO.md](REDO.md) rather than glossed over.
+> **Step 2 needs two clicks that cannot be made for you.** Sambuca launches the
+> Imager, hands it a list containing exactly one operating system, and tells you
+> what each screen will ask. It cannot pre-select the image: `default: true` is
+> ignored by rpi-imager — checked against v2.0.10, not assumed — so the
+> instruction is made exact instead (*click the only entry*). Choosing which
+> disk gets erased stays yours on purpose. Detail in [REDO.md](REDO.md).
 
 The Sambuca installer takes over entirely. It automatically wipes and encrypts the drive, installs a headless Linux OS, profiles your exact hardware, and downloads the smartest open-weights AI model your machine can physically run. It configures a beautiful, one-click graphical dashboard, installs free replacements for predatory cloud services, and wires up a private mesh network so you can access it securely from anywhere on Earth.
 
@@ -403,16 +406,20 @@ you do not have to.
 Every component is free software. Versions are the exact pins in
 [compose/.env.example](compose/.env.example).
 
-> [!NOTE]
-> **These are the versions that install, and several are well behind upstream.**
-> The table used to list newer numbers than compose actually pinned — Pocket ID
-> read 2.5.0 while v0.53 shipped, which is a different major version of the
-> identity provider that gates every service. It now matches the pins, and a
-> test in CI keeps it matching.
+> **These are the versions that install.** They come from
+> [compose/.env.example](compose/.env.example), which is what
+> `60-stack.sh` copies into the generated `.env` — the `${VAR:-…}` defaults
+> inside the compose files are only a fallback and had drifted from it on 14 of
+> 22 images.
 >
-> The gap itself is real work, tracked as part of getting to v0.1.0: these
-> pins need reviewing and bumping deliberately, with the identity bootstrap
-> retested, rather than raised in a table nobody verified.
+> That drift produced the worst documentation failure this project has had. A
+> test compared this table against the compose *defaults* — the file that does
+> not govern — found the README claiming Pocket ID 2.5.0 against a shipped
+> 0.53, and the README was corrected **downwards** to match the stale value.
+> The README had been right. A check aimed at the wrong file does not merely
+> miss problems; it manufactures them and signs them off. Both are reconciled
+> now, the test reads the governing file, and a second test holds the compose
+> defaults equal to it so the shadow cannot drift away again.
 
 | Component | Version | Licence | What it does |
 |---|---|---|---|
@@ -459,7 +466,8 @@ yet.** We would rather say so than let you find out.
 
 | Level | Status |
 |---|---|
-| Every reference resolves in its registry | ✅ verified 2026-08-20, digests in [docs/IMAGES.md](docs/IMAGES.md) |
+| Every reference resolves in its registry | ✅ verified 2026-08-21 — 23 of 24, the exception being unpublished Odysseus |
+| Every image pinned to a **digest**, not a mutable tag | ✅ `repo:tag@sha256:…`, recorded in [docs/IMAGES.md](docs/IMAGES.md); Nextcloud AIO floats deliberately |
 | Vulnerability-scanned | ✅ daily, gated on regression |
 | Compose renders across all 48 profile × bundle combinations | ✅ in CI |
 | Config parses — Caddyfile, shell, YAML | ✅ in CI |
@@ -509,8 +517,9 @@ close a door the software leaves open by default. None of it is hidden behind a
 | 26 | Nextcloud AIO domain validation skipped — it cannot succeed behind a private reverse proxy | compose | first boot |
 | 27 | Caddy issues **local certificates from its own CA**; no public ACME, no port 80 open to the internet | Caddyfile | first boot |
 | 28 | Nightly signed-tag config sync, nightly encrypted backup, weekly parity scrub | systemd timers | first boot, then ongoing |
-| 29 | Update guard holds anything oversized, key-shaped, or contacting a new host | `update-guard.sh` | every night |
+| 29 | Update guard holds anything oversized, key-shaped, contacting a new host, touching how the machine boots — or **taking a defence away**: unpinning an image, or removing `no-new-privileges` / `cap_drop` / `read_only` from a service | `update-guard.sh` | every night |
 | 30 | The provisioning payload is **shredded** from the boot partition | `first-boot.sh` | end of first boot |
+| 31 | A failed backup, an aborted parity sync or a held update **says so at the login prompt** and via `sambuca-health` — and clears itself when fixed | `health.sh` | every login |
 
 **Made by the USB maker, on your own computer, before anything boots:** the
 24-word seed, the root passphrase, the disk recovery key, the recovery PDF and
@@ -722,13 +731,25 @@ form. **`v0.1.0-preview3`, the one linked above, is the first release whose
 binaries carry their engine** — and both faults now fail the build rather than
 shipping. The full list of what remains wrong is in [REDO.md](REDO.md).
 
-Two further things are outstanding:
+Outstanding, and one thing recently closed:
 
 - **`ODYSSEUS_IMAGE` is not published yet.** Until it is public on GHCR, the
-  `ai` bundle starts Ollama with no frontend. Everything else runs.
-- **Images are pinned to tags, not digests.** Tags are the development
-  convenience; `make pin-images` converts them to digests, which is what makes
-  a flashed USB reproducible. Do that before cutting a release tag.
+  `ai` bundle starts Ollama with no frontend. Everything else runs. This is now
+  the **only** thing standing between here and a release tag, apart from a first
+  install on real hardware.
+- **The appliance tells you it is unwell; it does not come and find you.** A
+  failed backup or an aborted parity sync is impossible to miss *once you look* —
+  it is on the login banner and in `sambuca-health`, and it clears itself when
+  fixed. Someone who never logs in still learns nothing. A notification path is
+  designed but not built, and it belongs behind the authenticated dashboard
+  rather than on the install-time page, which is deliberately unauthenticated.
+- ~~**Images are pinned to tags, not digests.**~~ **Done, 2026-08-21.** Every
+  image now ships as `repo:tag@sha256:…` — the tag stays readable, the digest
+  is what gets fetched, and a tag repointed at different bytes no longer
+  changes what installs. 23 of 24 references verified against the live
+  registries; the one exception is Odysseus, above. Nextcloud AIO deliberately
+  keeps a floating tag, because the mastercontainer is an *updater* and pinning
+  it would freeze the machinery that keeps Nextcloud patched.
 
 And the honest headline: **no machine has yet been installed end-to-end from a
 flashed stick.** The install path is reviewed, syntax-checked, linted by three
