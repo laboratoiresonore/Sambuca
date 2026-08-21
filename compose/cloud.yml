@@ -152,15 +152,21 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
-    # IMMICH_ML_IMAGE_SUFFIX is "" (cpu), "-cuda" or "-openvino", chosen by
-    # hardware-detect.sh. It is empty on anything below 20 GiB VRAM.
+    # THE WHOLE REFERENCE ARRIVES IN ONE VARIABLE, resolved by 60-stack.sh from
+    # the base pin plus the variant hardware-detect chose ("" for cpu, "-cuda",
+    # "-openvino").
     #
-    # NOT "-rocm": upstream publishes no ROCm build on a release tag (both
-    # v1.128.0-rocm and v1.119.1-rocm 404 against ghcr.io; only `main-rocm`
-    # exists). AMD boxes therefore run Immich ML on CPU. Selecting `-rocm` here
-    # asked for an image that was not there, so the container never started —
-    # see the AMD branch in hardware-detect.sh.
-    image: ${IMMICH_ML_IMAGE:-ghcr.io/immich-app/immich-machine-learning:v1.128.0}${IMMICH_ML_IMAGE_SUFFIX:-}
+    # This line used to read `${IMMICH_ML_IMAGE}${IMMICH_ML_IMAGE_SUFFIX}`, and
+    # that concatenation is why a broken reference survived: verify-images.py
+    # resolved IMMICH_ML_IMAGE, which is valid on its own, while what compose
+    # pulled was base+suffix. On AMD the suffix was "-rocm", which upstream
+    # publishes on no release tag (v1.128.0-rocm and v1.119.1-rocm both 404;
+    # only `main-rocm` exists), so the container never started. The reference
+    # that gets checked must be the reference that gets used.
+    #
+    # It is also what makes digest pinning possible: nothing can be appended to
+    # a reference ending in "@sha256:…".
+    image: ${IMMICH_ML_IMAGE:-ghcr.io/immich-app/immich-machine-learning:v1.128.0}
     container_name: sambuca-immich-ml
     networks: [data]
     volumes:

@@ -170,7 +170,29 @@ log "compose chain: ${chain}"
     printf '\n'
 
     printf '# --- image pins (see docs/IMAGES.md) ---\n'
-    grep -E '^[A-Z0-9_]+_IMAGE=' "${COMPOSE_DIR}/.env.example" 2>/dev/null || true
+    # IMMICH_ML_IMAGE is resolved below instead of copied, so it is excluded
+    # here: two assignments of the same key in one env file is a coin toss.
+    grep -E '^[A-Z0-9_]+_IMAGE=' "${COMPOSE_DIR}/.env.example" 2>/dev/null \
+        | grep -v '^IMMICH_ML_IMAGE=' || true
+
+    # ── RESOLVE THE IMMICH ML VARIANT HERE, NOT IN THE COMPOSE FILE ─────────
+    # compose used to write `${IMMICH_ML_IMAGE}${IMMICH_ML_IMAGE_SUFFIX}`, and
+    # that concatenation is how a broken reference went unnoticed for as long
+    # as the AMD path existed: verify-images.py resolved IMMICH_ML_IMAGE, which
+    # is perfectly valid on its own, while what compose actually pulled was
+    # base+suffix — and `-rocm` is not published on any release tag.
+    #
+    # THE REFERENCE THAT IS CHECKED MUST BE THE REFERENCE THAT IS USED. Writing
+    # the finished string into .env makes it one value that every tool sees.
+    # It is also what makes digest pinning possible at all: you cannot append
+    # "-cuda" to something ending in "@sha256:…".
+    _ml_base="$(grep -E '^IMMICH_ML_IMAGE=' "${COMPOSE_DIR}/.env.example" 2>/dev/null \
+                | head -n 1 | cut -d= -f2-)"
+    _ml_suffix="$(grep -E '^IMMICH_ML_IMAGE_SUFFIX=' "${SB_ETC}/profile.env" 2>/dev/null \
+                  | head -n 1 | cut -d= -f2-)"
+    if [[ -n $_ml_base ]]; then
+        printf 'IMMICH_ML_IMAGE=%s%s\n' "$_ml_base" "${_ml_suffix:-}"
+    fi
 } | sb_atomic_write "$ENV_FILE" 0600
 
 ok "rendered ${ENV_FILE} (0600)"

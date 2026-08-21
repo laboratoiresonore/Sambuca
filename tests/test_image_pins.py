@@ -162,6 +162,33 @@ def test_exceptions_still_exist() -> None:
         assert var in env, f"{var} is excepted but {ENV_FILE.name} does not define it"
 
 
+def test_no_image_line_is_built_by_concatenation() -> None:
+    """The reference that gets CHECKED must be the reference that gets USED.
+
+    cloud.yml pulled `${IMMICH_ML_IMAGE}${IMMICH_ML_IMAGE_SUFFIX}`. Every tool
+    verified IMMICH_ML_IMAGE, which resolves perfectly well on its own — and
+    nothing verified base+suffix, which is what compose actually pulled. On AMD
+    the suffix was `-rocm`, published on no release tag, so the container never
+    started and no check could see it.
+
+    A reference assembled at pull time is a reference nobody validated. It also
+    makes digest pinning impossible: nothing can be appended to "@sha256:…".
+    60-stack.sh now resolves the finished string into .env.
+    """
+    offenders = []
+    for path in sorted((REPO / "compose").glob("*.yml")):
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#") or "image:" not in stripped:
+                continue
+            # Anything following the closing brace of the image variable.
+            if re.search(r"image:\s*\$\{[^}]+\}\s*\S", stripped):
+                offenders.append(f"{path.name}:{i}: {stripped}")
+    assert not offenders, (
+        "image references assembled by concatenation:\n  " + "\n  ".join(offenders)
+    )
+
+
 def test_immich_ml_never_selects_a_variant_upstream_does_not_publish() -> None:
     """hardware-detect chose `-rocm` on AMD, and that image does not exist.
 
