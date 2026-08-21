@@ -91,10 +91,22 @@ class TestThePlan:
         steps = {s.key: s for s in gui.plan(has_tailscale=True, has_imager=True)}
         assert "ERASED" in steps["write"].body
 
-    def test_the_recovery_step_exists_and_says_nobody_can_recover_it(self):
-        steps = {s.key: s for s in gui.plan(has_tailscale=True, has_imager=True)}
-        body = steps["recovery"].body.lower()
-        assert "nobody can recover it" in body
+    def test_the_recovery_step_appears_only_where_a_document_exists(self):
+        """A SCREEN THAT PROMISES PAPER THAT NEVER APPEARS IS WORSE THAN NONE.
+
+        The Pi flow generates no key material, writes no PDF and offers no
+        vault — the appliance has no encrypted root to be locked out of. The
+        x86 installer does all three. The first draft showed "print it now,
+        nobody can recover it for you" on both, which was a plain lie about
+        one of them.
+        """
+        pi = {s.key for s in gui.plan(has_tailscale=True, has_imager=True)}
+        assert "recovery" not in pi
+
+        x86 = {s.key: s for s in gui.plan(has_tailscale=True, has_imager=True,
+                                          makes_recovery_document=True)}
+        assert "recovery" in x86
+        assert "nobody can recover it" in x86["recovery"].body.lower()
 
     def test_the_flow_ends_by_pointing_forward_not_by_stopping(self):
         """The failure this project keeps fixing: a flow that ends in silence.
@@ -253,3 +265,81 @@ class TestTheWizard:
             wiz.forward()
             seen.append(wiz.current.key)
         assert seen == [s.key for s in wiz.steps]
+
+
+class TestTheActions:
+    """What the buttons do, without doing it.
+
+    Every action is exercised with its underlying module patched, because the
+    real ones install software and erase cards. What is being tested is the
+    DECISION each action makes about the result — which is where the bugs are.
+    """
+
+    def test_they_reuse_the_console_flow_functions(self):
+        """NOT A PARALLEL IMPLEMENTATION. Two code paths for one job drift
+        until only one of them still works; this asserts the window calls the
+        same functions the console does."""
+        import inspect
+        src = inspect.getsource(gui.build_actions)
+        for fn in ("tailnet.status", "imager.find_imager", "imager.try_install",
+                   "imager.launch", "pi.find_boot_partition",
+                   "pi.provision_boot_partition"):
+            assert fn in src, f"the window does not go through {fn}"
+
+    def test_no_import_happens_when_the_map_is_built(self):
+        """Building the map must be free of side effects and of import cycles
+        — cli imports gui, so gui importing cli at module scope would loop."""
+        actions = gui.build_actions()
+        assert set(actions) >= {"reachability", "imager", "write", "provision"}
+
+    def test_failing_to_install_tailscale_is_not_a_failure(self, monkeypatch):
+        """A LAN-only appliance is a supported outcome. Reporting it as an
+        error would push somebody into abandoning a perfectly good install."""
+        from sambuca_flasher import tailnet
+        monkeypatch.setattr(tailnet, "status",
+                            lambda: type("S", (), {"installed": False})())
+        monkeypatch.setattr(tailnet, "install_here", lambda: False)
+        ok, msg = gui.build_actions()["reachability"]()
+        assert ok is True
+        assert "home network only" in msg
+
+    def test_failing_to_install_the_imager_IS_a_failure(self, monkeypatch):
+        """Without it nothing can be written, so advancing would put somebody
+        on a screen telling them to use a program they do not have."""
+        from sambuca_flasher import imager
+        monkeypatch.setattr(imager, "find_imager", lambda: None)
+        monkeypatch.setattr(imager, "try_install", lambda: False)
+        ok, msg = gui.build_actions()["imager"]()
+        assert ok is False
+        assert "yourself" in msg
+
+    def test_an_already_open_imager_is_not_an_error(self, monkeypatch):
+        """It refused to start twice for exactly this reason, and the owner
+        said so twice."""
+        import pathlib
+
+        from sambuca_flasher import imager
+        monkeypatch.setattr(imager, "find_imager", lambda: pathlib.Path("x"))
+        monkeypatch.setattr(imager, "already_running", lambda: True)
+        ok, msg = gui.build_actions()["write"]()
+        assert ok is True
+        assert "already open" in msg
+
+    def test_a_missing_card_explains_the_eject_rather_than_erroring(self, monkeypatch):
+        """rpi-imager dismounts the card when it finishes. That is normal, and
+        no amount of rescanning brings it back — it has to be re-seated."""
+        from sambuca_flasher import pi
+        monkeypatch.setattr(pi, "find_boot_partition", lambda: None)
+        ok, msg = gui.build_actions()["provision"]()
+        assert ok is False
+        assert "put it back in" in msg
+
+    def test_a_write_failure_is_reported_not_raised(self, monkeypatch, tmp_path):
+        from sambuca_flasher import pi
+        monkeypatch.setattr(pi, "find_boot_partition", lambda: tmp_path)
+        monkeypatch.setattr(pi, "provision_boot_partition",
+                            lambda *a, **k: (_ for _ in ()).throw(
+                                OSError("card is write-protected")))
+        ok, msg = gui.build_actions()["provision"]()
+        assert ok is False
+        assert "write-protected" in msg

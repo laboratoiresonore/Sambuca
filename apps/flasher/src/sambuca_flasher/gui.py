@@ -85,7 +85,8 @@ class Step:
     notes: list[str] = field(default_factory=list)
 
 
-def plan(*, has_tailscale: bool, has_imager: bool) -> list[Step]:
+def plan(*, has_tailscale: bool, has_imager: bool,
+         makes_recovery_document: bool = False) -> list[Step]:
     """The screens, decided from what is actually on this machine.
 
     Takes facts rather than discovering them, so the sequence can be tested
@@ -162,7 +163,19 @@ def plan(*, has_tailscale: bool, has_imager: bool) -> list[Step]:
                   "If the card was ejected, put it back in — that is normal, "
                   "and the Imager does it on purpose."),
         ),
-        Step(
+    ])
+
+    # ONLY WHERE THE DOCUMENT ACTUALLY EXISTS. The first draft of these screens
+    # included "Your way back in — print it now, nobody can recover it for
+    # you", which is true of the x86 installer and a plain lie about a
+    # Raspberry Pi card: that flow generates no key material, writes no PDF and
+    # offers no vault, because the Pi appliance has no encrypted root to be
+    # locked out of.
+    #
+    # Promising a novice a piece of paper that never appears is worse than
+    # saying nothing, so the screen exists only when the document does.
+    if makes_recovery_document:
+        steps.append(Step(
             key="recovery",
             title="Your way back in",
             body=("This is the only copy of the words that unlock the machine "
@@ -170,7 +183,9 @@ def plan(*, has_tailscale: bool, has_imager: bool) -> list[Step]:
                   "Print it now. Nobody can recover it for you — that is what "
                   "makes it yours."),
             continue_label="Print",
-        ),
+        ))
+
+    steps.extend([
         Step(
             key="done",
             title="Put the card in and switch it on",
@@ -325,3 +340,99 @@ class Wizard:
 
     def run(self):                                        # pragma: no cover
         self.root.mainloop()
+
+
+# ---------------------------------------------------------------------------
+# What the buttons actually do
+# ---------------------------------------------------------------------------
+
+
+def build_actions(*, hostname="sambuca", engine=None):
+    """Map step keys to callables, each returning (ok, message).
+
+    THESE CALL THE SAME FUNCTIONS THE CONSOLE FLOW CALLS. Not a parallel
+    implementation — `tailnet.install_here`, `imager.try_install`,
+    `imager.launch` and `pi.provision_boot_partition` already exist as clean
+    functions, and the console path is those functions wrapped in prompts.
+    Two code paths for one job is how they drift until only one of them works.
+
+    Every import is INSIDE a callable. Building the map must stay free of side
+    effects and free of import cycles — cli imports gui, so gui importing cli
+    at module scope would be a loop.
+    """
+    state: dict = {}
+
+    def reachability():
+        from . import tailnet
+        st = tailnet.status()
+        if st.installed:
+            return True, "Tailscale is installed."
+        if tailnet.install_here():
+            return True, "Tailscale installed."
+        # NOT FATAL. A LAN-only appliance is a supported outcome, not a
+        # failure — saying otherwise would push somebody into abandoning a
+        # perfectly good install.
+        return True, ("Could not install Tailscale. Carrying on: the appliance "
+                      "will be reachable on your home network only.")
+
+    def imager_step():
+        from . import imager
+        if imager.find_imager() is not None:
+            return True, "Raspberry Pi Imager is installed."
+        if imager.try_install():
+            return True, "Raspberry Pi Imager installed."
+        return False, ("Could not install it automatically. Install Raspberry "
+                       "Pi Imager yourself, then press this again.")
+
+    def write():
+        from . import imager
+        if imager.find_imager() is None:
+            return False, "Raspberry Pi Imager is not installed yet."
+        if imager.already_running():
+            return True, ("The Imager is already open — use that window, then "
+                          "come back here.")
+        try:
+            imager.launch(wait=True)
+        except Exception as exc:                          # noqa: BLE001
+            return False, f"Could not start the Imager: {exc}"
+        return True, "The Imager has closed."
+
+    def provision():
+        import tempfile
+        from pathlib import Path
+
+        from . import pi
+        from .cli import _find_engine, _stage_engine
+
+        boot = pi.find_boot_partition()
+        if boot is None:
+            # THE EJECT SEAM, and it is normal rather than an error. rpi-imager
+            # dismounts the card when it finishes; no amount of rescanning
+            # brings it back, so the card has to be physically re-seated.
+            return False, ("Cannot see the card. The Imager ejects it when it "
+                           "finishes, which is normal — take it out, put it "
+                           "back in, then press this again.")
+
+        engine_dir = _find_engine(engine)
+        if engine_dir is None:
+            return False, "This build cannot find its engine files."
+
+        staging = Path(tempfile.mkdtemp(prefix="sambuca-pi-"))
+        try:
+            count = _stage_engine(engine_dir, staging / "sambuca")
+            actions_done = pi.provision_boot_partition(
+                boot,
+                payload_dir=staging / "sambuca",
+                hostname=hostname,
+                tailscale_key=state.get("tailscale_key", ""),
+            )
+        except Exception as exc:                          # noqa: BLE001
+            return False, f"Could not write to the card: {exc}"
+        return True, f"Added {count} files to the card ({len(actions_done)} steps)."
+
+    return {
+        "reachability": reachability,
+        "imager": imager_step,
+        "write": write,
+        "provision": provision,
+    }

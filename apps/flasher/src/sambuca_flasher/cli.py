@@ -134,9 +134,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="also open the search in your browser")
     p_boot.add_argument("--list-vendors", action="store_true")
 
-    sub.add_parser(
+    p_win = sub.add_parser(
         "window",
         help="open the graphical flow (falls back to the console flow)")
+    p_win.add_argument("--hostname", default="sambuca")
+    p_win.add_argument("--engine", type=Path,
+                       help="engine directory to stage onto the card")
 
     p_vault = sub.add_parser(
         "open-vault",
@@ -1061,19 +1064,30 @@ def _cmd_window(args) -> int:
         _say("      sambuca-flasher write-pi")
         return 1
 
-    # NOT BUILT YET, AND SAID OUT LOUD. The screens and their order are
-    # decided and tested (gui.plan); the widgets that draw them are not
-    # written. Opening a half-window would be worse than this message.
-    steps = gui.plan(has_tailscale=False, has_imager=False)
+    # LOOK BEFORE DECIDING WHAT TO SHOW. Offering to install something already
+    # installed reads as a program that has not bothered to check.
+    from . import imager, tailnet
+
+    steps = gui.plan(
+        has_tailscale=tailnet.status().installed,
+        has_imager=imager.find_imager() is not None,
+        # The Pi flow produces no recovery document — no keys, no PDF, no
+        # vault, because that appliance has no encrypted root. Showing "print
+        # your way back in" here would promise paper that never appears.
+        makes_recovery_document=False,
+    )
+
     _say()
-    _say("  The window is not built yet - only the flow behind it is.")
-    _say(f"  {len(steps)} screens are decided and tested:")
-    for s in steps:
-        _say(f"    - {s.title}")
-    _say()
-    _say("  Use the console flow, which is complete:")
-    _say("      sambuca-flasher write-pi")
-    return 1
+    _say("  Opening the Sambuca window.")
+    _say("  Close it at any time; nothing is written until you confirm.")
+
+    wizard = gui.Wizard(
+        steps,
+        actions=gui.build_actions(hostname=getattr(args, "hostname", "sambuca"),
+                                  engine=getattr(args, "engine", None)),
+    )
+    wizard.run()
+    return 0
 
 
 def _cmd_open_vault(args) -> int:
