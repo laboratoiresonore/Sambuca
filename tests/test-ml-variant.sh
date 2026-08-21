@@ -92,5 +92,34 @@ for suf in $(grep -ohE 'IMMICH_ML_IMAGE_SUFFIX="[^"]*"' engine/hardware-detect.s
 done
 
 echo
+echo "the variant knob is not offered where it does nothing"
+
+# A REGRESSION INTRODUCED BY THE FIX ABOVE, caught by asking what the change
+# broke downhill. While compose still concatenated, setting
+# IMMICH_ML_IMAGE_SUFFIX in .env worked. Once the reference is resolved once,
+# during .env rendering, a copy of the suffix inside .env is consulted by
+# nothing — a knob that turns and changes nothing, in the file an owner is most
+# likely to open. The real one lives in profile.local.env.
+if grep -qE '^IMMICH_ML_IMAGE_SUFFIX=' compose/.env.example; then
+    bad_ ".env.example offers IMMICH_ML_IMAGE_SUFFIX, where setting it does nothing"
+else
+    ok_ ".env.example does not offer a knob that changes nothing"
+fi
+
+if grep -q "grep -v '\^IMMICH_ML_IMAGE_SUFFIX='" engine/provision/60-stack.sh; then
+    ok_ "60-stack keeps the inert copy out of the generated .env"
+else
+    bad_ "60-stack copies IMMICH_ML_IMAGE_SUFFIX into .env, where nothing reads it"
+fi
+
+# And the documented place to set it must still be the one that works.
+if grep -q 'IMMICH_ML_IMAGE_SUFFIX' engine/provision/30-gpu-runtime.sh \
+   && grep -q 'profile.local.env' engine/provision/30-gpu-runtime.sh; then
+    ok_ "the documented location is profile.local.env, which 60-stack reads"
+else
+    bad_ "nothing tells an owner where the working knob lives"
+fi
+
+echo
 printf '  %d passed, %d failed\n\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

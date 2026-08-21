@@ -154,8 +154,16 @@ log "compose chain: ${chain}"
     printf '\n'
 
     printf '# --- hardware profile (from hardware-detect.sh) ---\n'
+    # IMMICH_ML_IMAGE_SUFFIX is EXCLUDED. It selects the ML variant, but that
+    # selection happens below, here, when .env is rendered — so a copy of it
+    # inside .env is a knob that turns and changes nothing, in the file an
+    # owner is most likely to open. It used to work there, when compose still
+    # concatenated; it stopped the moment the reference was resolved once.
+    # The real knob is IMMICH_ML_IMAGE_SUFFIX in profile.local.env, which is
+    # what 30-gpu-runtime.sh tells people to edit.
     grep -E '^(SAMBUCA_(TIER|GPU|VRAM|CPU|RAM|MODEL)|OLLAMA_|IMMICH_ML_|MACHINE_LEARNING_)' \
-        "${SB_ETC}/profile.env" 2>/dev/null || true
+        "${SB_ETC}/profile.env" 2>/dev/null \
+        | grep -v '^IMMICH_ML_IMAGE_SUFFIX=' || true
     printf '\n'
 
     printf '# --- secrets (generated on-device, never transmitted) ---\n'
