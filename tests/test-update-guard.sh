@@ -47,6 +47,12 @@ setup_repo() {
     # digest being ADDED, which is no longer the interesting direction.
     printf 'IMAGE=caddy:2.8-alpine@sha256:aaaa\n' > compose/.env.example
     printf 'curl https://download.docker.com/x\n' > engine/provision/20-docker.sh
+    # A HARDENED, SIZEABLE baseline. Rule 7 asks whether an update REMOVES a
+    # protection, and there is nothing to remove from an empty fixture — which
+    # is exactly why the guard shipped unable to see a hardening rollback.
+    printf 'services:\n  a:\n    image: x:1@sha256:aa\n    security_opt:\n      - no-new-privileges:true\n  b:\n    image: y:1@sha256:bb\n    security_opt:\n      - no-new-privileges:true\n' > compose/docker-compose.yml
+    python -c "open('docs/big.md','w').write('line\n'*7000)" 2>/dev/null \
+        || printf 'line\n%.0s' $(seq 7000) > docs/big.md
     printf 'notes\n' > docs/README.md
     git add -A >/dev/null
     git commit -qm base
@@ -161,6 +167,38 @@ setup_repo
 printf 'IMAGE=caddy:2.8-alpine\n' > compose/.env.example
 git commit -qam "unpin"
 run_case "unpins an image back to a mutable tag" HOLD "pin"
+
+# --- TAKING A DEFENCE AWAY costs an attacker less than shipping one ---------
+# Verified as APPLY before rule 7 existed: a commit titled "tidy up compose"
+# that stripped no-new-privileges from every service. Small, adds nothing,
+# touches no forbidden path — and leaves the appliance measurably weaker for
+# whatever the next ordinary update does.
+setup_repo
+printf 'services:\n  a:\n    image: x:1@sha256:aa\n  b:\n    image: y:1@sha256:bb\n' \
+    > compose/docker-compose.yml
+git commit -qam "tidy up compose"
+run_case "strips hardening from every service" HOLD "no-new-privileges"
+
+# --- MOVING a service is not removing its hardening -------------------------
+# THE REASON RULE 7 COUNTS ACROSS THE TREE rather than reading the diff. A diff
+# that relocates a service deletes those exact lines and adds them back
+# elsewhere; a diff-based check would call that a rollback and cry wolf on an
+# ordinary refactor. Only a NET loss is a loss.
+setup_repo
+printf 'services:\n  a:\n    image: x:1@sha256:aa\n    security_opt:\n      - no-new-privileges:true\n' \
+    > compose/docker-compose.yml
+printf 'services:\n  b:\n    image: y:1@sha256:bb\n    security_opt:\n      - no-new-privileges:true\n' \
+    > compose/extra.yml
+git add -A >/dev/null; git commit -qm "split b into its own bundle"
+run_case "moves a service between compose files" APPLY
+
+# --- an update that only DELETES is still abnormal --------------------------
+# Rule 1 measures how much an update ADDS, so gutting a file was "small".
+# Deleting 4,999 lines came back "nothing suspicious".
+setup_repo
+printf 'line\n' > docs/big.md
+git commit -qam "gut it"
+run_case "removes thousands of lines" HOLD "removes"
 
 # --- and a real attack is usually several of these at once ------------------
 setup_repo

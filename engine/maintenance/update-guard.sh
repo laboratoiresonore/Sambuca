@@ -37,6 +37,7 @@ sb_trap_err
 # ---------------------------------------------------------------------------
 : "${GUARD_MAX_FILES:=200}"          # files touched in one update
 : "${GUARD_MAX_ADDED_LINES:=6000}"   # lines added in one update
+: "${GUARD_MAX_REMOVED_LINES:=6000}" # lines removed in one update (see rule 7)
 : "${GUARD_MAX_GROWTH_PCT:=140}"     # new tree size vs old, percent
 : "${GUARD_ALLOW_BINARIES:=0}"       # added binary files
 
@@ -175,6 +176,46 @@ if git diff -U0 "$OLD" "$NEW" -- compose/.env.example 2>/dev/null \
      | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' | grep -q '@sha256:'; then
     hold "changes or removes a pinned image digest"
 fi
+
+# ---------------------------------------------------------------------------
+# 7. PROTECTIONS REMOVED — the same blind spot rule 6 had, generalised.
+#
+# Rule 1 measures how much an update ADDS. An update that mostly DELETES is
+# "small" by that measure, so the most economical attack on this appliance is
+# not to ship a payload at all — it is to quietly take a defence away and let
+# the next ordinary update do the work.
+#
+# Both were verified as APPLY before this existed: deleting 4,999 lines, and a
+# commit called "tidy up compose" that stripped `no-new-privileges` from every
+# service. Neither is large, neither adds anything, and neither touches a
+# forbidden path.
+#
+# COUNTED ACROSS THE TREE, not in the diff, so moving a service between compose
+# files is not mistaken for removing its hardening. Only a NET loss holds.
+# ---------------------------------------------------------------------------
+_count_at() {
+    # Lines matching a fixed string, in one revision, under one path.
+    #
+    # `|| true` is load-bearing: git grep exits 1 when it finds nothing, which
+    # is the ordinary case here, and sb_trap_err turns any non-zero into an
+    # abort. Without it this rule took the whole guard down — all fifteen
+    # scenarios failed at once, which is at least a loud way to be wrong.
+    { git grep -c -F -- "$2" "$1" -- "$3" 2>/dev/null || true; } \
+        | awk -F: '{s += $NF} END {print s + 0}'
+}
+
+for _prot in "no-new-privileges" "cap_drop" "read_only" "security_opt" "@sha256:"; do
+    _before="$(_count_at "$OLD" "$_prot" compose/)"
+    _after="$(_count_at "$NEW" "$_prot" compose/)"
+    if ((_after < _before)); then
+        hold "removes ${_prot} from $((_before - _after)) place(s) in compose/"
+    fi
+done
+
+# The mass-deletion tripwire, symmetric with the added-lines limit in rule 1.
+removed_lines="$(git diff --numstat "$OLD" "$NEW" | awk '$2 != "-" {s += $2} END {print s + 0}')"
+((removed_lines > GUARD_MAX_REMOVED_LINES)) && \
+    hold "removes ${removed_lines} lines (limit ${GUARD_MAX_REMOVED_LINES})"
 
 # ---------------------------------------------------------------------------
 # Verdict
