@@ -315,3 +315,27 @@ jobs:
             USB stick:
 
                 sambuca-flasher boot-guide "Dell OptiPlex 7060"
+
+      # ── RUN THE CHECK THE README TELLS PEOPLE TO RUN ────────────────────────
+      #
+      # SHA256SUMS.txt is computed from dist/ and then dist/ is uploaded, so the
+      # file agrees with itself by construction. That proves nothing about what
+      # the release actually SERVES: a partial upload, a re-run that replaces
+      # one asset, or a retried job leaves a release whose checksums do not
+      # match its binaries — and the only person who would find out is the
+      # cautious novice the README sent to check, who would reasonably conclude
+      # their download had been tampered with.
+      #
+      # So the release verifies itself, by downloading what it just published
+      # and running exactly the command the README suggests. "An exit code of 0
+      # means bytes moved, not that the right bytes did."
+      - name: verify what was actually published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          gh release download "${GITHUB_REF_NAME}" --dir "$tmp"              --pattern 'sambuca-flasher-*' --pattern 'SHA256SUMS.txt'
+          cd "$tmp"
+          echo "verifying $(ls sambuca-flasher-* | wc -l) published asset(s)"
+          sha256sum -c SHA256SUMS.txt
