@@ -180,7 +180,23 @@ def main(argv: list[str] | None = None) -> int:
         from .console import launched_by_double_click
 
         if launched_by_double_click():
+            # A WINDOW IS WHAT SOMEBODY WHO DOUBLE-CLICKS EXPECTED. They opened
+            # an application; a text menu in a black rectangle is not what they
+            # asked for, and the verdict on that was "that is NOT a GUI like I
+            # asked".
+            #
+            # The console menu stays as the fallback rather than being deleted:
+            # it is complete, it works where there is no toolkit or no display,
+            # and it is the only route on a headless box.
+            from . import gui
             from .console import pause_before_exit
+
+            can_window, _why = gui.available()
+            if can_window:
+                rc = _cmd_window(argparse.Namespace(hostname="sambuca",
+                                                    engine=None))
+                pause_before_exit()
+                return rc
 
             rc = _interactive()
             pause_before_exit()
@@ -2044,7 +2060,8 @@ _MENU = """
 ====================================================================
 
   You opened this by double-clicking, so here is a menu. Everything
-  below is also available as a command if you prefer typing.
+  below is also available as a command if you prefer typing, and as a
+  window (option 8) if this computer can open one.
 
   Nothing here touches a disk until it asks you first, in capitals.
 
@@ -2055,6 +2072,7 @@ _MENU = """
     5   Write a Raspberry Pi card
     6   Recover a lost password from my seed phrase
     7   My machine is running - set it up on this computer
+    8   Open the window instead
 
     q   Quit
 
@@ -2117,6 +2135,8 @@ def _interactive() -> int:
                 return main(["write-pi"])
             if choice == "7":
                 return main(["handover"])
+            if choice == "8":
+                return main(["window"])
             if choice == "6":
                 return main(["derive-recovery-key"])
         except (EOFError, KeyboardInterrupt):

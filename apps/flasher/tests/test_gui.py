@@ -343,3 +343,51 @@ class TestTheActions:
         ok, msg = gui.build_actions()["provision"]()
         assert ok is False
         assert "write-protected" in msg
+
+
+class TestTheDoubleClickPath:
+    """What somebody who double-clicks the icon actually gets.
+
+    This is the whole complaint that started the window: they opened an
+    application and got a text menu in a black rectangle.
+    """
+
+    def test_double_click_prefers_the_window(self):
+        """Read the entry point, because the behaviour only shows up when the
+        binary is double-clicked and no test can do that."""
+        import inspect
+
+        from sambuca_flasher import cli
+        src = inspect.getsource(cli.main)
+        i_dbl = src.index("launched_by_double_click")
+        i_win = src.index("_cmd_window")
+        i_menu = src.index("_interactive()")
+        assert i_dbl < i_win < i_menu, (
+            "the window must be tried BEFORE falling back to the console menu")
+
+    def test_the_console_menu_survives_as_the_fallback(self):
+        """Deleting it would strand anyone on a headless box, or with no
+        toolkit — which is most Linux installs until python3-tk is present."""
+        import inspect
+
+        from sambuca_flasher import cli
+        assert callable(cli._interactive)
+        assert "_interactive()" in inspect.getsource(cli.main)
+
+    def test_the_menu_offers_the_window_without_losing_its_reassurance(self):
+        """MY EDIT HERE WAS WRONG AND AN EXISTING TEST CAUGHT IT.
+
+        I rewrote the preamble to drop "You opened this by double-clicking",
+        reasoning that the menu is now only a fallback. It is not: _interactive
+        is reached ONLY from the double-click branch, so everyone who sees it
+        did double-click, and the line was accurate all along. It also sits
+        beside a deliberate reassurance — nothing touches a disk without asking
+        — that a nervous first-time reader needs before the options that do.
+
+        Changing text that was already correct, and taking a reassurance with
+        it, is the failure. The window is mentioned ALONGSIDE it now.
+        """
+        from sambuca_flasher import cli
+        assert "double-clicking" in cli._MENU
+        assert "touches a disk until it asks you first" in cli._MENU
+        assert "window" in cli._MENU.lower()
