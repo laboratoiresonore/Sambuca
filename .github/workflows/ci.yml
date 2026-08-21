@@ -36,8 +36,12 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - name: lint engine scripts
         run: |
+          # ONE DEFINITION of what a shell source is, shared with preflight.
+          # `find -name '*.sh'` missed engine/image/sambuca-image: a bash script
+          # with no .sh extension, symlinked into /usr/local/bin, and therefore
+          # linted by nothing at all.
           shellcheck --severity=warning --external-sources \
-            $(find engine -name '*.sh')
+            $(bash tools/shell-sources.sh)
       - name: syntax-check the busybox sh scripts
         # These run in the Debian installer (ash), not bash. dash is the closest
         # widely available approximation and catches bashisms.

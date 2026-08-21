@@ -57,7 +57,8 @@ run "pytest (both trees)" python -m pytest apps/flasher/tests tests -q -m "not s
 # --- the engine ------------------------------------------------------------
 if need shellcheck; then
     # shellcheck disable=SC2046  # word splitting is the point: a file list
-    run "shellcheck" shellcheck --severity=warning --external-sources $(find engine -name '*.sh')
+    # Same definition CI uses. `find -name '*.sh'` missed the image wrapper.
+    run "shellcheck" shellcheck --severity=warning --external-sources $(bash tools/shell-sources.sh)
 else
     skipped+=("shellcheck is not installed — pip install shellcheck-py")
 fi
@@ -77,7 +78,10 @@ else
               "         bash -n will NOT catch a bashism there")
 fi
 
-run "bash -n (engine)" bash -c 'bash -n engine/first-boot.sh && bash -n engine/hardware-detect.sh && for f in engine/provision/*.sh engine/lib/*.sh; do bash -n "$f" || exit 1; done'
+# EVERY shell source, from the one definition. The list this replaced named
+# first-boot, hardware-detect, provision/*.sh and lib/*.sh — so engine/maintenance
+# was never syntax-checked here at all, and neither was the image wrapper.
+run "bash -n (engine)" bash -c 'for f in $(bash tools/shell-sources.sh); do bash -n "$f" || exit 1; done'
 
 # --- the rest --------------------------------------------------------------
 run "steward catalogue lint" python tools/steward-lint.py
