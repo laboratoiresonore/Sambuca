@@ -101,6 +101,10 @@ services:
   # block in hardware-detect.sh. See that file for why inference wins ties.
   # ─────────────────────────────────────────────────────────────────────────
   immich-server:
+    # no-new-privileges: a process here can never gain privileges through a
+    # setuid binary. Cheap, and this image has no legitimate need for one.
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     image: ${IMMICH_SERVER_IMAGE:-ghcr.io/immich-app/immich-server:v1.119.1}
     container_name: sambuca-immich
@@ -135,6 +139,10 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   immich-machine-learning:
+    # no-new-privileges: a process here can never gain privileges through a
+    # setuid binary. Cheap, and this image has no legitimate need for one.
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     # IMMICH_ML_IMAGE_SUFFIX is "" (cpu), "-cuda", "-rocm" or "-openvino",
     # chosen by hardware-detect.sh. It is empty on anything below 20 GiB VRAM.
@@ -165,6 +173,10 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   immich-postgres:
+    # no-new-privileges: a process here can never gain privileges through a
+    # setuid binary. Cheap, and this image has no legitimate need for one.
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     image: ${IMMICH_DB_IMAGE:-tensorchord/pgvecto-rs:pg14-v0.2.0}
     container_name: sambuca-immich-db
@@ -193,6 +205,10 @@ services:
   # keep their redis-* names for compatibility. The service keeps its old
   # container name so an existing appliance's volume path does not move.
   immich-redis:
+    # no-new-privileges: a process here can never gain privileges through a
+    # setuid binary. Cheap, and this image has no legitimate need for one.
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     image: ${REDIS_IMAGE:-valkey/valkey:9.1.1-alpine}
     container_name: sambuca-immich-redis

@@ -115,3 +115,69 @@ def test_the_amd_image_overlay_still_relaxes_seccomp():
     assert "no-new-privileges:true" not in opts, (
         "image.yml already sets it; repeating it here is the duplicate that "
         "broke every AMD+image combination")
+
+
+# ---------------------------------------------------------------------------
+# Hardening coverage
+# ---------------------------------------------------------------------------
+
+# Exempt, with the reason. Not a silencer: each entry is a decision recorded
+# where somebody will find it.
+NO_NEW_PRIVS_EXEMPT = {
+    # AIO is a MASTERCONTAINER that drives the Docker socket and spawns its own
+    # children. Upstream is specific about not adding options to it, and this
+    # repository already treats its requirements as given rather than as
+    # choices (fixed container name, fixed volume name). Hardening it blind,
+    # untested, on the one service that manages other containers is not a trade
+    # worth making for a flag.
+    "nextcloud-aio",
+}
+
+
+def _effective_security_opt(gpu: str, bundles: tuple[str, ...], svc: str) -> list[str]:
+    """What the service ends up with after every overlay is merged.
+
+    PER-FILE IS THE WRONG VIEW, and checking that way produced three false
+    positives: gpu.*.image.yml does not repeat no-new-privileges because
+    image.yml already sets it and compose APPENDS. Repeating it there would
+    recreate the duplicate that broke every AMD-plus-image install.
+    """
+    files = [COMPOSE / "docker-compose.yml"]
+    files += [COMPOSE / f"{b}.yml" for b in bundles]
+    files += [COMPOSE / f"gpu.{gpu}.{b}.yml" for b in bundles
+              if (COMPOSE / f"gpu.{gpu}.{b}.yml").is_file()]
+    merged: list[str] = []
+    for f in files:
+        spec = (_load(f).get("services") or {}).get(svc)
+        if spec:
+            merged.extend((spec or {}).get("security_opt") or [])
+    return merged
+
+
+def test_every_service_forbids_privilege_escalation():
+    """A setuid binary inside a container should never be a route upward.
+
+    Cheap to set, and none of these images has a legitimate need for one.
+    """
+    naked = []
+    for gpu, sel, files in _chains():
+        for f in files:
+            for svc in (_load(f).get("services") or {}):
+                if svc in NO_NEW_PRIVS_EXEMPT:
+                    continue
+                opts = _effective_security_opt(gpu, sel, svc)
+                if not any("no-new-privileges" in str(o) for o in opts):
+                    naked.append(f"gpu={gpu} bundles={list(sel)}: {svc}")
+    assert not naked, (
+        "these services allow privilege escalation after every overlay is "
+        "merged:\n  " + "\n  ".join(sorted(set(naked))[:12]))
+
+
+def test_the_exemption_list_still_refers_to_real_services():
+    """An exemption for a service that no longer exists is dead weight that
+    would silently cover a future service of the same name."""
+    known = set()
+    for f in COMPOSE.glob("*.yml"):
+        known |= set(_load(f).get("services") or {})
+    stale = NO_NEW_PRIVS_EXEMPT - known
+    assert not stale, f"exempted services that do not exist: {sorted(stale)}"

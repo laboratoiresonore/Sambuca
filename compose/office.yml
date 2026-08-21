@@ -51,6 +51,10 @@ services:
       com.centurylinklabs.watchtower.enable: "true"
 
   blinko-postgres:
+    # no-new-privileges: a process here can never gain privileges through a
+    # setuid binary. Cheap, and this image has no legitimate need for one.
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: sambuca-blinko-db

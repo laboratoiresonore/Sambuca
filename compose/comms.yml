@@ -47,6 +47,10 @@ services:
       com.centurylinklabs.watchtower.enable: "true"
 
   synapse:
+    # no-new-privileges: a process here can never gain privileges through a
+    # setuid binary. Cheap, and this image has no legitimate need for one.
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     image: ${SYNAPSE_IMAGE:-ghcr.io/element-hq/synapse:v1.119.0}
     container_name: sambuca-synapse
@@ -83,6 +87,10 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   synapse-postgres:
+    # no-new-privileges: a process here can never gain privileges through a
+    # setuid binary. Cheap, and this image has no legitimate need for one.
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: sambuca-synapse-db

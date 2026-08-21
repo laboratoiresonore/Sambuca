@@ -69,6 +69,32 @@ project.
 | Tailscale apt repo | `provision/50-network.sh` | ✅ `signed-by=` | key fetched at runtime |
 | Debian security updates | `provision/10-system.sh` | ✅ Debian archive keys | security-only by policy |
 
+### Container hardening — where it stops, and why
+
+`no-new-privileges:true` is on **every service except Nextcloud AIO**, enforced
+by `tests/test_compose_merges.py` against the MERGED project rather than
+per-file. That distinction is load-bearing: `gpu.*.image.yml` does not repeat
+the flag because `image.yml` already sets it and compose APPENDS list values —
+repeating it would recreate the duplicate that broke every AMD-plus-image
+install.
+
+**AIO is exempt on purpose.** It is a mastercontainer driving the Docker socket
+and spawning its own children; upstream is specific about not adding options to
+it, and this repository already treats its requirements as given (fixed
+container name, fixed volume name). Hardening the one service that manages other
+containers, blind and untested, is not a trade worth making for a flag.
+
+**`cap_drop` and `read_only` are NOT set**, and that is a gap rather than a
+decision. Twenty-nine services lack them. Applying either blind would break
+things that legitimately write or need capabilities — Postgres, Ollama's model
+store, AIO — and it cannot be verified without running the stack on real
+hardware, which has not happened yet. Doing it properly means, per service:
+determine what it writes, mount that as a volume or tmpfs, then set `read_only`
+and drop capabilities, and TEST it. That is the remaining half of substrate
+hardening and it is honest to call it unstarted.
+
+---
+
 ### The Pocket ID one-time admin link was world-readable
 
 **Fixed 2026-08-20.** Pocket ID prints an initial-admin onboarding token in its
