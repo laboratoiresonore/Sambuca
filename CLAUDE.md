@@ -196,6 +196,17 @@ without it.
   APPLIANCE; `apps/flasher/tests` holds what tests the flasher. The beacon's 21
   tests were written, passing, and invisible to CI because the workflow named
   only one of them — the same shape as a module with no callers.
+- **Point the check at the file that GOVERNS, or it certifies the shadow.**
+  `compose/.env.example` is what installs — 60-stack.sh copies its `*_IMAGE=`
+  lines into the generated `.env`, and CI validates with `--env-file`. The
+  `${VAR:-…}` defaults inside the compose files apply only when no env file is
+  given. Two checks read the defaults instead, and the two sources had drifted
+  on **14 of 22 images** — Vaultwarden five minor versions apart. The worst part
+  was the inversion: `test_readme_versions.py` compared the README against the
+  shadow, "found" the README right and the shadow stale, and **the README was
+  corrected downwards to match the stale value.** A test aimed at the wrong
+  source does not merely miss bugs; it manufactures them, and signs them off.
+  Before trusting any consistency check, ask which file actually runs.
 - **A check written for one case finds one case.** `sambuca-backup init` was
   named in messages while the script took no arguments; the test written for it
   hard-coded `backup`. Two cycles later `sambuca-gitops apply --force` — printed
