@@ -85,10 +85,24 @@ run "bash -n (engine)" bash -c 'for f in $(bash tools/shell-sources.sh); do bash
 
 # --- the rest --------------------------------------------------------------
 run "steward catalogue lint" python tools/steward-lint.py
-run "update guard" bash tests/test-update-guard.sh
-run "atomic write" bash tests/test-atomic-write.sh
-run "verified-script gate" bash tests/test-verified-script.sh
-run "health surfacing" bash tests/test-health.sh
+# EVERY suite, by glob. This named four while six existed: test-ml-variant.sh
+# and test-zram.sh were added and neither ran, while the summary still said
+# "All reproducible checks passed". That is the precise false assurance the
+# header of this file warns about — it names the three checks it CANNOT run so
+# that a pass means something, and then quietly skipped two it could.
+#
+# CI already globs tests/test-*.sh. This is the file whose whole purpose is to
+# be CI without a runner, and it was silently less.
+shopt -s nullglob
+_suites=(tests/test-*.sh)
+if ((${#_suites[@]} == 0)); then
+    printf '  %-34sFAILED\n' "shell suites"
+    printf '      | no tests/test-*.sh found — the glob is wrong\n'
+    fail=1
+fi
+for _s in "${_suites[@]}"; do
+    run "$(basename "$_s" .sh)" bash "$_s"
+done
 run "compose yaml parses" python -c "import yaml,glob; [yaml.safe_load(open(f,encoding='utf-8')) for f in glob.glob('compose/*.yml')]"
 run "hardware profiler runs" bash engine/hardware-detect.sh --print --force-tier 1 --no-lock --quiet
 
