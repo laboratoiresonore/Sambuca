@@ -1115,12 +1115,33 @@ def _cmd_window(args) -> int:
     _say("  Opening the Sambuca window.")
     _say("  Close it at any time; nothing is written until you confirm.")
 
-    wizard = gui.Wizard(
-        steps,
-        actions=gui.build_actions(hostname=getattr(args, "hostname", "sambuca"),
-                                  engine=getattr(args, "engine", None)),
-    )
-    wizard.run()
+    # A YES FROM available() IS NOT A PROMISE THAT THIS OPENS.
+    #
+    # The probe creates a Tk root and destroys it. On a Tcl tree missing
+    # ttk/defaults.tcl — which is what windows-latest ships — the FIRST root
+    # succeeds and the next raises, so the probe consumes the only one that
+    # works and the real window fails immediately after being promised.
+    #
+    # An owner who typed `window` must not meet a traceback. They get the same
+    # explanation the unavailable path gives, and the console flow that works.
+    try:
+        wizard = gui.Wizard(
+            steps,
+            actions=gui.build_actions(hostname=getattr(args, "hostname", "sambuca"),
+                                      engine=getattr(args, "engine", None)),
+        )
+        wizard.run()
+    except Exception as exc:                       # noqa: BLE001
+        _say()
+        _say("  The window could not be opened after all.")
+        _say(f"    {exc.__class__.__name__}: {exc}")
+        _say()
+        _say("  This usually means a broken or partial Tcl/Tk installation.")
+        _say("  On Debian or Ubuntu:  sudo apt install --reinstall python3-tk")
+        _say()
+        _say("  Nothing was written. Everything works without the window:")
+        _say("      sambuca-flasher write-pi")
+        return 1
     return 0
 
 

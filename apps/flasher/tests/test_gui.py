@@ -195,8 +195,22 @@ class TestTheWizard:
         if not ok:
             pytest.skip(f"no toolkit here: {why}")
         import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
+
+        # A YES FROM available() IS NOT A PROMISE THAT THE NEXT ROOT OPENS.
+        # windows-latest ships a Tcl tree missing ttk/defaults.tcl, where the
+        # FIRST Tk root succeeds and later ones raise. available() creates a
+        # root and destroys it, so the probe consumed the only one that works
+        # and this fixture got the failure — as a raw TclError at setup, which
+        # reads like a broken test rather than a broken toolkit.
+        #
+        # Caching available() made the probe self-consistent; it cannot help
+        # code that opens a real window afterwards. On such a box Tk is simply
+        # unusable, so skipping is the truthful outcome.
+        try:
+            root = tk.Tk()
+            root.withdraw()
+        except tk.TclError as exc:
+            pytest.skip(f"toolkit present but a window will not open: {exc}")
         w = gui.Wizard(gui.plan(has_tailscale=True, has_imager=True), root=root)
         try:
             yield w
@@ -476,6 +490,42 @@ class TestTheAvailabilityCheck:
             assert rc == 1
             assert "window available: no" in out
             assert "reason:" in out, "a refusal must say why"
+
+    def test_a_window_that_fails_after_being_promised_does_not_traceback(
+        self, monkeypatch, capsys
+    ):
+        """The gap between "yes, a window can open" and one actually opening.
+
+        available() creates a Tk root and destroys it. Where the FIRST root
+        works and the next raises — the Tcl tree windows-latest ships, missing
+        ttk/defaults.tcl — the probe consumes the only one that works and the
+        real window dies immediately after being promised.
+
+        An owner who typed `window` must get an explanation and the flow that
+        still works, not a stack trace.
+        """
+        import tkinter
+
+        from sambuca_flasher import cli, imager, tailnet
+
+        monkeypatch.setattr(gui, "available", lambda: (True, ""))
+        monkeypatch.setattr(imager, "find_imager", lambda: None)
+        monkeypatch.setattr(
+            tailnet, "status", lambda: type("S", (), {"installed": False})()
+        )
+
+        def explodes(*a, **k):
+            raise tkinter.TclError("can't find a usable tk.tcl")
+
+        monkeypatch.setattr(gui, "Wizard", explodes)
+
+        rc = cli.main(["window"])           # must not raise
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "could not be opened" in out
+        assert "TclError" in out, "say what actually went wrong"
+        assert "write-pi" in out, "name the flow that still works"
+        assert "Nothing was written" in out
 
     def test_two_probes_in_one_process_agree(self):
         """The inconsistency that produced the CI failure, stated directly."""
