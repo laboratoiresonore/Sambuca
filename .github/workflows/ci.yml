@@ -132,8 +132,37 @@ jobs:
         run: |
           cd compose
           fail=0
+
+          # THE BUNDLE LIST IS DERIVED, NOT TYPED. It used to be twelve subsets
+          # written by hand, which was complete for the five bundles that
+          # existed — and a sixth (the mail stack is on the roadmap) would have
+          # been validated by nothing while this job still went green. Every
+          # other hand-written file list in this repository has already failed
+          # that way at least once.
+          mapfile -t BUNDLES < <(ls -1 *.yml             | sed 's/\.yml$//'             | grep -vE '^(docker-compose|gpu\.)' | sort)
+          if ((${#BUNDLES[@]} == 0)); then
+            echo "::error::no bundle files found — the derivation is wrong"
+            exit 1
+          fi
+          echo "bundles: ${BUNDLES[*]}"
+
+          # Empty, each alone, every PAIR, and all of them. Pairs are not
+          # padding: the regression this job exists for was a GPU overlay
+          # naming a service that a DIFFERENT bundle defines, so it only appears
+          # when two are combined.
+          SUBSETS=("")
+          for b in "${BUNDLES[@]}"; do SUBSETS+=("$b"); done
+          for i in "${!BUNDLES[@]}"; do
+            for j in "${!BUNDLES[@]}"; do
+              ((j > i)) && SUBSETS+=("${BUNDLES[$i]},${BUNDLES[$j]}")
+            done
+          done
+          all="$(IFS=,; echo "${BUNDLES[*]}")"
+          SUBSETS+=("$all")
+          echo "checking ${#SUBSETS[@]} subset(s) against 3 GPU profiles"
+
           for gpu in cpu nvidia amd; do
-            for bundles in "" "ai" "cloud" "office" "comms" "image"                            "ai,cloud" "cloud,office" "ai,image" "image,cloud"                            "ai,cloud,office,comms" "ai,cloud,office,comms,image"; do
+            for bundles in "${SUBSETS[@]}"; do
               chain="docker-compose.yml"
               IFS=',' read -ra sel <<< "$bundles"
               for b in "${sel[@]}"; do
