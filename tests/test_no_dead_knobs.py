@@ -34,13 +34,17 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # Known dead, with a reason and a home. NOT a way to silence the check — each
 # entry is a debt that is written down somewhere a reader will find it.
-KNOWN_UNREAD = {
-    # Reserved for the orchestrator that would substitute them into the
-    # workflow graph. That orchestrator is not built; the README status table
-    # and compose/.env.example both say so in as many words.
-    "SAMBUCA_IMAGE_WORKFLOW",
-    "SAMBUCA_IMAGE_STEPS",
-}
+KNOWN_UNREAD: set[str] = set()
+_WHY_EMPTY = (
+    # EMPTY, and that is the point. SAMBUCA_IMAGE_WORKFLOW and
+    # SAMBUCA_IMAGE_STEPS lived here for as long as the orchestrator that would
+    # read them did not exist. It exists now — engine/image/sambuca-image.py —
+    # and both are its defaults, so the debt is paid rather than re-excused.
+    #
+    # This check is what noticed: making the knobs live failed the staleness
+    # test until the entry came out, which is the whole reason an allowlist is
+    # audited rather than merely consulted.
+)
 
 SOURCE_GLOBS = (
     "engine/**/*.sh", "engine/*.sh", "engine/**/*.py",
@@ -53,7 +57,7 @@ def _reads(text: str) -> set[str]:
     out = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)[}:]", text))
     out |= set(re.findall(r"\$([A-Z][A-Z0-9_]{3,})\b", text))
     out |= set(re.findall(
-        r"environ(?:\.get)?\(?\[?[\"']([A-Z][A-Z0-9_]*)[\"']", text))
+        r"environ(?:\.get)?\(?\s*\[?\s*[\"']([A-Z][A-Z0-9_]*)[\"']", text))
     return out
 
 

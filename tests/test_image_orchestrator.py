@@ -70,6 +70,32 @@ def test_the_orchestrator_is_mounted_where_the_wrapper_runs_it() -> None:
         "the wrapper runs a path the compose file does not provide")
 
 
+def test_the_appliances_own_settings_are_honoured(monkeypatch) -> None:
+    """SAMBUCA_IMAGE_STEPS and SAMBUCA_IMAGE_WORKFLOW were DEAD KNOBS.
+
+    compose passes both into this container, and until the orchestrator existed
+    nothing read them — .env.example said so in as many words, because a knob
+    that turns and changes nothing is worse than no knob. Raising STEPS to 8 and
+    getting exactly nothing is the failure CLAUDE.md forbids by name.
+    """
+    monkeypatch.setenv("SAMBUCA_IMAGE_STEPS", "8")
+    reloaded = _load()
+    assert reloaded._default_steps() == 8
+
+    monkeypatch.setenv("SAMBUCA_IMAGE_WORKFLOW", "something-else.json")
+    reloaded = _load()
+    assert reloaded.DEFAULT_WORKFLOW.name == "something-else.json"
+    assert reloaded.DEFAULT_WORKFLOW.parent == reloaded.WORKFLOW_DIR
+
+
+def test_a_nonsense_steps_setting_does_not_stop_a_picture(monkeypatch) -> None:
+    """A malformed setting must degrade, not brick the one command. An
+    out-of-range NUMBER is reported properly by build_graph; unparseable text is
+    not a number at all and falls back to the model's own default."""
+    monkeypatch.setenv("SAMBUCA_IMAGE_STEPS", "lots")
+    assert _load()._default_steps() == 4
+
+
 # --------------------------------------------------------------- the stub
 
 

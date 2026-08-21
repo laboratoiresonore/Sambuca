@@ -121,9 +121,10 @@ Three things. The third one is the one nobody else offers, and it is the reason 
 > **All three are described here as though they work, and they do not yet.**
 > The substrate is real — the profiler, the model catalogues, the ComfyUI
 > service, the FLUX workflow, the verb catalogue and its linter are built and
-> tested. What is missing is the part that connects them to you: Odysseus is
-> unpublished, the Steward runtime is not built, and no picture has yet come
-> out of the workflow.
+> tested, and the orchestrator that posts a picture request now exists. What is
+> missing is the part that connects them to you: Odysseus is unpublished, the
+> Steward runtime is not built, and no picture has yet come out of a real
+> ComfyUI — every piece is connected, none has met the actual service.
 >
 > [**Where the AI plane actually stands**](#where-the-ai-plane-actually-stands)
 > sets out each piece and its state. That table is the honest one, and it is
@@ -715,7 +716,8 @@ The section near the top describes this as though it were finished. It is not:
 | Per-tier model catalogues, image models held as data | **Built.** Profiler runs; all four tiers verified. |
 | Memory floor, VRAM floor, disk guard, drop order | **Built and exercised.** The VRAM floor was found by running the profiler on a real 8 GB card. |
 | ComfyUI service, GPU overlays, gated route | **Written; renders in CI.** Never started on real hardware. |
-| The FLUX workflow graph | **Written against documented node interfaces. No picture has come out of it yet.** |
+| The FLUX workflow graph | **Written against documented node interfaces.** |
+| The orchestrator — loads the graph, fills it in, posts it, waits | **Built and installed as `sambuca-image`.** 23 tests against a stub speaking ComfyUI's protocol. **No picture has come out of a real ComfyUI yet.** |
 | Checkpoint fetch — resumable, digest-pinned, atomic | **Built.** Digest verified against the live upstream. Not yet run end to end. |
 | GPU handoff decision | **Built.** The unload/reload protocol it describes is **not implemented**. |
 | The verb catalogue and its linter | **Built, in CI, mutation-tested** against five injected regressions. |

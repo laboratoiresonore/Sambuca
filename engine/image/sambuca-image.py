@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import random
 import sys
@@ -53,9 +54,27 @@ DEFAULT_PORT = 8188
 # purpose, so the orchestrator goes to it rather than the other way round), and
 # compose mounts the workflow directory there read-only. The host path
 # /opt/sambuca/compose/config/comfyui/workflows does not exist in here.
-DEFAULT_WORKFLOW = pathlib.Path(
-    "/root/ComfyUI/user/default/workflows/flux-schnell.json"
-)
+WORKFLOW_DIR = pathlib.Path("/root/ComfyUI/user/default/workflows")
+
+# THE APPLIANCE'S OWN SETTINGS, HONOURED. compose passes SAMBUCA_IMAGE_WORKFLOW
+# and SAMBUCA_IMAGE_STEPS into this container, and until this program existed
+# nothing read them — .env.example said so in as many words, because a knob that
+# turns and changes nothing is worse than no knob. They are defaults here, and a
+# flag still overrides them.
+DEFAULT_WORKFLOW = WORKFLOW_DIR / os.environ.get(
+    "SAMBUCA_IMAGE_WORKFLOW", "flux-schnell.json")
+
+
+def _default_steps() -> int:
+    """Whatever the machine was configured for, or four.
+
+    A bad value must not stop somebody getting a picture; build_graph reports
+    an out-of-range number properly, and this is only the default.
+    """
+    try:
+        return int(os.environ.get("SAMBUCA_IMAGE_STEPS", "4"))
+    except ValueError:
+        return 4
 
 # Bounds, not suggestions. Each one is a real limit of the shipped model or of
 # the machine it runs on, and every rejection says which.
@@ -216,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("prompt", help="what the picture should be of")
     ap.add_argument("--width", type=int, default=1024)
     ap.add_argument("--height", type=int, default=1024)
-    ap.add_argument("--steps", type=int, default=4)
+    ap.add_argument("--steps", type=int, default=_default_steps())
     ap.add_argument("--seed", type=int, default=None,
                     help="reuse a seed to get the same picture again")
     ap.add_argument("--host", default=DEFAULT_HOST)
@@ -228,6 +247,11 @@ def main(argv: list[str] | None = None) -> int:
     seed = args.seed if args.seed is not None else random.randrange(2**32)  # noqa: S311
 
     try:
+        # A bare name is resolved inside the mounted workflow directory, so
+        # `--workflow other.json` works without anyone knowing the container's
+        # layout. An absolute path is still honoured.
+        if not args.workflow.is_absolute() and not args.workflow.is_file():
+            args.workflow = WORKFLOW_DIR / args.workflow
         if not args.workflow.is_file():
             raise ImageError(f"no workflow at {args.workflow}")
         workflow = json.loads(args.workflow.read_text(encoding="utf-8"))
