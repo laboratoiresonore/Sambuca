@@ -162,6 +162,30 @@ def test_exceptions_still_exist() -> None:
         assert var in env, f"{var} is excepted but {ENV_FILE.name} does not define it"
 
 
+def test_immich_ml_never_selects_a_variant_upstream_does_not_publish() -> None:
+    """hardware-detect chose `-rocm` on AMD, and that image does not exist.
+
+    ghcr.io/immich-app/immich-machine-learning 404s for BOTH v1.128.0-rocm and
+    v1.119.1-rocm — verified against the live registry. Only `main-rocm` is
+    published, and `main` is Immich's development branch. So every AMD appliance
+    asked for an image that was not there: the container never started, and
+    photo search and face recognition did not work.
+
+    It was invisible to every existing check because verify-images.py resolves
+    IMMICH_ML_IMAGE, which is fine on its own. Nothing verified base+suffix,
+    which is what compose actually pulls. This asserts the invariant directly:
+    every suffix the engine can assign must name a variant that exists.
+    """
+    src = (REPO / "engine" / "hardware-detect.sh").read_text(encoding="utf-8")
+    assigned = set(re.findall(r'IMMICH_ML_IMAGE_SUFFIX="([^"]*)"', src))
+    publishes = {"", "-cuda", "-openvino"}
+    bad = sorted(assigned - publishes)
+    assert not bad, (
+        f"hardware-detect.sh can select {bad}, which upstream does not publish "
+        "on a release tag — the container would fail to pull"
+    )
+
+
 def test_pinned_tags_look_like_versions() -> None:
     env = _env()
     suspicious = []

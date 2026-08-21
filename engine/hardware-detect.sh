@@ -547,12 +547,34 @@ arbitrate() {
     # --- background ML (Immich) --------------------------------------------
     if ((VRAM_UNKNOWN == 0)) && ((VRAM_TOTAL_MB >= IMMICH_GPU_MIN_VRAM_MB)) \
        && [[ $GPU_PROFILE != cpu ]]; then
-        IMMICH_ML_DEVICE="$GPU_PROFILE"
         case "$GPU_PROFILE" in
-            nvidia) IMMICH_ML_IMAGE_SUFFIX="-cuda" ;;
-            amd)    IMMICH_ML_IMAGE_SUFFIX="-rocm" ;;
+            nvidia)
+                IMMICH_ML_DEVICE="$GPU_PROFILE"
+                IMMICH_ML_IMAGE_SUFFIX="-cuda"
+                log "VRAM arbitration: ${VRAM_TOTAL_MB} MiB is enough to share — Immich ML on ${GPU_PROFILE}"
+                ;;
+            amd)
+                # UPSTREAM DOES NOT SHIP A ROCm BUILD ON A RELEASE TAG. This
+                # selected `-rocm`, and ghcr.io/immich-app/immich-machine-learning
+                # 404s for BOTH v1.128.0-rocm and v1.119.1-rocm — only `main-rocm`
+                # exists. So every AMD appliance asked for an image that is not
+                # there, the container never started, and photo search and face
+                # recognition simply did not work.
+                #
+                # It hid because verify-images.py checks IMMICH_ML_IMAGE, which
+                # resolves; nothing ever checked base+suffix, which is what
+                # actually gets pulled.
+                #
+                # CPU is the honest answer. `main` is Immich's development
+                # branch: chasing a moving dev tag on a box holding somebody's
+                # photo library trades a slow feature for an unpredictable one.
+                IMMICH_ML_DEVICE="cpu"; IMMICH_ML_IMAGE_SUFFIX=""
+                log "VRAM arbitration: ${VRAM_TOTAL_MB} MiB would be enough to share, but"
+                log "  Immich publishes no ROCm build on a release tag — only on \`main\`."
+                log "  Immich ML runs on CPU here. Indexing is slower; nothing is missing."
+                log "  Ollama still uses the GPU: inference is unaffected."
+                ;;
         esac
-        log "VRAM arbitration: ${VRAM_TOTAL_MB} MiB is enough to share — Immich ML on ${GPU_PROFILE}"
     else
         IMMICH_ML_DEVICE="cpu"; IMMICH_ML_IMAGE_SUFFIX=""
         if [[ $GPU_PROFILE != cpu ]]; then

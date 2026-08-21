@@ -152,8 +152,14 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
-    # IMMICH_ML_IMAGE_SUFFIX is "" (cpu), "-cuda", "-rocm" or "-openvino",
-    # chosen by hardware-detect.sh. It is empty on anything below 20 GiB VRAM.
+    # IMMICH_ML_IMAGE_SUFFIX is "" (cpu), "-cuda" or "-openvino", chosen by
+    # hardware-detect.sh. It is empty on anything below 20 GiB VRAM.
+    #
+    # NOT "-rocm": upstream publishes no ROCm build on a release tag (both
+    # v1.128.0-rocm and v1.119.1-rocm 404 against ghcr.io; only `main-rocm`
+    # exists). AMD boxes therefore run Immich ML on CPU. Selecting `-rocm` here
+    # asked for an image that was not there, so the container never started —
+    # see the AMD branch in hardware-detect.sh.
     image: ${IMMICH_ML_IMAGE:-ghcr.io/immich-app/immich-machine-learning:v1.128.0}${IMMICH_ML_IMAGE_SUFFIX:-}
     container_name: sambuca-immich-ml
     networks: [data]
