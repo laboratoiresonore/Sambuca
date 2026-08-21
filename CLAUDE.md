@@ -207,6 +207,17 @@ without it.
   corrected downwards to match the stale value.** A test aimed at the wrong
   source does not merely miss bugs; it manufactures them, and signs them off.
   Before trusting any consistency check, ask which file actually runs.
+- **A failure that MOVES is one fact, not flakiness — and check every job, not
+  the run.** A Windows flasher job was red for hours while runs were reported
+  green, because only the overall conclusion was being read. Then it took three
+  attempts, because each fix repaired the site that happened to fail and the
+  failure swapped Python versions. The alternation was the whole signal: the
+  runners ship a Tcl tree where the FIRST Tk root succeeds and later ones raise,
+  `available()` spends one on its probe, and whichever test asked second lost —
+  so which test failed depended on collection order. **When a fix relocates a
+  failure instead of removing it, the property is wrong, not the site.** The
+  cure was structural: one helper opens roots, and a test asserts exactly one
+  line in the file does.
 - **A check written for one case finds one case.** `sambuca-backup init` was
   named in messages while the script took no arguments; the test written for it
   hard-coded `backup`. Two cycles later `sambuca-gitops apply --force` — printed
