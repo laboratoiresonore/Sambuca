@@ -1,15 +1,25 @@
-"""Every container image must name a version somebody chose.
+"""One version per image, in three files that must agree.
 
-`:latest` on an appliance is not a version, it is a promise to run whatever
-upstream pushed while nobody was looking — on a machine holding the owner's
-passwords, photos and client documents. CLAUDE.md says dated tags, not
-`:latest`, and this is the check that makes that true rather than aspirational.
+`compose/.env.example` GOVERNS. Its `*_IMAGE=` lines are copied verbatim into
+the generated `/opt/sambuca/compose/.env` by engine/provision/60-stack.sh, and
+CI validates the compose chain with `--env-file .env.example`. The `${VAR:-…}`
+defaults inside the compose files apply only when no env file is supplied.
 
-WHAT THIS DOES NOT YET CHECK: digests. None of the images are pinned by
-`@sha256:` — a tag is mutable, so `:v1.119.1` can be repointed at different
-bytes by anyone who controls the repository. Tag discipline is the floor, not
-the ceiling, and the gap is recorded in the task list rather than papered over
-here.
+THAT IS WHY THIS TEST EXISTS. The first version of it read the compose defaults
+— the file that does NOT govern — and passed. The two sources had drifted on 14
+of 22 images: Vaultwarden, a password manager, was five minor versions apart
+(1.32.7 vs 1.37.1), and Pocket ID, the appliance's identity provider, read
+v0.53 in one file and v2.5.0 in the other. Nothing was watching, because the
+only check pointed at the shadow.
+
+docs/IMAGES.md is the third copy: it carries the manifest digest for every
+reference, resolved from the live registries by tools/verify-images.py.
+
+WHAT THIS STILL DOES NOT CHECK: the digests are RECORDED but not APPLIED. Every
+reference ships as a bare tag, and a tag is mutable by whoever controls the
+repository — so the digest column is currently evidence, not enforcement.
+Applying them is task #14, and stating the gap here is the alternative to
+letting a passing test imply it is closed.
 """
 
 from __future__ import annotations
@@ -18,87 +28,145 @@ import pathlib
 import re
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
-COMPOSE = REPO / "compose"
+ENV_FILE = REPO / "compose" / ".env.example"
+IMAGES_DOC = REPO / "docs" / "IMAGES.md"
 
-# `image: ${SOME_VAR:-the/default:tag}`
-IMAGE_RE = re.compile(r"image:\s*\$\{(?P<var>\w+):-(?P<default>[^}]+)\}")
+ENV_RE = re.compile(r"^(?P<var>[A-Z0-9_]+_IMAGE)=(?P<ref>.+)$")
+YML_RE = re.compile(r"image:\s*\$\{(?P<var>\w+):-(?P<ref>[^}]+)\}")
+DOC_RE = re.compile(
+    r"\|\s*`(?P<var>[A-Z0-9_]+_IMAGE)`\s*\|\s*`(?P<ref>[^`]+)`\s*\|\s*`?(?P<digest>[^|`]*)`?\s*\|"
+)
 
-# Images allowed to float, each with the reason. A bare list would become a
-# dumping ground; requiring a sentence means the next person has to justify an
-# entry rather than append to it. Adding one edits this file, which shows up in
-# review — that is the point.
+MOVING = {"latest", "main", "master", "edge", "stable"}
+
+# Images allowed to float, each with the reason. A bare list becomes a dumping
+# ground; requiring a sentence means the next person justifies an entry rather
+# than appending to it.
 ALLOWED_FLOATING = {
     "NEXTCLOUD_AIO_IMAGE": (
         "The AIO mastercontainer is an updater: it chooses and upgrades the "
         "versions of the containers it manages. Pinning it freezes that "
         "machinery, so the inner Nextcloud stops receiving updates while "
-        "looking maintained. Dated tags exist upstream but are snapshots of "
-        "the updater, not of the deployment."
+        "still looking maintained."
     ),
 }
 
-# Images that are broken for a reason already tracked, so the check reports
-# them as KNOWN rather than either failing CI or silently passing.
+# Broken for a reason already tracked, so it reports as KNOWN rather than
+# either failing CI or passing silently.
 KNOWN_UNPUBLISHED = {
-    "ODYSSEUS_IMAGE": "not published yet — task #14 (releasable v0.1.0)",
+    "ODYSSEUS_IMAGE": "first-party, not published to GHCR yet — task #14",
 }
 
-
-def _images() -> dict[str, str]:
-    found: dict[str, str] = {}
-    for path in sorted(COMPOSE.glob("*.yml")):
-        for m in IMAGE_RE.finditer(path.read_text(encoding="utf-8")):
-            found[m.group("var")] = m.group("default").strip()
-    return found
+EXCEPTED = {**ALLOWED_FLOATING, **KNOWN_UNPUBLISHED}
 
 
-def test_compose_files_were_actually_read() -> None:
-    """A regex that matches nothing passes every test below it."""
-    images = _images()
-    assert len(images) >= 20, f"only found {len(images)} images — the parser is wrong"
+def _env() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        m = ENV_RE.match(line.strip())
+        if m:
+            out[m.group("var")] = m.group("ref").strip()
+    return out
 
 
-def test_no_image_floats_on_latest() -> None:
-    images = _images()
-    floating = {
-        var: ref
-        for var, ref in images.items()
-        if ref.rsplit(":", 1)[-1] in {"latest", "main", "master", "edge", "stable"}
-    }
+def _compose() -> dict[str, tuple[str, str]]:
+    """var -> (reference, file it was found in)."""
+    out: dict[str, tuple[str, str]] = {}
+    for path in sorted((REPO / "compose").glob("*.yml")):
+        for m in YML_RE.finditer(path.read_text(encoding="utf-8")):
+            out[m.group("var")] = (m.group("ref").strip(), path.name)
+    return out
+
+
+def _doc() -> dict[str, tuple[str, str]]:
+    """var -> (reference, digest)."""
+    out: dict[str, tuple[str, str]] = {}
+    for m in DOC_RE.finditer(IMAGES_DOC.read_text(encoding="utf-8")):
+        out[m.group("var")] = (m.group("ref").strip(), m.group("digest").strip())
+    return out
+
+
+def test_all_three_sources_were_actually_read() -> None:
+    """A regex matching nothing passes every assertion below it."""
+    assert len(_env()) >= 20, f"parsed only {len(_env())} refs from {ENV_FILE.name}"
+    assert len(_compose()) >= 20, f"parsed only {len(_compose())} compose defaults"
+    assert len(_doc()) >= 20, f"parsed only {len(_doc())} rows from IMAGES.md"
+
+
+def test_compose_defaults_match_the_governing_file() -> None:
+    """The drift that hid for 14 images, including a password manager."""
+    env, comp = _env(), _compose()
+    drift = [
+        f"{var}: .env.example={env[var]} but {fname}={ref}"
+        for var, (ref, fname) in sorted(comp.items())
+        if var in env and env[var] != ref
+    ]
+    assert not drift, "compose defaults disagree with .env.example:\n  " + "\n  ".join(drift)
+
+
+def test_every_compose_image_is_declared() -> None:
+    """A compose default with no env entry is a version nobody is tracking."""
+    env, comp = _env(), _compose()
+    orphans = sorted(set(comp) - set(env))
+    assert not orphans, f"used in compose but absent from .env.example: {orphans}"
+
+
+def test_documented_versions_match_the_governing_file() -> None:
+    env, doc = _env(), _doc()
+    drift = [
+        f"{var}: .env.example={env[var]} but IMAGES.md={ref}"
+        for var, (ref, _digest) in sorted(doc.items())
+        if var in env and env[var] != ref
+    ]
+    assert not drift, "the digest table has drifted:\n  " + "\n  ".join(drift)
+
+
+def test_every_image_has_a_recorded_digest() -> None:
+    """The digest is not enforced yet, but losing it would be a step backwards.
+
+    Three ComfyUI images were missing from the table entirely, so nothing knew
+    what bytes they were supposed to be.
+    """
+    env, doc = _env(), _doc()
+    missing = [
+        var
+        for var in sorted(env)
+        if var not in EXCEPTED
+        and not doc.get(var, ("", ""))[1].startswith("sha256:")
+    ]
+    assert not missing, f"no manifest digest recorded for: {missing}"
+
+
+def test_no_image_floats_on_a_moving_tag() -> None:
+    env = _env()
     unexplained = {
         var: ref
-        for var, ref in floating.items()
-        if var not in ALLOWED_FLOATING and var not in KNOWN_UNPUBLISHED
+        for var, ref in env.items()
+        if ref.rsplit(":", 1)[-1] in MOVING and var not in EXCEPTED
     }
     assert not unexplained, (
-        "these images float on a moving tag with no recorded reason: "
+        "these float on a moving tag with no recorded reason: "
         + ", ".join(f"{v} ({r})" for v, r in sorted(unexplained.items()))
     )
 
 
 def test_every_exception_carries_a_reason() -> None:
-    """An allowlist entry with an empty reason is just a floating image."""
-    for var, reason in {**ALLOWED_FLOATING, **KNOWN_UNPUBLISHED}.items():
+    for var, reason in EXCEPTED.items():
         assert reason.strip(), f"{var} is excepted but no reason is recorded"
 
 
 def test_exceptions_still_exist() -> None:
-    """A stale exception hides the next real one.
-
-    If an image is renamed or dropped, its entry here would silently keep
-    excusing a variable nothing uses — and the list would drift into fiction.
-    """
-    images = _images()
-    for var in {**ALLOWED_FLOATING, **KNOWN_UNPUBLISHED}:
-        assert var in images, f"{var} is excepted but no compose file uses it"
+    """A stale exception excuses a variable nothing uses, and hides the next."""
+    env = _env()
+    for var in EXCEPTED:
+        assert var in env, f"{var} is excepted but {ENV_FILE.name} does not define it"
 
 
-def test_pinned_images_look_like_versions() -> None:
-    """A tag that is not obviously a version is worth a second look."""
-    images = _images()
+def test_pinned_tags_look_like_versions() -> None:
+    env = _env()
     suspicious = []
-    for var, ref in images.items():
-        if var in ALLOWED_FLOATING or var in KNOWN_UNPUBLISHED:
+    for var, ref in env.items():
+        if var in EXCEPTED:
             continue
         tag = ref.rsplit(":", 1)[-1] if ":" in ref else ""
         if not tag:

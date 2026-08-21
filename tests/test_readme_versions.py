@@ -60,12 +60,30 @@ EXEMPT = {
 
 
 def _compose_tags() -> dict[str, str]:
+    """Read compose/.env.example — the file that GOVERNS what installs.
+
+    This used to read the `${VAR:-default}` fallbacks inside the compose files,
+    and that was wrong in a way that inverted the whole test. 60-stack.sh copies
+    the `*_IMAGE=` lines out of .env.example into the generated .env, and CI
+    validates with `--env-file .env.example`; the inline defaults apply only
+    when no env file is supplied at all.
+
+    The two had drifted on 14 of 22 images. So this test was comparing the
+    README against a shadow — and on Pocket ID it "found" the README claiming
+    v2.5.0 against a shipped 0.53 and the README was corrected DOWNWARDS to
+    match. The README had been right. The truthful side was edited to agree
+    with the stale one, and the test then certified the result.
+
+    tests/test_image_pins.py holds .env.example and the compose defaults to the
+    same value, so the shadow can no longer drift away again.
+    """
     tags: dict[str, str] = {}
-    for f in sorted(COMPOSE.glob("*.yml")):
-        for m in re.finditer(r"image:\s*\$\{([A-Z0-9_]+):-([^}]+)\}",
-                             f.read_text(encoding="utf-8")):
-            ref = m.group(2)
-            tags.setdefault(m.group(1), ref.rsplit(":", 1)[-1] if ":" in ref else "")
+    env = COMPOSE / ".env.example"
+    for line in env.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^([A-Z0-9_]+_IMAGE)=(.+)$", line.strip())
+        if m:
+            ref = m.group(2).strip()
+            tags[m.group(1)] = ref.rsplit(":", 1)[-1] if ":" in ref else ""
     return tags
 
 

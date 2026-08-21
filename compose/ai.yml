@@ -11,7 +11,7 @@ services:
 
   ollama:
     restart: unless-stopped
-    image: ${OLLAMA_IMAGE:-ollama/ollama:0.5.7}
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.32.15}
     container_name: sambuca-ollama
     networks: [ai]
     volumes:

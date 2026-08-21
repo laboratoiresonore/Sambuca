@@ -7,7 +7,7 @@
 
 ## Verification status
 
-**Last verified 2026-08-20 against the live registries: 18 of 19 references
+**Last verified 2026-08-21 against the live registries: 21 of 22 references
 resolve.** The one exception is `ODYSSEUS_IMAGE`, which is first-party and not
 yet published — see below. Reproduce the check with:
 
@@ -145,3 +145,6 @@ already pinned.
 | `BENTOPDF_IMAGE` | `ghcr.io/alam00000/bentopdf-simple:v2.8.7` | `sha256:ba67d44f07ec0d2d636c945eef1c186f71bceda3d11b1e9809d7dbfbbaaacfa4` |
 | `ERGO_IMAGE` | `ghcr.io/ergochat/ergo:v2.19.1` | `sha256:ef885e44f7fa19101bbbc41baef11dc280dc8107465dccaf6f0860f41b48a682` |
 | `SYNAPSE_IMAGE` | `ghcr.io/element-hq/synapse:v1.122.0` | `sha256:925534da6deefc83d3b82bdb08acd7bedfd34ca29f8d47a27c386c0ece9a0515` |
+| `COMFYUI_IMAGE` | `yanwk/comfyui-boot:cu126-slim-20260817` | `sha256:6bebfb60239eb396aaa40d3e612a19620a4e6f79cf13d7d1174e62b994bae315` |
+| `COMFYUI_ROCM_IMAGE` | `yanwk/comfyui-boot:rocm-20260814` | `sha256:3ff8b3b0d1a5168c581a77ef79b537a53a6b21c29215d7a7880987d0bd0c031a` |
+| `COMFYUI_CPU_IMAGE` | `yanwk/comfyui-boot:cpu-20260817` | `sha256:5929225fd5f3370c9f24cf9a47f0632e9cc0e607cc078cbab701634f44a545fe` |

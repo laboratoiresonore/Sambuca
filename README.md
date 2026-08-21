@@ -418,25 +418,25 @@ Every component is free software. Versions are the exact pins in
 |---|---|---|---|
 | **Debian** | 12 (bookworm) | free (mixed, mostly GPL) | the base system |
 | **Docker CE** | upstream apt | Apache-2.0 | runs every service |
-| **Caddy** | 2.8 | Apache-2.0 | the single ingress, local HTTPS |
+| **Caddy** | 2.11.4 | Apache-2.0 | the single ingress, local HTTPS |
 | **Tailscale** | upstream apt | BSD-3-Clause | encrypted remote access |
 | **CasaOS** | latest installer | Apache-2.0 | the dashboard tiles |
 | **MergerFS** | Debian package | ISC | pools mismatched disks |
 | **SnapRAID** | Debian package | GPL-3.0 | parity across those disks |
 | **restic** | Debian package | BSD-2-Clause | encrypted backups |
-| **Ollama** | 0.5.7 | MIT | the inference engine |
+| **Ollama** | 0.32.15 | MIT | the inference engine |
 | **Odysseus** | *unpublished* | AGPL-3.0 | chat and agent frontend |
 | **Nextcloud AIO** | latest | AGPL-3.0 | files, calendar, contacts |
-| **Immich** | 1.119.1 | AGPL-3.0 | photos, face recognition, search |
-| **Vaultwarden** | 1.32.7 | AGPL-3.0 | passwords |
-| **Blinko** | 1.4.2 | GPL-3.0 | AI notes |
+| **Immich** | 1.128.0 | AGPL-3.0 | photos, face recognition, search |
+| **Vaultwarden** | 1.37.1 | AGPL-3.0 | passwords |
+| **Blinko** | 1.8.8 | GPL-3.0 | AI notes |
 | **BentoPDF** | 2.8.7 | AGPL-3.0 | in-browser PDF tools |
-| **Ergo** | 2.13.1 | MIT | IRC server |
-| **Synapse** | 1.119.0 | AGPL-3.0 | Matrix homeserver |
-| **Uptime Kuma** | 1.23.16 | MIT | health monitoring |
-| **Pocket ID** | 0.53 | BSD-2-Clause | passkey identity |
-| **oauth2-proxy** | 7.6.0 | MIT | the auth gate |
-| **PostgreSQL** | 16 | PostgreSQL Licence | databases |
+| **Ergo** | 2.19.1 | MIT | IRC server |
+| **Synapse** | 1.122.0 | AGPL-3.0 | Matrix homeserver |
+| **Uptime Kuma** | 1.23.17 | MIT | health monitoring |
+| **Pocket ID** | 2.5.0 | BSD-2-Clause | passkey identity |
+| **oauth2-proxy** | 7.14.2 | MIT | the auth gate |
+| **PostgreSQL** | 16.15 | PostgreSQL Licence | databases |
 | **Valkey** | 9.1.1 | BSD-3-Clause | cache — see below |
 | **pgvecto-rs** | pg14-v0.2.0 | Apache-2.0 | vector search for Immich |
 | **Watchtower** | 1.7.1 | Apache-2.0 | opt-in container updates |

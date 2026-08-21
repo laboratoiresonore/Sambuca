@@ -14,7 +14,7 @@ services:
 
   ergo:
     restart: unless-stopped
-    image: ${ERGO_IMAGE:-ghcr.io/ergochat/ergo:v2.13.1}
+    image: ${ERGO_IMAGE:-ghcr.io/ergochat/ergo:v2.19.1}
     container_name: sambuca-ergo
     networks: [edge]
     ports:
@@ -52,7 +52,7 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
-    image: ${SYNAPSE_IMAGE:-ghcr.io/element-hq/synapse:v1.119.0}
+    image: ${SYNAPSE_IMAGE:-ghcr.io/element-hq/synapse:v1.122.0}
     container_name: sambuca-synapse
     networks: [edge, data]
     depends_on:
@@ -92,7 +92,7 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
-    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    image: ${POSTGRES_IMAGE:-postgres:16.15-alpine}
     container_name: sambuca-synapse-db
     networks: [data]
     secrets:
