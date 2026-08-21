@@ -20,6 +20,7 @@ died demanding a seed-phrase library.
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 import pytest
@@ -28,6 +29,28 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from sambuca_flasher import gui  # noqa: E402
 
+
+def _root_or_skip():
+    """A withdrawn Tk root, or a skip that says which half failed.
+
+    ONE PLACE, because there were four and I guarded one. A yes from
+    available() is not a promise that the next root opens: windows-latest ships
+    a Tcl tree where the FIRST root succeeds and later ones raise, and
+    available() spends one creating and destroying its own. Whichever test
+    happened to ask second got a raw TclError, so the failure wandered between
+    Python versions and looked like flakiness rather than one fact about the
+    runner.
+    """
+    ok, why = gui.available()
+    if not ok:
+        pytest.skip(f"no toolkit here: {why}")
+    import tkinter as tk
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        return root
+    except tk.TclError as exc:
+        pytest.skip(f"toolkit present but a window will not open: {exc}")
 
 @pytest.fixture(autouse=True)
 def _fresh_availability():
@@ -43,6 +66,32 @@ def _fresh_availability():
     clear()
     yield
     clear()
+
+
+class TestTheTestsThemselves:
+    def test_only_the_helper_opens_a_root(self):
+        """A FIFTH SITE WOULD BRING THE BUG BACK.
+
+        There were four places creating a Tk root, each after an available()
+        check that can lie on a runner where the first root works and later
+        ones raise. I guarded one, and the failure moved to another Python
+        version rather than going away — twice. Structural now: one place
+        creates roots, so a new test cannot reintroduce it by copying an old
+        one.
+        """
+        src = pathlib.Path(__file__).read_text(encoding="utf-8")
+        sites = [
+            (i, line) for i, line in enumerate(src.splitlines(), 1)
+            # An ASSIGNMENT, not a mention. The first version matched its own
+            # detection line and reported two sites — the same "appears
+            # anywhere" fault that has produced a miscalibrated audit here
+            # every single time it has been written carelessly.
+            if re.search(r"=\s*(tk|tkinter)\.Tk\(\)", line)
+        ]
+        assert len(sites) == 1, (
+            "a Tk root is created outside _root_or_skip(): "
+            + "; ".join(f"line {i}: {ln.strip()}" for i, ln in sites)
+        )
 
 
 class TestImportingIsAlwaysSafe:
@@ -191,26 +240,7 @@ class TestTheWizard:
 
     @pytest.fixture
     def wiz(self):
-        ok, why = gui.available()
-        if not ok:
-            pytest.skip(f"no toolkit here: {why}")
-        import tkinter as tk
-
-        # A YES FROM available() IS NOT A PROMISE THAT THE NEXT ROOT OPENS.
-        # windows-latest ships a Tcl tree missing ttk/defaults.tcl, where the
-        # FIRST Tk root succeeds and later ones raise. available() creates a
-        # root and destroys it, so the probe consumed the only one that works
-        # and this fixture got the failure — as a raw TclError at setup, which
-        # reads like a broken test rather than a broken toolkit.
-        #
-        # Caching available() made the probe self-consistent; it cannot help
-        # code that opens a real window afterwards. On such a box Tk is simply
-        # unusable, so skipping is the truthful outcome.
-        try:
-            root = tk.Tk()
-            root.withdraw()
-        except tk.TclError as exc:
-            pytest.skip(f"toolkit present but a window will not open: {exc}")
+        root = _root_or_skip()
         w = gui.Wizard(gui.plan(has_tailscale=True, has_imager=True), root=root)
         try:
             yield w
@@ -250,12 +280,7 @@ class TestTheWizard:
         Imager fails and the wizard moves on regardless, the next screen's
         instructions assume work that never happened — and are quietly wrong at
         the moment somebody is trusting them most."""
-        ok, why = gui.available()
-        if not ok:
-            pytest.skip(why)
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
+        root = _root_or_skip()
         steps = gui.plan(has_tailscale=False, has_imager=True)
         w = gui.Wizard(steps, actions={
             "welcome": lambda: (False, "could not do the thing")}, root=root)
@@ -268,12 +293,7 @@ class TestTheWizard:
 
     def test_an_action_that_raises_is_shown_not_thrown(self):
         """A traceback in a window is something this audience cannot act on."""
-        ok, why = gui.available()
-        if not ok:
-            pytest.skip(why)
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
+        root = _root_or_skip()
         def boom():
             raise RuntimeError("the disk went away")
         w = gui.Wizard(gui.plan(has_tailscale=True, has_imager=True),
@@ -286,12 +306,7 @@ class TestTheWizard:
             w.close()
 
     def test_a_succeeding_action_advances(self):
-        ok, why = gui.available()
-        if not ok:
-            pytest.skip(why)
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
+        root = _root_or_skip()
         w = gui.Wizard(gui.plan(has_tailscale=True, has_imager=True),
                        actions={"welcome": lambda: (True, "done")}, root=root)
         try:
