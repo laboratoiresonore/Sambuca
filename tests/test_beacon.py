@@ -55,6 +55,31 @@ def _request(port: int, path: str, key: str | None = None,
             return e.code, {}
 
 
+def _stderr(proc, limit: int = 400) -> bytes:
+    """Whatever the beacon said, WITHOUT hanging if it is still running.
+
+    `proc.stderr.read()` blocks until EOF — which for a live process means
+    until it exits. Used as an assertion message it is evaluated only when the
+    assertion has already failed, so on a beacon that came up wrong but stayed
+    alive it does not explain the failure: it BECOMES the failure, as a hang.
+
+    That is exactly what happened. Every macOS run of this suite sat in these
+    tests until the job was cancelled — 17 runs in a row, reported as
+    "cancelled" rather than "broken", so the message that would have named the
+    real problem was the thing preventing anyone from seeing it.
+
+    Kill first, then read with a deadline.
+    """
+    if proc.poll() is None:
+        proc.kill()
+    try:
+        err = proc.communicate(timeout=5)[1] or b""
+    except subprocess.TimeoutExpired:          # pragma: no cover - belt and braces
+        proc.kill()
+        err = proc.communicate()[1] or b""
+    return err[:limit]
+
+
 def _start(tmp_path, *, key_contents: str | None = KEY, progress: dict | None = None):
     """Launch a real beacon. Returns (proc, port, progress_path)."""
     progress_path = tmp_path / "progress.json"
@@ -102,7 +127,7 @@ def beacon(tmp_path):
     })
     if not _wait_up(port, proc):
         proc.kill()
-        pytest.fail(f"beacon never came up: {proc.stderr.read()[:400]!r}")
+        pytest.fail(f"beacon never came up: {_stderr(proc)!r}")
     try:
         yield port, progress_path
     finally:
@@ -125,7 +150,7 @@ class TestItFailsClosed:
         proc, port, _ = _start(tmp_path, key_contents=None, progress={"schema": 1})
         try:
             assert proc.wait(timeout=10) != 0, "it started with no key"
-            assert b"refusing to start" in proc.stderr.read()
+            assert b"refusing to start" in _stderr(proc, limit=4000)
         finally:
             if proc.poll() is None:
                 proc.kill()
@@ -249,7 +274,7 @@ class TestBeforeAnythingHasHappened:
         """
         proc, port, _ = _start(tmp_path, progress=None)
         try:
-            assert _wait_up(port, proc), proc.stderr.read()[:400]
+            assert _wait_up(port, proc), _stderr(proc)
             status, body = _request(port, "/progress", key=KEY)
             assert status == 200
             assert body["state"] == "starting"
@@ -264,7 +289,7 @@ class TestBeforeAnythingHasHappened:
         """It is written by shell, mid-boot, and could be caught half-written."""
         proc, port, progress_path = _start(tmp_path, progress={"schema": 1})
         try:
-            assert _wait_up(port, proc), proc.stderr.read()[:400]
+            assert _wait_up(port, proc), _stderr(proc)
             progress_path.write_text("{ this is not json", encoding="utf-8")
             status, body = _request(port, "/progress", key=KEY)
             assert status == 200

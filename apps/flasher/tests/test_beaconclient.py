@@ -89,8 +89,18 @@ def beacon(tmp_path, monkeypatch):
             break
         time.sleep(0.2)
     else:
+        # KILL FIRST, THEN READ. `proc.stderr.read()` blocks until EOF, so on a
+        # live process it hangs instead of reporting. This branch used to kill
+        # the beacon and then say only "never answered", throwing away the one
+        # thing that could explain why — which on macOS, where this fires every
+        # single run, is the whole diagnosis.
         proc.kill()
-        pytest.fail("beacon never answered")
+        try:
+            err = proc.communicate(timeout=5)[1] or b""
+        except subprocess.TimeoutExpired:       # pragma: no cover
+            proc.kill()
+            err = proc.communicate()[1] or b""
+        pytest.fail(f"beacon never answered; it said: {err[:400]!r}")
 
     try:
         yield port, progress
