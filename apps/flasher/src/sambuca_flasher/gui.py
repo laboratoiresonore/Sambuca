@@ -38,9 +38,11 @@ WHAT IT DOES NOT DO, on purpose:
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 
 
+@functools.lru_cache(maxsize=1)
 def available() -> tuple[bool, str]:
     """Can a window be opened here? Returns (yes, reason-if-not).
 
@@ -48,6 +50,15 @@ def available() -> tuple[bool, str]:
     stdlib-on-paper and genuinely absent in practice: Debian and Ubuntu split
     it into python3-tk, and a frozen binary only has it if the build bundled
     the Tcl/Tk shared libraries.
+
+    PROBED ONCE PER PROCESS. The probe has a side effect — it creates a real Tk
+    root and destroys it — and repeating that is not reliably idempotent: on a
+    Windows CI runner with a partial Tcl install, the first probe succeeded and
+    the next raised TclError, so the same process gave two different answers to
+    the same question. Cached, because the answer cannot usefully change
+    mid-run and asking twice is what broke it.
+
+    Tests that fake the toolkit must call `available.cache_clear()`.
     """
     try:
         import tkinter

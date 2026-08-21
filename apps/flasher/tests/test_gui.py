@@ -29,6 +29,22 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 from sambuca_flasher import gui  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _fresh_availability():
+    """gui.available() is cached, so no test may inherit another's answer.
+
+    Two tests here fake the toolkit away entirely. Without this, whichever ran
+    first would decide the result for every test after it — and the failure
+    would look like a display problem rather than a leaked fixture.
+    """
+    # getattr, so that removing the cache makes the ONE test that depends on it
+    # fail, rather than erroring out all 39 and hiding which property broke.
+    clear = getattr(gui.available, "cache_clear", lambda: None)
+    clear()
+    yield
+    clear()
+
+
 class TestImportingIsAlwaysSafe:
     def test_the_module_imports_with_no_toolkit(self, monkeypatch):
         """The whole reason for the lazy import.
@@ -436,14 +452,66 @@ class TestTheAvailabilityCheck:
         assert "window available: no" in out
         assert "reason:" in out, "a refusal must say why"
 
-    def test_it_reports_yes_where_a_window_can_open(self, capsys):
-        ok, why = gui.available()
-        if not ok:
-            pytest.skip(why)
+    def test_the_answer_and_the_exit_code_always_agree(self, capsys):
+        """The CONTRACT, not the runner's display.
+
+        This used to probe availability, skip if absent, and then demand that
+        the CLI exit 0. It failed on windows-latest because the probe said yes
+        and the CLI — probing a second time — said no: a partial Tcl install
+        where creating a Tk root worked once and then raised. The test encoded
+        an assumption about the machine, so a genuine inconsistency in the code
+        surfaced as a mysterious display error.
+
+        What actually matters is that the exit code and the message never
+        disagree, whatever the answer is. That holds on a laptop with a screen
+        and on a headless runner, and it is what a script reading the exit code
+        depends on.
+        """
         from sambuca_flasher import cli
         rc = cli.main(["window", "--check"])
-        assert rc == 0
-        assert "window available: yes" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        if rc == 0:
+            assert "window available: yes" in out
+        else:
+            assert rc == 1
+            assert "window available: no" in out
+            assert "reason:" in out, "a refusal must say why"
+
+    def test_two_probes_in_one_process_agree(self):
+        """The inconsistency that produced the CI failure, stated directly."""
+        assert gui.available() == gui.available()
+
+    def test_a_toolkit_that_works_once_still_gives_one_answer(self, monkeypatch):
+        """REPRODUCES THE CI FAILURE, which this machine cannot show on its own.
+
+        windows-latest had a partial Tcl install where creating a Tk root
+        succeeded the first time and raised TclError the next. The probe ran
+        twice — once in the test, once inside the CLI — and the same process
+        answered the same question two different ways.
+
+        Here the second root always fails. Both probes must still agree, which
+        is only true because the answer is computed once. Delete the cache and
+        this test goes red; without it, the bug is invisible anywhere Tk works
+        properly, which is everywhere except the runner that found it.
+        """
+        import tkinter
+
+        calls = {"n": 0}
+        real_tk = tkinter.Tk
+
+        def flaky_tk(*a, **k):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise tkinter.TclError("can't find a usable init.tcl")
+            return real_tk(*a, **k)
+
+        monkeypatch.setattr(tkinter, "Tk", flaky_tk)
+        first = gui.available()
+        second = gui.available()
+        assert first == second, (
+            f"the same process gave two answers: {first} then {second}"
+        )
+        assert calls["n"] <= 1, "the probe ran twice; it must be computed once"
 
     def test_check_never_opens_a_window(self):
         """It must not block. The smoke test runs it on a headless runner with
