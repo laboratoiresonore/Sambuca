@@ -165,14 +165,25 @@ ships, that is a reason to look harder, not a reason to copy it.
 ## Mechanical checks — run these before claiming done
 
 ```bash
+bash tools/preflight.sh
+```
+
+That runs every CI check that does not need a Docker runner, and — this is the
+part that matters — **names the three it cannot run** rather than implying full
+coverage. It exits non-zero if any tool is merely MISSING, because a partial
+preflight that returns 0 reads as a pass.
+
+The individual commands, if you want one of them alone:
+
+```bash
 ruff check apps/flasher/src apps/flasher/tests tools tests
-python -m pytest apps/flasher/tests tests -q
+python -m pytest apps/flasher/tests tests -q -m "not slow"
 shellcheck --severity=warning --external-sources $(find engine -name '*.sh')
-bash -n engine/hardware-detect.sh && bash -n engine/provision/*.sh
+dash -n engine/autoinstall/*.sh      # the installer runs under busybox ash
 python tools/steward-lint.py
-python -c "import yaml,glob; [yaml.safe_load(open(f,encoding='utf-8')) for f in glob.glob('compose/*.yml')]"
-bash engine/hardware-detect.sh --print --force-tier 1 --no-lock --quiet
 bash tests/test-update-guard.sh
+bash tests/test-atomic-write.sh
+bash engine/hardware-detect.sh --print --force-tier 1 --no-lock --quiet
 ```
 
 **Then check CI, because local green is not CI green.** This was learned the
