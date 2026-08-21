@@ -42,7 +42,10 @@ setup_repo() {
     # outbound host so the egress check has a corpus to compare against.
     mkdir -p engine/provision compose docs
     printf 'echo hello\n' > engine/provision/60-stack.sh
-    printf 'IMAGE=caddy:2.8-alpine\n' > compose/.env.example
+    # PINNED baseline, because every image now ships as repo:tag@sha256:. With
+    # an unpinned baseline the digest case only proved the guard notices a
+    # digest being ADDED, which is no longer the interesting direction.
+    printf 'IMAGE=caddy:2.8-alpine@sha256:aaaa\n' > compose/.env.example
     printf 'curl https://download.docker.com/x\n' > engine/provision/20-docker.sh
     printf 'notes\n' > docs/README.md
     git add -A >/dev/null
@@ -148,6 +151,16 @@ setup_repo
 printf 'IMAGE=caddy:2.8-alpine@sha256:deadbeef\n' > compose/.env.example
 git commit -qam "repin"
 run_case "changes a pinned image digest" HOLD "digest"
+
+# --- UNPINNING is how a swap gets set up for later --------------------------
+# Rule 6 held anything whose +line CONTAINED @sha256:. REMOVING a digest
+# produces a +line without one, so returning an image to a mutable tag — the
+# precise move that lets the bytes change later with no further commit — was
+# invisible to the guard that exists to catch exactly that.
+setup_repo
+printf 'IMAGE=caddy:2.8-alpine\n' > compose/.env.example
+git commit -qam "unpin"
+run_case "unpins an image back to a mutable tag" HOLD "pin"
 
 # --- and a real attack is usually several of these at once ------------------
 setup_repo

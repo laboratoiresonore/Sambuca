@@ -160,10 +160,20 @@ done < <(git diff --name-only "$OLD" "$NEW")
 
 # ---------------------------------------------------------------------------
 # 6. IMAGE DIGEST DRIFT — once pinned, a changed digest is a deliberate act.
+#
+# BOTH DIRECTIONS. This looked only at ADDED lines containing @sha256:, which
+# catches a digest being changed or introduced and misses the one that matters
+# most: REMOVING it. Unpinning back to a mutable tag produces an added line with
+# no digest in it at all, so it sailed through — and unpinning is precisely how
+# you arrange for the bytes to change later without another commit ever landing
+# here. The guard against a swapped image could not see the setup for the swap.
+#
+# The diff header lines (--- a/…, +++ b/…) are excluded so a filename can never
+# be mistaken for content.
 # ---------------------------------------------------------------------------
 if git diff -U0 "$OLD" "$NEW" -- compose/.env.example 2>/dev/null \
-     | grep '^+' | grep -q '@sha256:'; then
-    hold "changes a pinned image digest"
+     | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' | grep -q '@sha256:'; then
+    hold "changes or removes a pinned image digest"
 fi
 
 # ---------------------------------------------------------------------------
