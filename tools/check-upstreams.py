@@ -49,9 +49,18 @@ REMOTE_SCRIPTS = {
     "casaos-installer": "https://get.casaos.io",
 }
 
+# BOTH SUITES, because the appliance picks one at RUNTIME. 20-docker.sh and
+# 50-network.sh read VERSION_CODENAME from /etc/os-release, and pi.py does the
+# same on the card — bookworm is only a fallback. The Pi image this project
+# ships is now trixie (2026-06-18-raspios-trixie-arm64-lite), so probing
+# bookworm alone was watching a suite the appliance no longer installs: if
+# either publisher dropped trixie, this check would have stayed green while
+# every new install failed at apt.
 APT_REPOS = {
-    "docker": "https://download.docker.com/linux/debian/dists/bookworm/Release",
-    "tailscale": "https://pkgs.tailscale.com/stable/debian/dists/bookworm/Release",
+    "docker (bookworm)": "https://download.docker.com/linux/debian/dists/bookworm/Release",
+    "docker (trixie)": "https://download.docker.com/linux/debian/dists/trixie/Release",
+    "tailscale (bookworm)": "https://pkgs.tailscale.com/stable/debian/dists/bookworm/Release",
+    "tailscale (trixie)": "https://pkgs.tailscale.com/stable/debian/dists/trixie/Release",
     "nvidia-container-toolkit":
         "https://nvidia.github.io/libnvidia-container/stable/deb/amd64/Packages",
 }
@@ -175,6 +184,63 @@ def hash_remote(url: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------- main
 
 
+def check_os_list() -> tuple[bool, list[str]]:
+    """The Pi write path, end to end: list -> content type -> the image itself.
+
+    MAINTENANCE.md names this as the coupling that fails SILENTLY: rpi-imager
+    ignores a list served as text/plain and shows an EMPTY DEVICE PICKER with no
+    error, indistinguishable from a broken file. It was documented as a risk and
+    probed by nothing.
+
+    Three ways it breaks, so three checks:
+      - the list stops resolving (jsDelivr, or the branch ref moves)
+      - it comes back as text/plain, which rpi-imager discards in silence
+      - the image URL inside it 404s, because Raspberry Pi rotates and REMOVES
+        old image paths — the list stays valid while the download dies
+    """
+    import sys as _sys
+    sys.path.insert(0, str(REPO / "apps/flasher/src"))
+    try:
+        from sambuca_flasher import imager
+        url = imager.default_repo()
+    except Exception as exc:                       # noqa: BLE001
+        return False, [f"cannot determine the OS-list URL: {exc.__class__.__name__}"]
+    finally:
+        if str(REPO / "apps/flasher/src") in _sys.path:
+            _sys.path.remove(str(REPO / "apps/flasher/src"))
+
+    problems: list[str] = []
+    req = urllib.request.Request(_http_only(url), headers=UA)  # noqa: S310 - scheme checked by _http_only
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310 - scheme checked by _http_only
+            ctype = (r.headers.get("Content-Type") or "").lower()
+            body = r.read(1 << 20)
+    except Exception as exc:                       # noqa: BLE001
+        return False, [f"os-list unreachable: {exc.__class__.__name__}"]
+
+    if "application/json" not in ctype:
+        problems.append(
+            f"os-list served as {ctype!r}, not application/json — "
+            "rpi-imager discards it and shows an empty picker with no error")
+    try:
+        entries = json.loads(body).get("os_list", [])
+    except Exception as exc:                       # noqa: BLE001
+        return False, [f"os-list is not valid JSON: {exc.__class__.__name__}"]
+
+    if not entries:
+        problems.append("os-list has no entries — the device picker would be empty")
+
+    for entry in entries:
+        img = entry.get("url") or ""
+        if not img:
+            problems.append(f"{entry.get('name', '?')}: no image url")
+            continue
+        ok, detail = check_url(img)
+        if not ok:
+            problems.append(f"image gone: {img} ({detail})")
+    return not problems, problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", dest="json_out", type=Path)
@@ -227,6 +293,17 @@ def main() -> int:
         print(f"  {'ok     ' if ok else 'BROKEN '} {name:<26} {detail}")
         if not ok:
             broken.append(f"apt repo {name}")
+
+    # --- the Pi write path ---
+    print("\n[raspberry pi os list]")
+    ok, problems = check_os_list()
+    report["os_list"] = {"ok": ok, "problems": problems}
+    if ok:
+        print("  ok      os-list resolves, is application/json, and its image exists")
+    else:
+        for pr in problems:
+            print(f"  BROKEN  {pr}")
+        broken.append("raspberry pi os list")
 
     # --- remote scripts ---
     print("\n[remote code executed at install time]")
