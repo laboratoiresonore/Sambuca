@@ -35,6 +35,23 @@ on:
       - "engine/**"
       - ".github/workflows/build-flasher.yml"
 
+# SUPERSEDED RUNS CANCEL THEMSELVES.
+#
+# Every push queued a fresh full run while the previous one was still waiting,
+# so a run of commits built a backlog that took HOURS to clear — and the answer
+# people actually want (does the newest commit pass?) arrived last. Most of a
+# day's verification was spent behind runs for commits already replaced.
+#
+# group is keyed on the workflow AND the ref, so main and a branch never cancel
+# each other.
+#
+# cancel-in-progress is FALSE ON TAGS AND TRUE OTHERWISE. A tag run publishes a
+# release; killing one halfway could leave assets partly uploaded. A branch run
+# only reports, and the newest commit's answer is the only one that matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 # `write` is required to publish a release. It was `read`, which builds the
 # binaries and then cannot attach them to anything.
 permissions:
