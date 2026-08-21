@@ -86,6 +86,12 @@ if [[ -n $abort ]]; then
     err "   snapraid diff | less        # review them"
     err "   snapraid sync               # then sync by hand"
     err "═══════════════════════════════════════════════════════════════"
+    # THE LOUDEST CASE. Parity still reflects the state BEFORE these deletions,
+    # so the old files remain recoverable — but only until somebody syncs by
+    # hand. A stale JSON file nobody opens is not how that decision should
+    # reach them.
+    sb_health_set snapraid fail \
+        "parity sync ABORTED — ${removed} deletions looked abnormal; parity still reflects the state BEFORE them"
     printf '{"last_run":"%s","status":"aborted","removed":%s,"updated":%s}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$removed" "$updated" \
         | sb_atomic_write "${SB_LIB}/snapraid-state.json" 0644
@@ -97,11 +103,18 @@ fi
 # ---------------------------------------------------------------------------
 log "syncing parity"
 if ! snapraid sync >"${SB_LOG_DIR}/snapraid-sync.out" 2>&1; then
+    sb_health_set snapraid fail \
+        "parity sync FAILED — parity is stale, and a disk failure now would not be recoverable"
     err "snapraid sync FAILED"
     tail -n 20 "${SB_LOG_DIR}/snapraid-sync.out" | while read -r l; do err "  ${l}"; done
     die "parity is stale — investigate before the next disk failure, not after"
 fi
 ok "parity synced"
+# Cleared HERE rather than at the end of the script: parity being current is
+# what this job exists to guarantee. The scrub below is a different concern —
+# it looks for corruption in old blocks — and sets its own state if it finds
+# any. Clearing at the end would let a scrub warning wipe itself.
+sb_health_set snapraid ok
 
 # ---------------------------------------------------------------------------
 # 4. Rolling scrub — verify a slice of old blocks against parity each week, so
@@ -116,6 +129,11 @@ set -e
 
 errors="$(grep -cE '^[0-9]+ errors' "${SB_LOG_DIR}/snapraid-scrub.out" 2>/dev/null || echo 0)"
 if ((scrub_rc != 0)); then
+    # A DIFFERENT KIND OF TROUBLE from a failed sync: the parity job worked,
+    # and it found bad blocks. Silent corruption is exactly the thing nobody
+    # notices until a restore fails, so it must outlive this log line.
+    sb_health_set snapraid warn \
+        "scrub found problems (exit ${scrub_rc}) — possible silent corruption; see ${SB_LOG_DIR}/snapraid-scrub.out"
     warn "scrub reported problems (exit ${scrub_rc}) — silent corruption may be present"
     grep -iE 'error|corrupt|mismatch' "${SB_LOG_DIR}/snapraid-scrub.out" | head -n 10 \
         | while read -r l; do warn "  ${l}"; done

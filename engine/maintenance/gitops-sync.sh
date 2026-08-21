@@ -69,6 +69,8 @@ sb_retry 3 10 git fetch --tags --prune origin "$SAMBUCA_GITOPS_REF" \
 incoming="$(git rev-parse "origin/${SAMBUCA_GITOPS_REF}")"
 if [[ $incoming == "$current" ]]; then
     ok "already current at ${current:0:12}"
+    # Nothing to do IS a healthy outcome, and it clears any earlier alarm.
+    sb_health_set gitops ok
     printf '{"last_check":"%s","status":"current","revision":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$current" \
         | sb_atomic_write "${SB_LIB}/gitops-state.json" 0644
@@ -118,6 +120,11 @@ fi
 
 if ! "$GUARD" "$current" "$incoming" --json "${SB_LIB}/update-verdict.json"; then
     err "═══════════════════════════════════════════════════════════════"
+    # HELD IS NOT A FAILURE — the guard did its job and the machine is
+    # untouched. But it needs a DECISION, and an update that quietly waits
+    # forever is how an appliance drifts years behind on security patches.
+    sb_health_set gitops warn \
+        "an update is HELD for review (${current:0:12} -> ${incoming:0:12}) — nothing applied until you look"
     err " UPDATE HELD. Nothing has been applied and nothing changed."
     err ""
     err "   Review it:  cd ${SAMBUCA_INSTALL_ROOT} && git log -p ${current:0:12}..${incoming:0:12}"
@@ -140,7 +147,15 @@ fi
 rollback() {
     err "rolling back to ${current:0:12}"
     git -c advice.detachedHead=false checkout --force "$current" >/dev/null 2>&1 \
-        || err "ROLLBACK FAILED — the checkout is at ${incoming:0:12}. Manual recovery needed."
+        || {
+            # THE WORST STATE THIS SCRIPT CAN REACH: an update was applied,
+            # it did not come up, and the way back also failed. The machine is
+            # running code nobody chose. It must not be discoverable only by
+            # reading a log.
+            sb_health_set gitops fail \
+                "ROLLBACK FAILED — running ${incoming:0:12}, could not return to ${current:0:12}; manual recovery needed"
+            err "ROLLBACK FAILED — the checkout is at ${incoming:0:12}. Manual recovery needed."
+        }
     ( cd "$COMPOSE_DIR" && docker compose up -d --remove-orphans ) >/dev/null 2>&1 || true
 }
 

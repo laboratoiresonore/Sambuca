@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+#
+# sambuca :: tests/test-health.sh
+#
+# The maintenance jobs already knew when they had failed. They said so with
+# err(), into a journal NOBODY READS ON AN APPLIANCE — so a backup could stop
+# working for months and look exactly like one that works.
+#
+# These drive the mechanism that fixes that. The refusal-to-nag properties are
+# tested as hard as the reporting ones: an alarm that outlives its problem, or
+# a banner that always says something, is how people learn to ignore both.
+
+set -uo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." || exit 1
+
+pass=0; fail=0
+ok_()  { printf '  ok    %s\n' "$1"; pass=$((pass+1)); }
+bad_() { printf '  FAIL  %s\n' "$1"; fail=$((fail+1)); }
+
+export SB_HEALTH_DIR
+SB_HEALTH_DIR="$(mktemp -d)"
+trap 'rm -rf -- "$SB_HEALTH_DIR"' EXIT
+
+# shellcheck source=engine/lib/common.sh
+SB_QUIET=1 source engine/lib/common.sh
+
+echo
+echo "health state"
+
+# --- 1. a healthy machine says NOTHING -------------------------------------
+out="$(bash engine/maintenance/health.sh --brief 2>&1)"
+rc=$?
+[[ -z $out ]] && ok_ "a healthy machine prints nothing at login" \
+              || bad_ "it printed something when nothing is wrong: ${out}"
+((rc == 0)) && ok_ "and exits 0" || bad_ "exit was $rc"
+
+# --- 2. a failure is recorded and surfaced ---------------------------------
+sb_health_set backup fail "snapshot held only 4 paths"
+out="$(bash engine/maintenance/health.sh --brief 2>&1)"; rc=$?
+printf '%s' "$out" | grep -q "backup" && ok_ "a failure appears at login" \
+                                      || bad_ "a failure did not appear"
+((rc == 2)) && ok_ "fail exits 2, so a script can act on it" || bad_ "fail exit was $rc"
+
+# --- 3. success CLEARS it ---------------------------------------------------
+# An alarm that outlives its problem teaches people to ignore alarms, and then
+# the one that matters is ignored too.
+sb_health_set backup ok
+out="$(bash engine/maintenance/health.sh --brief 2>&1)"
+[[ -z $out ]] && ok_ "a later success clears the alarm" \
+              || bad_ "the alarm survived its own fix: ${out}"
+
+# --- 4. warn and fail are distinguishable ----------------------------------
+sb_health_set snapraid warn "scrub found problems"
+bash engine/maintenance/health.sh >/dev/null 2>&1
+(($? == 1)) && ok_ "warn exits 1, distinct from fail" || bad_ "warn did not exit 1"
+
+sb_health_set snapraid fail "parity sync aborted"
+bash engine/maintenance/health.sh >/dev/null 2>&1
+(($? == 2)) && ok_ "fail outranks warn" || bad_ "fail did not outrank warn"
+sb_health_set snapraid ok
+
+# --- 5. several components at once ------------------------------------------
+sb_health_set backup warn "incomplete"
+sb_health_set gitops warn "an update is HELD for review"
+out="$(bash engine/maintenance/health.sh --brief 2>&1)"
+if printf '%s' "$out" | grep -q backup && printf '%s' "$out" | grep -q gitops; then
+    ok_ "every outstanding component is listed"
+else
+    bad_ "components were lost: ${out}"
+fi
+sb_health_set backup ok; sb_health_set gitops ok
+
+# --- 6. it never blows up on a corrupt state file ---------------------------
+# It runs at EVERY login. A crash here would meet somebody at the door.
+printf 'not-a-valid-state\n' >"${SB_HEALTH_DIR}/weird"
+bash engine/maintenance/health.sh --brief >/dev/null 2>&1
+(($? <= 2)) && ok_ "a malformed state file does not crash the banner" \
+            || bad_ "it crashed on a malformed file"
+rm -f "${SB_HEALTH_DIR}/weird"
+
+echo
+echo "every maintenance job reports its verdict"
+
+# --- 7. all three are wired -------------------------------------------------
+# backup.sh knew about restic exit 3 and the 17-of-966 readback failure long
+# before anything surfaced them. Being careful in private is not the same as
+# telling somebody.
+for job in backup snapraid-sync gitops-sync; do
+    n="$(grep -c 'sb_health_set' "engine/maintenance/${job}.sh" 2>/dev/null || echo 0)"
+    ((n > 0)) && ok_ "${job} records its outcome (${n} call(s))" \
+              || bad_ "${job} still fails silently"
+done
+
+# --- 8. each one can also CLEAR ---------------------------------------------
+# Without an ok path a job would raise an alarm it can never lower.
+for job in backup snapraid-sync gitops-sync; do
+    grep -qE 'sb_health_set [a-z]+ ok' "engine/maintenance/${job}.sh" \
+        && ok_ "${job} clears its own alarm on success" \
+        || bad_ "${job} can raise an alarm but never lower it"
+done
+
+echo
+printf '  %d passed, %d failed\n\n' "$pass" "$fail"
+[[ $fail -eq 0 ]]

@@ -64,6 +64,7 @@ jobs:
       # missing config file weeks later.
       - run: bash tests/test-atomic-write.sh
       - run: bash tests/test-verified-script.sh
+      - run: bash tests/test-health.sh
 
   compose:
     name: compose config
