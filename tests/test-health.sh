@@ -159,7 +159,12 @@ while read -r cmd verb; do
     else
         bad_ "sambuca-${cmd} ${verb} is named but ${script} does not implement it"
     fi
-done < <(grep -rhoE 'sambuca-[a-z-]+ [a-z][a-z-]+' engine/ --include='*.sh' \
+#
+# README.md and docs/ are scanned TOO. The flasher's own promise test already
+# reads them (apps/flasher/tests/test_promises.py); the engine side did not, so
+# a command named only where owners actually read — the README — was checked by
+# nothing at all.
+done < <(grep -rhoE 'sambuca-[a-z-]+ [a-z][a-z-]+' engine/ README.md docs/ --include='*.sh' --include='*.md' \
          | sed 's/^sambuca-//' \
          | grep -vE ' (the|a|is|to|and|or|will|can|has|for|on|in|at|it|not|from|with|your|this|that|are|was|by)$' \
          | sort -u)
