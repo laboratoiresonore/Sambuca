@@ -137,6 +137,29 @@ def test_the_mapping_still_covers_the_table():
         "add them to ROW_TO_VAR, or to EXEMPT with a reason")
 
 
+def test_no_exemption_is_excusing_a_row_that_is_gone():
+    """AN EXEMPTION FOR A ROW NOBODY SHIPS ANY MORE IS A HOLE NOBODY WATCHES.
+
+    EXEMPT names components deliberately shown without a version. If a row is
+    renamed or dropped, its entry keeps sitting here excusing nothing — and the
+    next component that needs checking can be waved through by an exemption
+    written for something else entirely.
+
+    The dead-knob allowlist caught exactly this on itself and forced the stale
+    entry out. Every exception set in this repository should be able to.
+    """
+    rows = set(_readme_rows())
+    # Distribution packages are named in prose rather than as table rows, so
+    # they are excused from the excusal check — named here rather than silently
+    # skipped, because an exclusion nobody can see is how the next one hides.
+    not_rows = {"Debian", "Docker CE", "Tailscale", "CasaOS", "MergerFS",
+                "SnapRAID", "restic"}
+    orphaned = sorted(EXEMPT - rows - not_rows)
+    assert not orphaned, (
+        f"these are exempted from the version check but appear in no README "
+        f"row: {orphaned} — remove the exemption, or fix the row name")
+
+
 @pytest.mark.parametrize("var", sorted(set(ROW_TO_VAR.values())))
 def test_the_mapping_points_at_something_real(var):
     """Guards the other direction: a renamed compose variable would make the

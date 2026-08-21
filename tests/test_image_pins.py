@@ -200,6 +200,43 @@ def test_exceptions_still_exist() -> None:
         assert var in env, f"{var} is excepted but {ENV_FILE.name} does not define it"
 
 
+def test_no_exception_is_excusing_something_already_fixed() -> None:
+    """AN EXCEPTION THAT OUTLIVES ITS REASON IS A HOLE NOBODY IS WATCHING.
+
+    test_exceptions_still_exist asks whether the variable is still there. This
+    asks the harder question: is the exception still NEEDED? The two fail in
+    different directions, and only this one notices a debt that has been PAID.
+
+    Odysseus is excused because it is unpublished. The day it publishes and gets
+    a digest recorded, this entry stops describing reality and starts quietly
+    exempting a real image from the pinning rule. Nextcloud AIO is excused
+    because it floats deliberately; the day somebody pins it, the exemption is
+    excusing nothing.
+
+    The dead-knob allowlist caught exactly this on itself and forced the entry
+    out. Every other exception set in this repository should be able to.
+    """
+    env, doc = _env(), _doc()
+    stale = []
+
+    for var in KNOWN_UNPUBLISHED:
+        digest = doc.get(var, ("", ""))[1]
+        if digest.startswith("sha256:"):
+            stale.append(
+                f"{var} is excused as unpublished, but IMAGES.md records a "
+                f"digest for it — it published; remove the exception so it is "
+                f"held to the pinning rule")
+
+    for var in ALLOWED_FLOATING:
+        ref = env.get(var, "")
+        if "@sha256:" in ref or _tag_of(ref) not in MOVING:
+            stale.append(
+                f"{var} is excused as deliberately floating, but {ref} does not "
+                f"float — the exemption is excusing nothing")
+
+    assert not stale, "stale exceptions:\n  " + "\n  ".join(stale)
+
+
 def test_no_image_line_is_built_by_concatenation() -> None:
     """The reference that gets CHECKED must be the reference that gets USED.
 
