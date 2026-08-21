@@ -207,6 +207,22 @@ without it.
   corrected downwards to match the stale value.** A test aimed at the wrong
   source does not merely miss bugs; it manufactures them, and signs them off.
   Before trusting any consistency check, ask which file actually runs.
+- **A job that is always "still running" has never run.** The macOS flasher jobs
+  were cancelled 17 times out of 18 and never once completed, while every report
+  said "green except macOS still running". Four things hid one bug, each
+  reasonable alone: `cancel-in-progress` turned a hang into "cancelled"; no
+  `timeout-minutes` meant the default was six hours, longer than the gap between
+  pushes; the assertion message `proc.stderr.read()` blocked until the process
+  exited, so **the diagnostic became the hang**; and underneath it all
+  `http.server.server_bind()` calls `socket.getfqdn()` — a reverse DNS lookup —
+  after binding but BEFORE `listen()`, so with no resolver the beacon was alive,
+  silent and never listening. **On an appliance mid-install there is no resolver
+  yet**, so the one service that exists to stop an owner power-cycling was the
+  one most likely to look dead. Found only by NOT pushing for one cycle and
+  letting a job finish. 19 minutes and never finishing became 82 seconds.
+- **An assertion message runs only on failure, so it must not be able to fail.**
+  A blocking read, a network call, anything that can hang — put it behind a kill
+  or a deadline, or the failure you were explaining becomes the failure you get.
 - **A failure that MOVES is one fact, not flakiness — and check every job, not
   the run.** A Windows flasher job was red for hours while runs were reported
   green, because only the overall conclusion was being read. Then it took three
