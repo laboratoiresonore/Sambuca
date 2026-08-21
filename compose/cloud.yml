@@ -60,6 +60,14 @@ services:
   # ─────────────────────────────────────────────────────────────────────────
   nextcloud-aio:
     restart: unless-stopped
+    # `:latest` HERE IS DELIBERATE, and it is the only place in this project
+    # where a floating tag is. The mastercontainer is an UPDATER — it chooses
+    # and upgrades the versions of the containers it manages. Pinning it does
+    # not pin Nextcloud; it freezes the machinery that keeps Nextcloud patched,
+    # so the stack stops receiving updates while still looking maintained.
+    # Upstream publishes dated tags, but they are snapshots of the updater, not
+    # of the deployment. tests/test_image_pins.py enforces that this stays the
+    # exception rather than becoming the habit.
     image: ${NEXTCLOUD_AIO_IMAGE:-nextcloud/all-in-one:latest}
     container_name: nextcloud-aio-mastercontainer   # fixed name: AIO requires it
     networks: [edge]
