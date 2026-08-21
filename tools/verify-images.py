@@ -65,6 +65,14 @@ def parse_ref(ref: str) -> tuple[str, str, str]:
     """Split an image reference into (registry host, repository, tag-or-digest)."""
     if "@" in ref:
         name, tag = ref.split("@", 1)
+        # `repo:tag@sha256:…` is legal, and it is the form worth shipping: the
+        # tag stays readable for a human, the digest is what actually gets
+        # fetched. Without this, the tag stays glued to the NAME and the
+        # repository becomes "library/caddy:2.11.4-alpine", so every lookup
+        # 404s — the verifier would fail on precisely the references that are
+        # pinned hardest.
+        if ":" in name.rsplit("/", 1)[-1]:
+            name = name.rsplit(":", 1)[0]
     elif ":" in ref.rsplit("/", 1)[-1]:
         name, tag = ref.rsplit(":", 1)
     else:
