@@ -79,9 +79,28 @@ jobs:
       # writing to a directory path 'succeeded' by moving the temp file
       # inside it. Both are the kind of fault that only shows up as a
       # missing config file weeks later.
-      - run: bash tests/test-atomic-write.sh
-      - run: bash tests/test-verified-script.sh
-      - run: bash tests/test-health.sh
+      #
+      # EVERY tests/test-*.sh, by glob, deliberately. Naming them one by one is
+      # how the beacon shipped with 21 passing tests that CI never ran: written,
+      # green locally, and invisible — the same shape as a module with no
+      # callers. A new test file is now run because it exists, not because
+      # somebody remembered to add a line here.
+      - name: shell test suites
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          suites=(tests/test-*.sh)
+          if ((${#suites[@]} == 0)); then
+            echo "::error::no shell test suites found — the glob is wrong"
+            exit 1
+          fi
+          echo "running ${#suites[@]} suite(s)"
+          rc=0
+          for t in "${suites[@]}"; do
+            echo "=== $t"
+            bash "$t" || rc=1
+          done
+          exit $rc
 
   compose:
     name: compose config

@@ -186,27 +186,15 @@ log "compose chain: ${chain}"
     # the finished string into .env makes it one value that every tool sees.
     # It is also what makes digest pinning possible at all: you cannot append
     # "-cuda" to something ending in "@sha256:…".
-    # Each variant is a SEPARATE PIN, not a string built from a base — a digest
-    # cannot have "-cuda" appended to it, and appending is exactly how a
-    # reference that resolves hid one that does not.
-    _ml_pin() {
-        grep -E "^${1}=" "${COMPOSE_DIR}/.env.example" 2>/dev/null | head -n 1 | cut -d= -f2-
-    }
-    _ml_suffix="$(grep -E '^IMMICH_ML_IMAGE_SUFFIX=' "${SB_ETC}/profile.env" 2>/dev/null \
-                  | head -n 1 | cut -d= -f2-)"
-    case "${_ml_suffix:-}" in
-        "")         _ml_ref="$(_ml_pin IMMICH_ML_IMAGE)" ;;
-        -cuda)      _ml_ref="$(_ml_pin IMMICH_ML_CUDA_IMAGE)" ;;
-        -openvino)  _ml_ref="$(_ml_pin IMMICH_ML_OPENVINO_IMAGE)" ;;
-        *)
-            # An unrecognised variant used to be concatenated on trust and
-            # became a 404 at pull time, with nothing to say why. CPU is a
-            # working answer; a reference nobody published is not.
-            warn "IMMICH_ML_IMAGE_SUFFIX='${_ml_suffix}' names no pinned variant"
-            warn "  known: '' (cpu), -cuda, -openvino. Falling back to CPU."
-            _ml_ref="$(_ml_pin IMMICH_ML_IMAGE)"
-            ;;
-    esac
+    # The selection lives in sb_ml_image_ref (engine/lib/common.sh) so it can be
+    # driven by tests/test-ml-variant.sh. Logic that only exists inside a script
+    # needing root and a Docker daemon is logic nothing ever checks — which is
+    # the condition the -rocm reference survived in.
+    _ml_suffix="$(sb_env_get "${SB_ETC}/profile.env" IMMICH_ML_IMAGE_SUFFIX)"
+    if ! _ml_ref="$(sb_ml_image_ref "${COMPOSE_DIR}/.env.example" "${_ml_suffix}")"; then
+        warn "IMMICH_ML_IMAGE_SUFFIX='${_ml_suffix}' names no pinned variant"
+        warn "  known: '' (cpu), -cuda, -openvino. Using the CPU image."
+    fi
     [[ -n ${_ml_ref:-} ]] && printf 'IMMICH_ML_IMAGE=%s\n' "$_ml_ref"
 } | sb_atomic_write "$ENV_FILE" 0600
 

@@ -483,3 +483,30 @@ sb_env_get() {
     v="${v%\"}"; v="${v#\"}"
     printf '%s' "${v:-$default}"
 }
+
+# ---------------------------------------------------------------------------
+# sb_ml_image_ref <env-file> <suffix> — the Immich ML reference for a variant.
+#
+# EXTRACTED SO IT CAN BE TESTED. This selection used to be a concatenation in
+# cloud.yml (`${IMMICH_ML_IMAGE}${IMMICH_ML_IMAGE_SUFFIX}`), and that is exactly
+# how a broken reference survived: every tool verified IMMICH_ML_IMAGE, which
+# resolves perfectly well on its own, while what compose actually pulled was
+# base+suffix. On AMD the suffix was "-rocm", which upstream publishes on no
+# release tag, so Immich's machine-learning container never started.
+#
+# The variants are separate images with separate digests, so each is its own
+# pin. Nothing is assembled: nothing CAN be appended to a "@sha256:…".
+#
+# Prints the reference. Returns 1 for a variant that has no pin, after printing
+# the CPU one — an unknown variant must degrade to something that runs, not to
+# a reference nobody published.
+sb_ml_image_ref() {
+    local env_file="$1" suffix="${2:-}" var
+    case "$suffix" in
+        "")         var=IMMICH_ML_IMAGE ;;
+        -cuda)      var=IMMICH_ML_CUDA_IMAGE ;;
+        -openvino)  var=IMMICH_ML_OPENVINO_IMAGE ;;
+        *)          sb_env_get "$env_file" IMMICH_ML_IMAGE; return 1 ;;
+    esac
+    sb_env_get "$env_file" "$var"
+}
