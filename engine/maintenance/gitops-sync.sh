@@ -31,6 +31,70 @@ _SB_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SB_SELF_DIR}/../lib/common.sh"
 sb_trap_err
 
+# ---------------------------------------------------------------------------
+# HELP AND VERB DISPATCH, BEFORE PRIVILEGE.
+#
+# `sambuca-gitops apply --force` was printed to owners as the way to release a
+# held update — by this script, in its own error message — while the script
+# accepted no verb at all and no --force. Anyone who followed that instruction
+# ran a plain sync, hit the same guard, and was told to run the same command
+# again. The escape hatch named in the message was a loop, and the comment a
+# few lines below calls an update that waits forever exactly what it is: how an
+# appliance drifts years behind on security patches.
+# ---------------------------------------------------------------------------
+case "${1:-}" in
+    help|-h|--help)
+        cat <<'USAGE'
+sambuca-gitops — follow the configuration repository, without obeying it
+
+  sambuca-gitops                 fetch, verify, review, apply if clean (the timer)
+  sambuca-gitops check           say what WOULD happen; change nothing
+  sambuca-gitops status          show the last check, and why an update is held
+  sambuca-gitops apply --force   apply an update the review guard HELD
+
+An update is applied only when it carries a valid signature AND the review
+guard finds nothing that must never arrive unattended.
+
+--force overrides the guard's hold, once you have reviewed the change. It does
+NOT override the signature check: an unsigned update is refused outright, with
+or without --force. The hold is overridden, never erased — the reasons stay in
+the verdict file so a later "why is it running that?" has an answer.
+USAGE
+        exit 0 ;;
+esac
+
+VERB="${1:-run}"
+FORCE=0
+case "$VERB" in
+    run) ;;
+    check|--check) ;;          # --check is kept: the systemd timer unit uses it
+    status) ;;
+    apply)
+        shift
+        [[ ${1:-} == "--force" ]] && FORCE=1
+        ;;
+    *)
+        printf 'unknown command: %s\n' "$VERB" >&2
+        printf 'try: sambuca-gitops {check|status|apply --force}, or sambuca-gitops help\n' >&2
+        exit 2 ;;
+esac
+
+# `status` reads a world-readable state file. Demanding root to answer "is
+# something waiting for me?" is how the answer stops being asked for.
+if [[ $VERB == status ]]; then
+    if [[ -r "${SB_LIB}/gitops-state.json" ]]; then
+        cat "${SB_LIB}/gitops-state.json"
+    else
+        printf '{"status":"unknown","note":"no check has run yet"}\n'
+    fi
+    if [[ -r "${SB_LIB}/update-verdict.json" ]]; then
+        printf '\nthe last review found:\n'
+        sed -n 's/.*"reasons"://p' "${SB_LIB}/update-verdict.json" \
+            | tr ',' '\n' | tr -d '[]"' | sed 's/^ */  - /' | grep -v '^ *- *$' || true
+    fi
+    exit 0
+fi
+
 sb_require_root
 sb_single_instance "gitops-sync" 30
 sb_require git docker
@@ -46,7 +110,7 @@ sb_require git docker
 
 COMPOSE_DIR="${SAMBUCA_INSTALL_ROOT}/compose"
 DRY=0
-[[ ${1:-} == "--check" ]] && DRY=1
+[[ $VERB == check || $VERB == "--check" ]] && DRY=1
 
 # The forbidden-path list now lives in update-guard.sh, alongside every other
 # check and the test suite that proves each one fires. Keeping a second copy
@@ -119,6 +183,18 @@ if [[ ! -r $GUARD ]]; then
 fi
 
 if ! "$GUARD" "$current" "$incoming" --json "${SB_LIB}/update-verdict.json"; then
+  if ((FORCE)); then
+    # OVERRIDDEN, NOT ERASED. The guard still ran, and its reasons are still in
+    # update-verdict.json — so this decision leaves a trail, rather than making
+    # the machine look like one the guard simply approved.
+    #
+    # Note what --force does NOT reach: signature verification happened above
+    # and exits hard. An unsigned update is not "held pending review", it is
+    # refused, and no flag on this command changes that.
+    warn "the review guard HELD this update; --force is overriding that hold"
+    warn "  reasons remain recorded in ${SB_LIB}/update-verdict.json"
+    warn "  applying ${current:0:12} -> ${incoming:0:12} on your authority"
+  else
     err "═══════════════════════════════════════════════════════════════"
     # HELD IS NOT A FAILURE — the guard did its job and the machine is
     # untouched. But it needs a DECISION, and an update that quietly waits
@@ -127,6 +203,7 @@ if ! "$GUARD" "$current" "$incoming" --json "${SB_LIB}/update-verdict.json"; the
         "an update is HELD for review (${current:0:12} -> ${incoming:0:12}) — nothing applied until you look"
     err " UPDATE HELD. Nothing has been applied and nothing changed."
     err ""
+    err "   Why:        sambuca-gitops status"
     err "   Review it:  cd ${SAMBUCA_INSTALL_ROOT} && git log -p ${current:0:12}..${incoming:0:12}"
     err "   Then apply: sambuca-gitops apply --force"
     err "═══════════════════════════════════════════════════════════════"
@@ -134,6 +211,7 @@ if ! "$GUARD" "$current" "$incoming" --json "${SB_LIB}/update-verdict.json"; the
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$current" "$incoming" \
         | sb_atomic_write "${SB_LIB}/gitops-state.json" 0644
     exit 0
+  fi
 fi
 
 if ((DRY)) || [[ $SAMBUCA_GITOPS_AUTO_APPLY != 1 ]]; then

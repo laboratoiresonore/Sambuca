@@ -108,20 +108,61 @@ echo "commands the appliance names actually exist"
 # them to run `sambuca-backup verify`, while the script accepted no arguments at
 # all. Right binary, nonexistent verb — which test_engine_promises.py cannot
 # see, because it only checks that the BINARY is installed.
-promised="$(grep -rhoE 'sambuca-backup [a-z-]+' engine/ | awk '{print $2}' | sort -u)"
-for verb in $promised; do
-    case "$verb" in
-        run|verify|init|help) ok_ "sambuca-backup ${verb} is a real verb" ;;
-        *)
-            if grep -qE "^\s+${verb}\)" engine/maintenance/backup.sh \
-               || grep -qE "VERB == ${verb}" engine/maintenance/backup.sh; then
-                ok_ "sambuca-backup ${verb} is a real verb"
-            else
-                bad_ "sambuca-backup ${verb} is named but does not exist"
-            fi
-            ;;
-    esac
-done
+#
+# GENERALISED, because checking backup alone is what let the next one through.
+# `sambuca-gitops apply --force` was printed to owners BY THE HELD-UPDATE
+# MESSAGE ITSELF as the way to release a held update, while gitops-sync.sh
+# accepted no verb and no --force. Following the instruction re-ran the sync,
+# hit the same guard, and printed the same instruction: a loop, on the one path
+# that exists to stop an appliance drifting years behind on security patches.
+#
+# So the mapping is read from the symlinks the installer ACTUALLY creates,
+# rather than a list kept here that would drift from it.
+declare -A SCRIPT_OF=()
+while read -r target cmd; do
+    SCRIPT_OF["${cmd##*/sambuca-}"]="${target#\$INSTALL_ROOT/}"
+done < <(grep -oE 'ln -sf "\$INSTALL_ROOT/[^"]+" +/usr/local/bin/sambuca-[a-z-]+' \
+             engine/autoinstall/late-command.sh \
+         | sed 's/ln -sf "//; s/" */ /')
+
+# Not every command is a symlink. 80-identity.sh WRITES sambuca-identity, verbs
+# and all, so the file implementing it is the provision script that emits it.
+# Reading only the symlinks reported that command as never installed — a false
+# accusation is its own kind of broken test, and would have been "fixed" by
+# adding an install line for something already installed.
+while read -r file cmd; do
+    SCRIPT_OF["${cmd##*sambuca-}"]="$file"
+done < <(grep -rl 'sb_atomic_write /usr/local/bin/sambuca-' engine/ \
+         | while read -r f; do
+               grep -ohE 'sb_atomic_write /usr/local/bin/sambuca-[a-z-]+' "$f" \
+               | awk -v f="$f" '{print f, $2}'
+           done)
+
+((${#SCRIPT_OF[@]} > 0)) \
+    && ok_ "the installed command map was read from late-command.sh (${#SCRIPT_OF[@]} commands)" \
+    || bad_ "could not read the command map — every check below is vacuous"
+
+# Commands that are not appliance scripts at all. Named, not silently skipped:
+# a list of exclusions nobody can see is how the next one hides.
+NOT_APPLIANCE=" flasher synapse-db "
+
+while read -r cmd verb; do
+    [[ $NOT_APPLIANCE == *" ${cmd} "* ]] && continue
+    script="${SCRIPT_OF[$cmd]:-}"
+    if [[ -z $script ]]; then
+        bad_ "sambuca-${cmd} is named in engine/ but the installer never creates it"
+        continue
+    fi
+    if grep -qE "^[[:space:]]*(${verb}\)|[a-z|-]*\|${verb}\)|${verb}\|)" "$script" \
+       || grep -qE "VERB == \"?${verb}" "$script"; then
+        ok_ "sambuca-${cmd} ${verb} is a real verb"
+    else
+        bad_ "sambuca-${cmd} ${verb} is named but ${script} does not implement it"
+    fi
+done < <(grep -rhoE 'sambuca-[a-z-]+ [a-z][a-z-]+' engine/ --include='*.sh' \
+         | sed 's/^sambuca-//' \
+         | grep -vE ' (the|a|is|to|and|or|will|can|has|for|on|in|at|it|not|from|with|your|this|that|are|was|by)$' \
+         | sort -u)
 
 # --- 10. help works WITHOUT root -------------------------------------------
 # Asking somebody to become root to find out what the commands are is a small
@@ -141,6 +182,35 @@ out="$(bash engine/maintenance/backup.sh notaverb 2>&1)"
 printf '%s' "$out" | grep -qi "unknown command" \
     && ok_ "an unknown verb is refused by name" \
     || bad_ "an unknown verb was not refused: ${out}"
+
+# --- 12. the same two properties for gitops -------------------------------
+# It had BOTH of backup's faults and a third: an unknown verb was not refused,
+# it fell through to a full sync. `sambuca-gitops aply --force` (one typo) ran
+# a real update against the machine.
+out="$(bash engine/maintenance/gitops-sync.sh --help 2>&1)"
+if printf '%s' "$out" | grep -q "apply --force"; then
+    ok_ "gitops help works without root and names the override"
+else
+    bad_ "gitops help needs privileges or omits the override: ${out}"
+fi
+
+out="$(bash engine/maintenance/gitops-sync.sh notaverb 2>&1)"; rc=$?
+if printf '%s' "$out" | grep -qi "unknown command" && ((rc == 2)); then
+    ok_ "a mistyped gitops verb is refused, not run as a sync"
+else
+    bad_ "a mistyped gitops verb was not refused (exit ${rc}): ${out}"
+fi
+
+# --- 13. --force must not reach the signature check -------------------------
+# The hold is a review decision an owner may override. An unsigned update is
+# not a review decision, and no flag on this command may turn it into one.
+if grep -qE 'FORCE' engine/maintenance/gitops-sync.sh \
+   && ! sed -n '/SAMBUCA_GITOPS_REQUIRE_SIGNED == 1/,/^fi$/p' \
+            engine/maintenance/gitops-sync.sh | grep -q 'FORCE'; then
+    ok_ "--force overrides the review hold but never the signature check"
+else
+    bad_ "--force reaches the signature check — an unsigned update could be forced"
+fi
 
 echo
 printf '  %d passed, %d failed\n\n' "$pass" "$fail"

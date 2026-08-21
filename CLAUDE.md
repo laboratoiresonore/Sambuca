@@ -196,6 +196,17 @@ without it.
   APPLIANCE; `apps/flasher/tests` holds what tests the flasher. The beacon's 21
   tests were written, passing, and invisible to CI because the workflow named
   only one of them — the same shape as a module with no callers.
+- **A check written for one case finds one case.** `sambuca-backup init` was
+  named in messages while the script took no arguments; the test written for it
+  hard-coded `backup`. Two cycles later `sambuca-gitops apply --force` — printed
+  to owners BY THE HELD-UPDATE MESSAGE as the way to release a held update —
+  turned out not to exist either, so following the instruction re-ran the sync,
+  hit the same guard, and printed the same instruction. A loop, on the one path
+  that stops an appliance drifting years behind on security patches. The check
+  now derives command→script from the install mechanisms themselves, so a new
+  command is covered by existing tests instead of needing a new one. **When a
+  test names a specific thing, ask what it would take to make it name the
+  category.**
 - **Ruff is PINNED (0.16.4) and configured once, at the repository root.** Both
   facts are load-bearing. Unpinned, CI installed 0.16.4 while this machine had
   0.15.8 and the two disagreed about default rules, so identical code linted
