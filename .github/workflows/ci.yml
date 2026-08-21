@@ -187,7 +187,12 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e './apps/flasher[dev]'
-      - run: ruff check apps/flasher/src apps/flasher/tests tools tests
+      # ENGINE IS IN THE LIST, and was not. engine/beacon/sambuca-beacon.py
+      # is the only Python under engine/ and it was linted by NOTHING — the
+      # one service that runs with no firewall, no identity provider and no
+      # reverse proxy, while the flasher got three toolchains. It had an
+      # unused import and two unjustified bindings sitting in it.
+      - run: ruff check apps/flasher/src apps/flasher/tests tools tests engine
       # BOTH TEST TREES, and named as directories rather than as files.
       # tests/ holds what tests the APPLIANCE rather than the flasher — the
       # install beacon lives there, and it was written, passing, and invisible

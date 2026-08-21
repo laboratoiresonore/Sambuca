@@ -53,8 +53,8 @@ import hmac
 import json
 import os
 import socket
+import socketserver
 import sys
-import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("SAMBUCA_BEACON_PORT", "8765"))
@@ -181,6 +181,34 @@ class Handler(BaseHTTPRequestHandler):
     # anything else, rather than by checking a method name and hoping.
 
 
+class _Beacon(ThreadingHTTPServer):
+    """ThreadingHTTPServer without the reverse-DNS lookup at startup.
+
+    http.server's server_bind() sets `self.server_name = socket.getfqdn(host)`,
+    and it does so AFTER binding but BEFORE server_activate() calls listen().
+    getfqdn performs a reverse lookup, so on a machine with no working resolver
+    the socket is bound, nothing is listening, and the process sits there
+    silently — no error, nothing on stderr, simply not answering.
+
+    THAT IS A HAZARD HERE SPECIFICALLY. This runs in the first minutes of a
+    fresh install, before phase 50 has configured the network, on a box whose
+    resolver may not exist yet. The one service whose entire job is to reassure
+    somebody that the install is progressing must not begin with a DNS lookup
+    that can stall — the failure mode is an owner watching a blank page and
+    power-cycling a machine mid-partition, which is what this exists to prevent.
+
+    It was caught on macOS CI, where every run of the beacon tests hung. Nothing
+    uses server_name: this binds an explicit address and never constructs a URL
+    from it.
+    """
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host          # NOT getfqdn(host)
+        self.server_port = port
+
+
 def _lan_address() -> str:
     """The address on the local network, so the socket is not bound wider.
 
@@ -194,7 +222,11 @@ def _lan_address() -> str:
         s.connect(("192.0.2.1", 9))       # TEST-NET-1, RFC 5737: never routed
         return s.getsockname()[0]
     except OSError:
-        return "0.0.0.0"
+        # noqa justified: this is the LAST-RESORT fallback when the routing
+        # table cannot be asked. Binding nothing at all would leave an owner
+        # with no way to watch the install, which is the failure this whole
+        # service exists to prevent. The pairing key still gates /progress.
+        return "0.0.0.0"  # noqa: S104
     finally:
         s.close()
 
@@ -226,7 +258,8 @@ def main() -> int:
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     probe.settimeout(0.5)
     try:
-        if probe.connect_ex(("127.0.0.1" if bind == "0.0.0.0" else bind, PORT)) == 0:
+        # noqa: S104 - a COMPARISON against the fallback, not a bind
+        if probe.connect_ex(("127.0.0.1" if bind == "0.0.0.0" else bind, PORT)) == 0:  # noqa: S104
             print(f"sambuca-beacon: port {PORT} is already in use; refusing to "
                   f"start a second one", file=sys.stderr)
             return 1
@@ -234,7 +267,7 @@ def main() -> int:
         probe.close()
 
     try:
-        httpd = ThreadingHTTPServer((bind, PORT), Handler)
+        httpd = _Beacon((bind, PORT), Handler)
     except OSError as exc:
         print(f"sambuca-beacon: cannot listen on {bind}:{PORT}: {exc}",
               file=sys.stderr)
