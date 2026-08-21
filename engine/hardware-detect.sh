@@ -47,6 +47,13 @@ sb_trap_err
 # VRAM below which Immich's ML worker is forced onto the CPU regardless of tier.
 : "${IMMICH_GPU_MIN_VRAM_MB:=20000}"
 
+# zram, compressed swap in RAM. Overridable like every other threshold here,
+# because a limit tuned by whoever is watching beats one hardcoded by whoever
+# wrote it.
+: "${ZRAM_MAX_RAM_MB:=32768}"        # above this there is nothing to rescue
+: "${ZRAM_MIN_MB:=1024}"             # below this it is a token, not a device
+: "${ZRAM_CAP_MB:=8192}"             # compressed pages, not a second disk
+
 # VRAM below which the image plane cannot run at all, even streaming weights
 # from system RAM. Below this the plane is disabled rather than shipped broken.
 : "${IMAGE_MIN_VRAM_MB:=6000}"
@@ -544,6 +551,37 @@ arbitrate() {
         COMFYUI_RESERVE_VRAM_GB="${COMFYUI_RESERVE_VRAM_GB:-1}"
     fi
 
+    # --- zram: compressed swap in RAM --------------------------------------
+    #
+    # THE README PROMISED THIS AND NOTHING PROVIDED IT — in a paragraph whose
+    # last line reads "'Lean' is a number in profile.env you can check, not an
+    # adjective in a README". It was an adjective in a README.
+    #
+    # It matters most exactly where this project aims: a 4-8 GiB office machine
+    # running a file server, a photo library and a database. Compressed swap in
+    # RAM buys perhaps 2-3x on cold pages for a few percent of CPU, and it is
+    # the difference between a tier-4 box that swaps to a spinning disk and one
+    # that does not.
+    #
+    # SIZED, THEN BOUNDED, and the bounds are the interesting part:
+    #   * half of RAM, the conventional figure, because zram pages are
+    #     compressed roughly 2-3x and a larger device mostly wastes metadata
+    #   * NEVER on a machine with plenty. Above ZRAM_MAX_RAM_MB there is nothing
+    #     to rescue, and a compressed swap device that is never touched is a
+    #     kernel thread and some accounting for no benefit.
+    #   * a floor, so a small machine gets something worth having rather than a
+    #     token device
+    ZRAM_SIZE_MB=0
+    if ((RAM_TOTAL_MB > 0)) && ((RAM_TOTAL_MB <= ZRAM_MAX_RAM_MB)); then
+        ZRAM_SIZE_MB=$(( RAM_TOTAL_MB / 2 ))
+        ((ZRAM_SIZE_MB < ZRAM_MIN_MB)) && ZRAM_SIZE_MB="$ZRAM_MIN_MB"
+        ((ZRAM_SIZE_MB > ZRAM_CAP_MB)) && ZRAM_SIZE_MB="$ZRAM_CAP_MB"
+        log "zram: ${ZRAM_SIZE_MB} MiB of compressed swap (RAM ${RAM_TOTAL_MB} MiB)"
+    else
+        log "zram: not configured — ${RAM_TOTAL_MB} MiB is above the ${ZRAM_MAX_RAM_MB} MiB"
+        log "  threshold, so there is nothing for compressed swap to rescue."
+    fi
+
     # --- background ML (Immich) --------------------------------------------
     if ((VRAM_UNKNOWN == 0)) && ((VRAM_TOTAL_MB >= IMMICH_GPU_MIN_VRAM_MB)) \
        && [[ $GPU_PROFILE != cpu ]]; then
@@ -670,6 +708,7 @@ SAMBUCA_IMAGE_HANDOFF=${IMAGE_HANDOFF}
 COMFYUI_VRAM_ARGS="${IMAGE_VRAM_ARGS}"
 COMFYUI_MEM_LIMIT=${COMFYUI_MEM_LIMIT}
 COMFYUI_OUTPUT_TMPFS=${COMFYUI_OUTPUT_TMPFS}
+ZRAM_SIZE_MB=${ZRAM_SIZE_MB}
 COMFYUI_RESERVE_VRAM_GB=${COMFYUI_RESERVE_VRAM_GB}
 
 # --- compose wiring ---

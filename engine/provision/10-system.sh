@@ -145,4 +145,50 @@ install -d -m 0755 "${SB_LIB}"
 install -d -m 0750 "${SB_LOG_DIR}"
 install -d -m 0700 "${SB_ETC}/secrets"
 
+# --- zram: compressed swap in RAM -------------------------------------------
+#
+# THE README PROMISED THIS AND NOTHING PROVIDED IT, in the same paragraph that
+# says "'Lean' is a number in profile.env you can check, not an adjective in a
+# README". The size is now exactly that: hardware-detect.sh measures RAM and
+# writes ZRAM_SIZE_MB, and 0 means it decided this machine does not need it.
+#
+# It matters most where this project aims — a 4-8 GiB office box running a file
+# server, a photo library and a database. Compressed pages buy roughly 2-3x on
+# cold memory for a few percent of CPU, which is the difference between swapping
+# to a spinning disk and not swapping at all.
+zram_mb="$(sb_env_get "${SB_ETC}/profile.env" ZRAM_SIZE_MB 0)"
+if [[ $zram_mb =~ ^[0-9]+$ ]] && ((zram_mb > 0)); then
+    if sb_retry 2 10 apt-get install -y -qq --no-install-recommends             systemd-zram-generator >/dev/null 2>&1; then
+        {
+            printf '# Written by sambuca 10-system.sh. Size measured by
+'
+            printf '# hardware-detect.sh; edit ZRAM_SIZE_MB in profile.env, not here.
+'
+            printf '[zram0]
+'
+            printf 'zram-size = %s
+' "$zram_mb"
+            # zstd over lzo-rle: better ratio at a cost this machine can afford,
+            # and the ratio is the entire point of the exercise.
+            printf 'compression-algorithm = zstd
+'
+        } | sb_atomic_write /etc/systemd/zram-generator.conf 0644
+        sb_run systemctl daemon-reload || warn "daemon-reload reported errors"
+        # FAILING HERE IS NOT FATAL. A machine without compressed swap is slower
+        # under memory pressure; a machine that refuses to finish provisioning
+        # because of it is broken.
+        if sb_run systemctl start systemd-zram-setup@zram0.service; then
+            ok "zram: ${zram_mb} MiB of compressed swap"
+        else
+            warn "zram configured but the device did not start; the machine is"
+            warn "  fine, it will simply swap to disk under pressure"
+        fi
+    else
+        warn "systemd-zram-generator is unavailable; skipping compressed swap"
+    fi
+else
+    log "zram: not configured — the profiler measured enough RAM that there is"
+    log "  nothing for compressed swap to rescue"
+fi
+
 ok "base system configured (host=${SAMBUCA_HOSTNAME}, tz=${SAMBUCA_TIMEZONE})"

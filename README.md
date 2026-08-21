@@ -905,10 +905,19 @@ unacceptable defaults in one container. The sambuca variant:
   believes it owns the card.
 
 **And the machine runs as lean as it can.** Nothing idles that was not asked
-for; spare RAM is spent on making storage fast — tmpfs scratch and zram, sized
-from measured hardware by the same profiler that sizes everything else, with a
-hard floor so a large render cannot squeeze Postgres into the OOM killer. "Lean"
-is a number in `profile.env` you can check, not an adjective in a README.
+for; spare RAM is spent on making storage fast — tmpfs scratch for generated
+images, and zram compressed swap sized from measured RAM, with a floor and a cap
+so a large render cannot squeeze Postgres into the OOM killer. A machine with
+plenty of memory is given no zram at all, deliberately: a compressed swap device
+nothing ever touches is a kernel thread for no benefit. "Lean" is a number in
+`profile.env` you can check, not an adjective in a README — `ZRAM_SIZE_MB` and
+`COMFYUI_OUTPUT_TMPFS` are both there, and `0` means the profiler decided this
+machine does not need it.
+
+> The zram half of that sentence was an adjective in a README until
+> 2026-08-21: it was promised here and implemented nowhere, in the paragraph
+> that ends by claiming otherwise. The sizing is verified across all three
+> bounds by `tests/test-zram.sh`; it has not yet run on real hardware.
 
 ### Where to help
 
