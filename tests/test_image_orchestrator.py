@@ -40,6 +40,36 @@ SI = _load()
 GRAPH = json.loads(WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_the_default_workflow_path_is_the_one_the_container_sees() -> None:
+    """The orchestrator runs INSIDE the comfyui container, not on the host.
+
+    ComfyUI has no ports mapping on purpose — the Caddyfile calls an ungated
+    route to it a remote-code-execution surface — so sambuca-image goes to it
+    via docker exec rather than reaching in from outside. That means the default
+    must be the path compose mounts INSIDE the container. The first version used
+    the host path, which does not exist in there: the program would have shipped
+    wired up and unable to find its own graph.
+    """
+    import yaml
+    compose = yaml.safe_load((REPO / "compose/image.yml").read_text(encoding="utf-8"))
+    mounts = compose["services"]["comfyui"]["volumes"]
+    target = next(m.split(":")[1] for m in mounts if "workflows" in m)
+    assert str(SI.DEFAULT_WORKFLOW).replace("\\", "/").startswith(target), (
+        f"default is {SI.DEFAULT_WORKFLOW}, but compose mounts the workflows at "
+        f"{target} inside the container")
+
+
+def test_the_orchestrator_is_mounted_where_the_wrapper_runs_it() -> None:
+    """A command that is installed but whose payload is not there is worse than
+    one that is missing: it fails at the moment somebody first tries it."""
+    compose = (REPO / "compose/image.yml").read_text(encoding="utf-8")
+    wrapper = (REPO / "engine/image/sambuca-image").read_text(encoding="utf-8")
+    assert "sambuca-image.py:/opt/sambuca-image.py:ro" in compose, (
+        "the orchestrator is not mounted into the container")
+    assert "/opt/sambuca-image.py" in wrapper, (
+        "the wrapper runs a path the compose file does not provide")
+
+
 # --------------------------------------------------------------- the stub
 
 

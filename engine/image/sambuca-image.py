@@ -48,8 +48,13 @@ import urllib.request
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8188
+# THE PATH AS THE CONTAINER SEES IT. This program runs inside the comfyui
+# container (see the sambuca-image wrapper: ComfyUI has no ports mapping on
+# purpose, so the orchestrator goes to it rather than the other way round), and
+# compose mounts the workflow directory there read-only. The host path
+# /opt/sambuca/compose/config/comfyui/workflows does not exist in here.
 DEFAULT_WORKFLOW = pathlib.Path(
-    "/opt/sambuca/compose/config/comfyui/workflows/flux-schnell.json"
+    "/root/ComfyUI/user/default/workflows/flux-schnell.json"
 )
 
 # Bounds, not suggestions. Each one is a real limit of the shipped model or of

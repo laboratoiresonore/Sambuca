@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#
+# sambuca :: sambuca-image — ask this machine for a picture.
+#
+# A THIN WRAPPER, AND THE REASON IS A SECURITY DECISION SOMEBODY ELSE MADE.
+#
+# ComfyUI has NO ports: mapping. That is deliberate, and the Caddyfile says why:
+# it has no authentication of its own and its API can load models and write
+# files, so an ungated route to it "would be a remote-code-execution surface
+# wearing a friendly name". It is reachable only on the compose network, behind
+# the auth gate.
+#
+# So the orchestrator does not reach in from the host. Publishing 8188 — even on
+# loopback — would hand every local process the ungated API that decision exists
+# to prevent. It runs INSIDE the container instead, where 127.0.0.1:8188 is
+# ComfyUI itself, using the same `docker exec` pattern 70-models.sh already uses
+# to drive Ollama.
+#
+set -euo pipefail
+
+CONTAINER="${SAMBUCA_COMFYUI_CONTAINER:-sambuca-comfyui}"
+
+if [ $# -eq 0 ]; then
+    cat <<'USAGE'
+sambuca-image — ask this machine for a picture
+
+  sambuca-image "a red bicycle against a white wall"
+  sambuca-image "a lighthouse at dusk" --width 768 --height 1024
+  sambuca-image "the same one again" --seed 4212289
+
+Options: --width --height --steps --seed --timeout
+
+The picture lands on a temporary disk inside the image service and does NOT
+survive a reboot. Save anything worth keeping.
+USAGE
+    exit 0
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+    printf 'sambuca-image: docker is not installed on this machine\n' >&2
+    exit 1
+fi
+
+# NAME THE ACTUAL STATE. "Error response from daemon: No such container" is not
+# something an owner can act on; "picture-making is switched off" is.
+if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -qx true; then
+    printf 'sambuca-image: the image service is not running.\n' >&2
+    printf '\n' >&2
+    printf '  Picture-making is optional and is off on machines without enough\n' >&2
+    printf '  graphics memory — this one may simply not have it switched on.\n' >&2
+    printf '\n' >&2
+    printf '  Check with:  sambuca-health\n' >&2
+    exit 1
+fi
+
+exec docker exec -i "$CONTAINER" python3 /opt/sambuca-image.py "$@"

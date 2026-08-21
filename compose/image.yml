@@ -45,6 +45,11 @@ services:
       - ${SAMBUCA_APPDATA}/comfyui/models:/root/ComfyUI/models:ro
       - ${SAMBUCA_APPDATA}/comfyui/input:/root/ComfyUI/input
       - ./config/comfyui/workflows:/root/ComfyUI/user/default/workflows:ro
+      # The orchestrator runs INSIDE this container, because ComfyUI has no
+      # ports: mapping on purpose — see the Caddyfile. Read-only: the thing
+      # that drives the API must not be rewritable from inside the container
+      # whose API it drives.
+      - ../engine/image/sambuca-image.py:/opt/sambuca-image.py:ro
     tmpfs:
       # Generated pictures never touch the disk. Sized from the profile: big
       # enough for a working session, small enough that it cannot evict the
