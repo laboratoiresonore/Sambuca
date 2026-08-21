@@ -86,7 +86,8 @@ class Step:
 
 
 def plan(*, has_tailscale: bool, has_imager: bool,
-         makes_recovery_document: bool = False) -> list[Step]:
+         makes_recovery_document: bool = False,
+         can_watch: bool = False) -> list[Step]:
     """The screens, decided from what is actually on this machine.
 
     Takes facts rather than discovering them, so the sequence can be tested
@@ -189,10 +190,30 @@ def plan(*, has_tailscale: bool, has_imager: bool,
         Step(
             key="done",
             title="Put the card in and switch it on",
+            # WHAT THIS SAYS DEPENDS ON WHETHER ANYTHING CAN ACTUALLY WATCH.
+            #
+            # It used to promise "Sambuca will watch and tell you when it is
+            # ready", with a button reading "Watch it start" — and there was NO
+            # action behind that button, so it simply closed the window. Worse,
+            # on the Pi flow there is nothing to watch at all: the beacon runs
+            # from first-boot.sh and the Pi's firstrun.sh never invokes it. The
+            # promise could not have been kept even with the button wired.
+            #
+            # The card writing its results back into its own log IS the Pi's
+            # feedback mechanism. Saying that is honest and actionable;
+            # "Sambuca will tell you" was neither.
             body=("First boot takes 10 to 20 minutes while it downloads and "
+                  "starts everything. The lights will blink; leave it alone.\n\n"
+                  "It writes its results BACK ONTO THE CARD. If something goes "
+                  "wrong, put the card in a reader and open "
+                  "sambuca-firstboot.log — it says what happened, in plain "
+                  "words.\n\n"
+                  "Once it is up, come back and run:  sambuca-flasher handover")
+            if not can_watch else
+                 ("First boot takes 10 to 20 minutes while it downloads and "
                   "starts everything.\n\n"
-                  "Sambuca will watch and tell you when it is ready."),
-            continue_label="Watch it start",
+                  "Sambuca can watch it and tell you when it is ready."),
+            continue_label="Watch it start" if can_watch else "Close",
         ),
     ])
     return steps

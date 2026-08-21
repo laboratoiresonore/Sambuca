@@ -110,10 +110,22 @@ class TestThePlan:
 
     def test_the_flow_ends_by_pointing_forward_not_by_stopping(self):
         """The failure this project keeps fixing: a flow that ends in silence.
-        The last screen must hand over to something."""
-        steps = gui.plan(has_tailscale=True, has_imager=True)
-        assert steps[-1].key == "done"
-        assert "watch" in steps[-1].continue_label.lower()
+
+        CHECKS THE INTENT, NOT A LABEL. The first version asserted the button
+        said "watch" — which pinned a promise the Pi flow cannot keep, since
+        the beacon runs from first-boot.sh and the Pi never invokes it. When
+        that label was corrected to "Close", this test failed while the code
+        got MORE honest. What matters is that the last screen tells somebody
+        what happens next, wherever it says it.
+        """
+        for can_watch in (False, True):
+            last = gui.plan(has_tailscale=True, has_imager=True,
+                            can_watch=can_watch)[-1]
+            assert last.key == "done"
+            forward = f"{last.body} {last.continue_label}".lower()
+            assert ("watch" in forward or "handover" in forward
+                    or "firstboot.log" in forward), (
+                "the last screen must say what happens next")
 
     @pytest.mark.parametrize("ts,im", [(True, True), (True, False),
                                        (False, True), (False, False)])
@@ -443,3 +455,41 @@ class TestTheAvailabilityCheck:
         check_at = src.index('getattr(args, "check", False)')
         run_at = src.index("wizard.run()")
         assert check_at < run_at, "the check must return before anything opens"
+
+
+class TestNoButtonPromisesWhatItCannotDo:
+    """Every button either performs its action or names what it really does.
+
+    THE BUG: the last screen's button read "Watch it start" and there was no
+    action behind it, so it closed the window. Worse, on the Pi flow there is
+    nothing to watch at all — the beacon runs from first-boot.sh, and the Pi's
+    firstrun.sh never invokes it. The promise could not have been kept even
+    with the button wired.
+    """
+
+    def test_no_step_has_an_action_label_without_an_action(self):
+        """A button whose text names a task must either have a handler or say
+        something neutral like Close, Continue or Start."""
+        actions = set(gui.build_actions())
+        neutral = {"continue", "start", "close", "next", "finish", "done"}
+        for ts in (True, False):
+            for im in (True, False):
+                for s in gui.plan(has_tailscale=ts, has_imager=im):
+                    if s.key in actions:
+                        continue
+                    assert s.continue_label.strip().lower() in neutral, (
+                        f"step {s.key!r} has no action but its button says "
+                        f"{s.continue_label!r} — that promises work nobody does")
+
+    def test_the_pi_ending_points_at_the_card_not_at_a_watcher(self):
+        """The card writing its results back into its own log IS the Pi's
+        feedback mechanism. Saying so is actionable; "Sambuca will tell you"
+        was not, because nothing on that path can."""
+        last = gui.plan(has_tailscale=True, has_imager=True)[-1]
+        assert last.continue_label == "Close"
+        assert "sambuca-firstboot.log" in last.body
+        assert "handover" in last.body
+
+    def test_the_watchable_ending_only_appears_when_something_can_watch(self):
+        last = gui.plan(has_tailscale=True, has_imager=True, can_watch=True)[-1]
+        assert last.continue_label == "Watch it start"
