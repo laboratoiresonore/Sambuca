@@ -40,9 +40,26 @@ else
     exit 1
 fi
 
-chmod +x "$INSTALL_ROOT"/engine/*.sh 2>/dev/null || true
-chmod +x "$INSTALL_ROOT"/engine/maintenance/*.sh 2>/dev/null || true
-chmod +x "$INSTALL_ROOT"/engine/autoinstall/*.sh 2>/dev/null || true
+# EXECUTABLE BY SHEBANG, NOT BY DIRECTORY.
+#
+# This listed three glob patterns: engine/*.sh, engine/maintenance/*.sh and
+# engine/autoinstall/*.sh. Nothing carries an execute bit in git — every engine
+# file is committed 100644 — so anything outside those three patterns arrives
+# unrunnable.
+#
+# engine/image/sambuca-image is exactly that: a wrapper with no .sh extension,
+# in a fourth directory, symlinked into /usr/local/bin by this very script. An
+# owner typing `sambuca-image "a bicycle"` would have got "Permission denied"
+# from a command the appliance had just told them about.
+#
+# A shebang is the file saying it is meant to be run. Asking that question
+# covers .sh, .py and extensionless wrappers alike, and covers the next one
+# added without anyone remembering to edit this list.
+find "$INSTALL_ROOT/engine" -type f -print 2>/dev/null | while IFS= read -r f; do
+    if [ "$(head -c 2 "$f" 2>/dev/null)" = '#!' ]; then
+        chmod +x "$f" 2>/dev/null || true
+    fi
+done
 
 # ---------------------------------------------------------------------------
 # 2. Provisioning payload -> the boot partition.

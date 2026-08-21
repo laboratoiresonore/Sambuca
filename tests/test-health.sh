@@ -119,8 +119,10 @@ echo "commands the appliance names actually exist"
 # So the mapping is read from the symlinks the installer ACTUALLY creates,
 # rather than a list kept here that would drift from it.
 declare -A SCRIPT_OF=()
+declare -A SYMLINKED=()
 while read -r target cmd; do
     SCRIPT_OF["${cmd##*/sambuca-}"]="${target#\$INSTALL_ROOT/}"
+    SYMLINKED["${cmd##*/sambuca-}"]=1
 done < <(grep -oE 'ln -sf "\$INSTALL_ROOT/[^"]+" +/usr/local/bin/sambuca-[a-z-]+' \
              engine/autoinstall/late-command.sh \
          | sed 's/ln -sf "//; s/" */ /')
@@ -168,6 +170,39 @@ done < <(grep -rhoE 'sambuca-[a-z-]+ [a-z][a-z-]+' engine/ README.md docs/ --inc
          | sed 's/^sambuca-//' \
          | grep -vE ' (the|a|is|to|and|or|will|can|has|for|on|in|at|it|not|from|with|your|this|that|are|was|by)$' \
          | sort -u)
+
+# --- 9b. every installed command can actually RUN ---------------------------
+# Nothing in engine/ carries an execute bit in git — every file is committed
+# 100644 — so the installer adds them. It used to do that with three directory
+# globs (engine/*.sh, engine/maintenance/*.sh, engine/autoinstall/*.sh), and
+# engine/image/sambuca-image sits in a fourth directory with no .sh extension.
+# It was symlinked into /usr/local/bin by that same script and would have
+# answered "Permission denied" to an owner typing a command the appliance had
+# just recommended.
+#
+# The chmod is shebang-driven now, so this checks the property that makes that
+# work: anything installed as a command must SAY it is executable.
+for cmd in "${!SCRIPT_OF[@]}"; do
+    # ONLY THE SYMLINKED ONES. sambuca-identity is not a symlink: 80-identity.sh
+    # WRITES /usr/local/bin/sambuca-identity with sb_atomic_write ... 0755, so
+    # the installed command carries its own mode and the generator never needs
+    # one. Checking it here accused a working command — the same false-accusation
+    # trap this file already warns about two checks above.
+    [[ -n ${SYMLINKED[$cmd]:-} ]] || continue
+    script="${SCRIPT_OF[$cmd]}"
+    [[ -f $script ]] || continue
+    if [[ "$(head -c 2 "$script" 2>/dev/null)" == '#!' ]]; then
+        ok_ "sambuca-${cmd} carries a shebang, so the installer makes it runnable"
+    else
+        bad_ "sambuca-${cmd} (${script}) has no shebang — it would install unrunnable"
+    fi
+done
+
+if grep -q 'head -c 2' engine/autoinstall/late-command.sh; then
+    ok_ "the installer decides executability by shebang, not by directory"
+else
+    bad_ "the installer still uses directory globs; a new command elsewhere would"
+fi
 
 # --- 10. help works WITHOUT root -------------------------------------------
 # Asking somebody to become root to find out what the commands are is a small
