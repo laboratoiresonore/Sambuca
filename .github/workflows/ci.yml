@@ -160,6 +160,19 @@ jobs:
   flasher:
     name: flasher
     runs-on: ${{ matrix.os }}
+    # A HUNG JOB MUST FAIL, NOT WAIT SIX HOURS.
+    #
+    # The macOS entries in this matrix had never once completed — 17 of 18 runs
+    # showed "cancelled", and the reason was not scarce runners. pytest HANGS
+    # there: nineteen minutes and counting on a suite that takes two minutes on
+    # ubuntu and windows. GitHub's default job timeout is six hours, so the job
+    # sat there until the next push cancelled it, and the dashboard called that
+    # "cancelled" rather than "broken".
+    #
+    # A cadence of a push every twenty minutes therefore hid a genuine hang
+    # indefinitely, and reports of "everything green" were true only of the jobs
+    # fast enough to finish.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -182,7 +195,12 @@ jobs:
       # That is the same shape as a module with no callers: green locally,
       # absent from the build. Naming directories means the next appliance-side
       # test file is picked up without anyone remembering to edit this.
-      - run: python -m pytest apps/flasher/tests tests -q
+      # --timeout NAMES the hanging test instead of leaving a silent job.
+      # A job timeout says "something hung"; this says which one, and the rest
+      # of the suite still runs. On POSIX pytest-timeout uses SIGALRM, which can
+      # interrupt a blocking C call — the shape a Tk root waiting on a display
+      # server would take.
+      - run: python -m pytest apps/flasher/tests tests -q --timeout=120
 
   caddy:
     name: caddyfile
