@@ -134,6 +134,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="also open the search in your browser")
     p_boot.add_argument("--list-vendors", action="store_true")
 
+    sub.add_parser(
+        "window",
+        help="open the graphical flow (falls back to the console flow)")
+
     p_vault = sub.add_parser(
         "open-vault",
         help="recover your secrets by answering your three questions")
@@ -190,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_write_pi(args)
         if args.command == "provision-pi":
             return _cmd_provision_pi(args)
+        if args.command == "window":
+            return _cmd_window(args)
         if args.command == "open-vault":
             return _cmd_open_vault(args)
         if args.command == "watch":
@@ -1031,6 +1037,43 @@ def _offer_vault(keys, output_dir) -> None:
     _say("  stick in a drawer is enough.")
     _say()
     _say("  To use it:  sambuca-flasher open-vault")
+
+
+def _cmd_window(args) -> int:
+    """Open the graphical flow, or explain plainly why it cannot.
+
+    THE FALLBACK IS THE POINT. tkinter is stdlib on paper and absent in
+    practice — Debian splits it into python3-tk, and a frozen binary only has
+    it if the build bundled Tcl/Tk. Rather than crash, this says what is
+    missing and names the console flow that already works.
+    """
+    from . import gui
+
+    ok, why = gui.available()
+    if not ok:
+        _say()
+        _say("  A window cannot be opened here.")
+        _say(f"    {why}")
+        _say()
+        _say("  On Debian or Ubuntu:  sudo apt install python3-tk")
+        _say()
+        _say("  Everything works without it. To write a Raspberry Pi card:")
+        _say("      sambuca-flasher write-pi")
+        return 1
+
+    # NOT BUILT YET, AND SAID OUT LOUD. The screens and their order are
+    # decided and tested (gui.plan); the widgets that draw them are not
+    # written. Opening a half-window would be worse than this message.
+    steps = gui.plan(has_tailscale=False, has_imager=False)
+    _say()
+    _say("  The window is not built yet - only the flow behind it is.")
+    _say(f"  {len(steps)} screens are decided and tested:")
+    for s in steps:
+        _say(f"    - {s.title}")
+    _say()
+    _say("  Use the console flow, which is complete:")
+    _say("      sambuca-flasher write-pi")
+    return 1
 
 
 def _cmd_open_vault(args) -> int:
