@@ -190,3 +190,138 @@ def next_key(steps: list[Step], current: str) -> str | None:
         return None
     i = keys.index(current)
     return keys[i + 1] if i + 1 < len(keys) else None
+
+
+# ---------------------------------------------------------------------------
+# The window itself
+# ---------------------------------------------------------------------------
+#
+# EVERY ACTION IS INJECTED. The wizard knows how to show a screen and move to
+# the next one; it does not know how to install Tailscale or start the Imager.
+# That is not layering for its own sake — it is what lets the whole thing be
+# driven in tests without launching a real installer or erasing a real card.
+
+
+class Wizard:
+    """A plain next/back wizard over `plan()`.
+
+    Deliberately dull. A novice installing an operating system for the first
+    time does not want a novel interface; they want to know where they are, how
+    many steps are left, and which button goes forward.
+    """
+
+    def __init__(self, steps, actions=None, root=None):
+        import tkinter as tk
+        from tkinter import ttk
+
+        self._tk = tk
+        self.steps = list(steps)
+        self.actions = dict(actions or {})
+        self.index = 0
+        self.busy = False
+
+        self.root = root or tk.Tk()
+        self.root.title("Sambuca")
+        self.root.minsize(620, 420)
+
+        outer = ttk.Frame(self.root, padding=24)
+        outer.pack(fill="both", expand=True)
+
+        self.progress = ttk.Label(outer, text="", foreground="#666")
+        self.progress.pack(anchor="w")
+
+        self.title = ttk.Label(outer, text="", font=("", 16, "bold"),
+                               wraplength=560, justify="left")
+        self.title.pack(anchor="w", pady=(8, 12))
+
+        self.body = ttk.Label(outer, text="", wraplength=560, justify="left")
+        self.body.pack(anchor="w", fill="x")
+
+        # Its own row so a long message cannot push the buttons off-screen —
+        # which on a 720p laptop would leave somebody with no way forward.
+        buttons = ttk.Frame(outer)
+        buttons.pack(side="bottom", fill="x", pady=(24, 0))
+
+        self.back_btn = ttk.Button(buttons, text="Back", command=self.back)
+        self.back_btn.pack(side="left")
+
+        self.next_btn = ttk.Button(buttons, text="Continue", command=self.forward)
+        self.next_btn.pack(side="right")
+
+        self.status = ttk.Label(outer, text="", foreground="#666", wraplength=560)
+        self.status.pack(side="bottom", anchor="w")
+
+        self.render()
+
+    # -- state -------------------------------------------------------------
+    @property
+    def current(self):
+        return self.steps[self.index]
+
+    def render(self):
+        s = self.current
+        self.progress.configure(
+            text=f"Step {self.index + 1} of {len(self.steps)}")
+        self.title.configure(text=s.title)
+        self.body.configure(text=s.body)
+        self.next_btn.configure(
+            text=s.continue_label,
+            state="normal" if (s.can_continue and not self.busy) else "disabled")
+        # No Back on the first screen: a button that cannot do anything teaches
+        # people the machine is arbitrary.
+        self.back_btn.configure(
+            state="disabled" if (self.index == 0 or self.busy) else "normal")
+
+    def back(self):
+        if self.index > 0 and not self.busy:
+            self.index -= 1
+            self.status.configure(text="")
+            self.render()
+
+    def forward(self):
+        """Run this step's action, then advance only if it succeeded.
+
+        ADVANCING ON FAILURE IS THE BUG THIS AVOIDS. If installing Tailscale or
+        starting the Imager fails, moving on regardless would leave somebody on
+        a screen that assumes work which never happened — and the next screen's
+        instructions would be quietly wrong.
+        """
+        if self.busy:
+            return
+        step = self.current
+        action = self.actions.get(step.key)
+
+        if action is not None:
+            self.busy = True
+            self.render()
+            try:
+                ok, message = action()
+            except Exception as exc:                      # noqa: BLE001
+                # A traceback in a window is the failure mode this audience
+                # cannot act on. Say what happened, stay put.
+                ok, message = False, f"{exc.__class__.__name__}: {exc}"
+            finally:
+                self.busy = False
+            self.status.configure(text=message or "")
+            if not ok:
+                self.render()
+                return
+
+        if self.index + 1 < len(self.steps):
+            self.index += 1
+            self.status.configure(text="")
+            self.render()
+        else:
+            self.close()
+
+    def close(self):
+        # Swallowed deliberately and narrowly: Tk raises if the window is
+        # already gone (the owner clicked the X, or a test destroyed it), and
+        # there is nothing to report about closing something already closed.
+        try:
+            self.root.destroy()
+        except Exception:                                 # noqa: BLE001, S110
+            pass
+
+    def run(self):                                        # pragma: no cover
+        self.root.mainloop()

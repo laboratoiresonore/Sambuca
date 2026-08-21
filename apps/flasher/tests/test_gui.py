@@ -138,3 +138,118 @@ class TestThePlan:
                     assert "into the imager" in around or "never sees" in around, (
                         f"step {s.key} appears to ask for a secret: "
                         f"{m.group(0)!r}")
+
+
+class TestTheWizard:
+    """The widgets, driven for real.
+
+    A withdrawn Tk window needs no visible display, so this constructs the
+    actual wizard and clicks its actual buttons — not a mock of them. On a
+    machine without a toolkit the whole class skips rather than failing, which
+    is the same honesty the `window` command shows its owner.
+    """
+
+    @pytest.fixture
+    def wiz(self):
+        ok, why = gui.available()
+        if not ok:
+            pytest.skip(f"no toolkit here: {why}")
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        w = gui.Wizard(gui.plan(has_tailscale=True, has_imager=True), root=root)
+        try:
+            yield w
+        finally:
+            w.close()
+
+    def test_it_starts_on_the_first_screen_with_no_way_back(self, wiz):
+        """A Back button on screen one can only disappoint.
+
+        str() around cget is not decoration: ttk returns a Tcl_Obj, and
+        `== "disabled"` is False against it while str() comparison is True.
+        The first version of this test failed while the widget was correct.
+        """
+        assert wiz.current.key == "welcome"
+        assert str(wiz.back_btn.cget("state")) == "disabled"
+        assert "1 of" in wiz.progress.cget("text")
+
+    def test_the_button_says_what_this_step_does(self, wiz):
+        """"Continue" everywhere tells somebody nothing about what happens
+        next; "Open the Imager" does."""
+        assert str(wiz.next_btn.cget("text")) == wiz.current.continue_label
+
+    def test_clicking_forward_moves_on_and_enables_back(self, wiz):
+        wiz.forward()
+        assert wiz.current.key != "welcome"
+        assert str(wiz.back_btn.cget("state")) == "normal"
+
+    def test_back_returns_to_the_previous_screen(self, wiz):
+        wiz.forward()
+        here = wiz.current.key
+        wiz.back()
+        assert wiz.current.key != here
+        assert wiz.index == 0
+
+    def test_a_failing_action_does_NOT_advance(self):
+        """THE BUG THIS PREVENTS. If installing Tailscale or starting the
+        Imager fails and the wizard moves on regardless, the next screen's
+        instructions assume work that never happened — and are quietly wrong at
+        the moment somebody is trusting them most."""
+        ok, why = gui.available()
+        if not ok:
+            pytest.skip(why)
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        steps = gui.plan(has_tailscale=False, has_imager=True)
+        w = gui.Wizard(steps, actions={
+            "welcome": lambda: (False, "could not do the thing")}, root=root)
+        try:
+            w.forward()
+            assert w.current.key == "welcome", "it advanced past a failure"
+            assert "could not" in w.status.cget("text")
+        finally:
+            w.close()
+
+    def test_an_action_that_raises_is_shown_not_thrown(self):
+        """A traceback in a window is something this audience cannot act on."""
+        ok, why = gui.available()
+        if not ok:
+            pytest.skip(why)
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        def boom():
+            raise RuntimeError("the disk went away")
+        w = gui.Wizard(gui.plan(has_tailscale=True, has_imager=True),
+                       actions={"welcome": boom}, root=root)
+        try:
+            w.forward()               # must not raise
+            assert w.current.key == "welcome"
+            assert "disk went away" in w.status.cget("text")
+        finally:
+            w.close()
+
+    def test_a_succeeding_action_advances(self):
+        ok, why = gui.available()
+        if not ok:
+            pytest.skip(why)
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        w = gui.Wizard(gui.plan(has_tailscale=True, has_imager=True),
+                       actions={"welcome": lambda: (True, "done")}, root=root)
+        try:
+            w.forward()
+            assert w.current.key == "reachability"
+        finally:
+            w.close()
+
+    def test_every_screen_is_reachable_by_clicking_forward(self, wiz):
+        """No dead ends in the real widget path, not just in the data."""
+        seen = [wiz.current.key]
+        for _ in range(len(wiz.steps) - 1):
+            wiz.forward()
+            seen.append(wiz.current.key)
+        assert seen == [s.key for s in wiz.steps]
