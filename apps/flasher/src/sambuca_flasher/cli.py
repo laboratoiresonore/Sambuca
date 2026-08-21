@@ -140,6 +140,9 @@ def main(argv: list[str] | None = None) -> int:
     p_win.add_argument("--hostname", default="sambuca")
     p_win.add_argument("--engine", type=Path,
                        help="engine directory to stage onto the card")
+    p_win.add_argument(
+        "--check", action="store_true",
+        help="report whether a window can be opened here, and exit")
 
     p_vault = sub.add_parser(
         "open-vault",
@@ -1069,6 +1072,21 @@ def _cmd_window(args) -> int:
     from . import gui
 
     ok, why = gui.available()
+
+    # --check EXISTS SO THE FROZEN BINARY CAN BE TESTED. Whether PyInstaller
+    # bundles Tcl/Tk is the single fact that decides if the window ships, and
+    # it cannot be learned from source: only a built binary knows. The smoke
+    # test cannot run `window` itself — that would open a real window and block
+    # on its event loop forever — so this answers and exits.
+    #
+    # It is useful to an owner for the same reason: "can this computer show me
+    # a window, yes or no" without opening one.
+    if getattr(args, "check", False):
+        _say(f"window available: {'yes' if ok else 'no'}")
+        if not ok:
+            _say(f"reason: {why}")
+        return 0 if ok else 1
+
     if not ok:
         _say()
         _say("  A window cannot be opened here.")

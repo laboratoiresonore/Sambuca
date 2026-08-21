@@ -391,3 +391,55 @@ class TestTheDoubleClickPath:
         assert "double-clicking" in cli._MENU
         assert "touches a disk until it asks you first" in cli._MENU
         assert "window" in cli._MENU.lower()
+
+
+class TestTheAvailabilityCheck:
+    """`window --check` — the only way to learn whether the window survives
+    packaging.
+
+    Whether PyInstaller bundles Tcl/Tk cannot be determined by reading source;
+    only a built binary knows. And `window` itself cannot be smoke-tested,
+    because it opens a real window and blocks on its event loop forever.
+    """
+
+    def test_it_answers_rather_than_crashing_with_no_toolkit(self, monkeypatch,
+                                                             capsys):
+        """THE PROPERTY THE WHOLE LAZY IMPORT EXISTS FOR. A traceback here
+        would mean a missing toolkit takes the entire binary down, which is
+        exactly the failure keys.py caused once with the BIP-39 library."""
+        import builtins
+
+        from sambuca_flasher import cli
+        real = builtins.__import__
+
+        def no_tk(name, *a, **k):
+            if name == "tkinter":
+                raise ImportError("No module named 'tkinter'")
+            return real(name, *a, **k)
+
+        monkeypatch.setattr(builtins, "__import__", no_tk)
+        rc = cli.main(["window", "--check"])
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "window available: no" in out
+        assert "reason:" in out, "a refusal must say why"
+
+    def test_it_reports_yes_where_a_window_can_open(self, capsys):
+        ok, why = gui.available()
+        if not ok:
+            pytest.skip(why)
+        from sambuca_flasher import cli
+        rc = cli.main(["window", "--check"])
+        assert rc == 0
+        assert "window available: yes" in capsys.readouterr().out
+
+    def test_check_never_opens_a_window(self):
+        """It must not block. The smoke test runs it on a headless runner with
+        no way to close anything."""
+        import inspect
+
+        from sambuca_flasher import cli
+        src = inspect.getsource(cli._cmd_window)
+        check_at = src.index('getattr(args, "check", False)')
+        run_at = src.index("wizard.run()")
+        assert check_at < run_at, "the check must return before anything opens"

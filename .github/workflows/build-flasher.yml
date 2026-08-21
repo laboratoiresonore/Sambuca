@@ -200,6 +200,29 @@ jobs:
             exit 1
           fi
 
+          # DOES THE WINDOW SURVIVE PACKAGING? Only a built binary knows.
+          # tkinter is stdlib on paper and absent in practice, and a frozen
+          # binary has it only if PyInstaller bundled the Tcl/Tk shared
+          # libraries — which cannot be determined by reading source.
+          #
+          # `window` itself cannot be smoke-tested: it would open a real window
+          # and block on its event loop forever. --check answers and exits.
+          #
+          # NOT A FAILURE IF IT SAYS NO. A CI runner is headless, and Linux
+          # commonly lacks python3-tk; the whole design is that the window
+          # degrades to the console flow. What is asserted is that it ANSWERS
+          # rather than crashing — a traceback here would mean the lazy import
+          # is not protecting the rest of the binary.
+          out=$("$BIN" window --check 2>&1 || true)
+          if ! printf '%s' "$out" | grep -q "window available:"; then
+            echo "FAIL: window --check did not answer. It printed:"
+            printf '%s\n' "$out" | sed 's/^/      | /'
+            echo "      (a traceback here means a missing toolkit takes the"
+            echo "       whole binary down, which the lazy import exists to stop)"
+            exit 1
+          fi
+          echo "  window --check says: $out"
+
           echo "the frozen binary works, engine and manifest included"
 
       - uses: actions/upload-artifact@v4
