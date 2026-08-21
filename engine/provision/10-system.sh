@@ -137,7 +137,12 @@ fi
 sb_run sysctl --system >/dev/null || warn "sysctl reload reported errors"
 
 # --- filesystem layout ------------------------------------------------------
-install -d -m 0755 "${SB_LIB}" "${SB_LOG_DIR}"
+# 0750, NOT 0755. Provisioning logs record what the machine did while it had
+# the fewest defences up, and a warn that accidentally carries a secret
+# prefix or a URL should not be world-readable. root:adm is the standard
+# posture for system logs and costs nothing.
+install -d -m 0755 "${SB_LIB}"
+install -d -m 0750 "${SB_LOG_DIR}"
 install -d -m 0700 "${SB_ETC}/secrets"
 
 ok "base system configured (host=${SAMBUCA_HOSTNAME}, tz=${SAMBUCA_TIMEZONE})"

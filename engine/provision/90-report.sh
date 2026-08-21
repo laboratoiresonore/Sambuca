@@ -19,7 +19,10 @@ REPORT="${SB_LIB}/completion-report.txt"
 lan_ip="$(sb_env_get "${SB_ETC}/network.env" SAMBUCA_LAN_IP "unknown")"
 ts_name="${SAMBUCA_TS_DNSNAME:-}"
 enrolled="$(jq -r '.enrolled // false' "${SB_LIB}/identity.json" 2>/dev/null || echo false)"
-setup_url="$(jq -r '.setup_url // ""' "${SB_LIB}/identity.json" 2>/dev/null || echo '')"
+# THE REPORT IS 0644 AND THE MOTD CATS IT AT EVERY LOGIN, so the one-time admin
+# link must never appear in it. identity.json now carries a flag instead of the
+# credential; the report points at the root-only command that prints it.
+setup_link_available="$(jq -r '.setup_link_available // false' "${SB_LIB}/identity.json" 2>/dev/null || echo false)"
 
 ca_fpr="unavailable"
 if [[ -r "${SB_LIB}/sambuca-local-ca.crt" ]]; then
@@ -104,13 +107,24 @@ CREDENTIALS
 EOF
 
 if [[ $enrolled != "true" ]]; then
+# Two genuinely different situations, and telling them apart matters: pointing
+# somebody at a command that will say "nothing stored" is the kind of dead end
+# this project keeps removing.
+if [[ $setup_link_available == "true" ]]; then
+    step_one="run as root:  sambuca-identity setup-link
+          then open the one-time link it prints"
+else
+    step_one="no one-time link was captured — Pocket ID may already be set up.
+          On a fresh install:  docker logs sambuca-pocket-id 2>&1 | grep -i setup"
+fi
+
 cat <<EOF
 OUTSTANDING — ONE ATTENDED STEP
   Passkey enrolment cannot be automated. Until it is done, the zero-trust gate
   fails closed and gated routes return 503. Services with their own login work
   right now.
 
-      1.  ${setup_url}
+      1.  ${step_one}
       2.  register your passkey
       3.  create an OIDC client (callback https://auth.${SAMBUCA_DOMAIN}/oauth2/callback)
       4.  sambuca-identity set-client <client-id>

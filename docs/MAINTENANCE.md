@@ -69,6 +69,40 @@ project.
 | Tailscale apt repo | `provision/50-network.sh` | ✅ `signed-by=` | key fetched at runtime |
 | Debian security updates | `provision/10-system.sh` | ✅ Debian archive keys | security-only by policy |
 
+### The Pocket ID one-time admin link was world-readable
+
+**Fixed 2026-08-20.** Pocket ID prints an initial-admin onboarding token in its
+logs; provisioning scrapes it and shows it to the owner. That much is right —
+the alternative is inventing a parallel bootstrap path with weaker properties.
+
+What was wrong is where it went. Whoever opens that link becomes the FIRST ADMIN
+of the identity provider gating every other service, and it was landing in four
+places at once:
+
+| where | mode |
+|---|---|
+| `identity.json` | 0644 |
+| `completion-report.txt` | 0644 |
+| `/var/log/sambuca/` | 0755 directory |
+| the MOTD | printed to **every user at every login** |
+
+It now goes to one root-only file (`/etc/sambuca/secrets/pocket_id_setup_url`,
+0600) and is read with `sambuca-identity setup-link`. `identity.json` carries a
+boolean instead of the credential; the report and the MOTD point at the command.
+
+Found alongside it, in the same block:
+
+- The provisioning warning printed the **first eight characters of the
+  oauth2-proxy client secret** into that 0755 log. Eight characters an attacker
+  no longer has to guess, bought nothing: the owner opens the file either way.
+- Step 4 of the one attended step said `sambuca identity set-client` — and
+  there is no `sambuca` command, only hyphenated binaries. The single manual
+  step needed to arm the gate named something that does not exist.
+  `tests/test_engine_promises.py` now fails the build on that.
+- `/var/log/sambuca` is 0750 rather than 0755.
+
+---
+
 ### The CasaOS installer — was the weakest link, now pinned
 
 **Fixed 2026-08-20 (option 1 below).** It is no longer piped into a shell. The

@@ -56,10 +56,23 @@ ok "Pocket ID is healthy"
 setup_token="$(docker logs "$POCKET_ID_CONTAINER" 2>&1 \
     | grep -oE '/(setup|login)/[A-Za-z0-9_-]{16,}' | tail -n1 || true)"
 
+# THE TOKEN IS A BOOTSTRAP CREDENTIAL, AND IT WAS BEING TREATED AS STATUS.
+# Whoever opens this link becomes the FIRST ADMIN of the identity provider that
+# gates every other service. It was landing in four places at once:
+# identity.json (0644), the completion report (0644), /var/log/sambuca (0755
+# directory), and — because the MOTD cats that report — on the screen of every
+# user at every login, for as long as enrolment stayed outstanding.
+#
+# It now goes to exactly one root-only file, and everything else points at the
+# command that reads it.
+SETUP_URL_FILE="${SB_ETC}/secrets/pocket_id_setup_url"
+
 setup_url=""
 if [[ -n $setup_token ]]; then
     setup_url="https://id.${SAMBUCA_DOMAIN}${setup_token}"
-    ok "one-time admin setup link captured"
+    install -d -m 0700 "${SB_ETC}/secrets" 2>/dev/null || true
+    printf '%s' "$setup_url" | sb_atomic_write "$SETUP_URL_FILE" 0600
+    ok "one-time admin setup link captured (root-only: ${SETUP_URL_FILE})"
 else
     setup_url="https://id.${SAMBUCA_DOMAIN}/setup"
     warn "no one-time setup token found in the logs (Pocket ID may already be configured)."
@@ -89,13 +102,19 @@ else
     warn "───────────────────────────────────────────────────────────────"
     warn " ACTION REQUIRED — one attended step, then the gate is armed."
     warn ""
-    warn "  1. Open:  ${setup_url}"
+    warn "  1. Run as root:  sambuca-identity setup-link"
+    warn "     then open the one-time link it prints."
     warn "  2. Register your passkey as the first admin."
     warn "  3. Create an OIDC client:"
     warn "       name          sambuca-gate"
     warn "       callback URL  https://auth.${SAMBUCA_DOMAIN}/oauth2/callback"
-    warn "       client secret $(head -c 8 "$client_secret_path")…  (full value in ${client_secret_path})"
-    warn "  4. Then run:  sambuca identity set-client <client-id>"
+    # NO PREFIX OF THE SECRET. This warn goes to /var/log/sambuca, and eight
+    # characters of a 48-character secret is eight characters an attacker no
+    # longer has to guess. It bought nothing: the owner has to open the file
+    # either way, so the prefix was only ever reassurance that they were looking
+    # at the right one.
+    warn "       client secret  see ${client_secret_path} (root-only)"
+    warn "  4. Then run as root:  sambuca-identity set-client <client-id>"
     warn ""
     warn " Until step 4, gated routes return 503. Everything with its own"
     warn " login (Nextcloud, Immich, Vaultwarden) works right now."
@@ -120,13 +139,26 @@ case "${1:-}" in
     docker compose up -d --force-recreate oauth2-proxy caddy
     printf 'OIDC client set; the gate is armed.\n'
     ;;
+  setup-link)
+    # Root-only by FILE PERMISSION, not by politeness. The file is 0600, so a
+    # non-root caller gets a permission error instead of a credential.
+    f="${SB_ETC}/secrets/pocket_id_setup_url"
+    if [[ -s $f ]]; then
+      cat "$f"; printf '\n'
+      printf 'Open it once, register your passkey, and it is spent.\n' >&2
+    else
+      printf 'No one-time link stored. Pocket ID may already be configured.\n' >&2
+      printf 'On a fresh install:  docker logs pocket-id 2>&1 | grep -i setup\n' >&2
+      exit 1
+    fi
+    ;;
   status)
     id="$(cat "${SB_ETC}/secrets/oauth2_client_id" 2>/dev/null || echo missing)"
     [[ $id == PENDING_ENROLMENT || $id == missing ]] \
       && printf 'identity: NOT bootstrapped (gated routes return 503)\n' \
       || printf 'identity: bootstrapped (client %s…)\n' "${id:0:8}"
     ;;
-  *) printf 'usage: sambuca-identity {set-client <id>|status}\n' >&2; exit 2 ;;
+  *) printf 'usage: sambuca-identity {setup-link|set-client <id>|status}\n' >&2; exit 2 ;;
 esac
 HELPER
 } | sb_atomic_write /usr/local/bin/sambuca-identity 0755
@@ -136,7 +168,9 @@ HELPER
     printf '  "provider": "pocket-id",\n'
     printf '  "state": "healthy",\n'
     printf '  "enrolled": %s,\n' "$enrolled"
-    printf '  "setup_url": "%s",\n' "$setup_url"
+    # A FLAG, NOT THE CREDENTIAL. This file is 0644 because other things read
+    # it for status, and a one-time admin token must never be status.
+    printf '  "setup_link_available": %s,\n' "$([[ -s $SETUP_URL_FILE ]] && echo true || echo false)"
     printf '  "gated_services": ["dashboard", "blinko", "uptime-kuma", "bentopdf"],\n'
     printf '  "self_authenticating_services": ["nextcloud", "immich", "vaultwarden", "synapse"]\n'
     printf '}\n'
