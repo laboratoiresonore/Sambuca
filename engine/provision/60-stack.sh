@@ -186,13 +186,28 @@ log "compose chain: ${chain}"
     # the finished string into .env makes it one value that every tool sees.
     # It is also what makes digest pinning possible at all: you cannot append
     # "-cuda" to something ending in "@sha256:…".
-    _ml_base="$(grep -E '^IMMICH_ML_IMAGE=' "${COMPOSE_DIR}/.env.example" 2>/dev/null \
-                | head -n 1 | cut -d= -f2-)"
+    # Each variant is a SEPARATE PIN, not a string built from a base — a digest
+    # cannot have "-cuda" appended to it, and appending is exactly how a
+    # reference that resolves hid one that does not.
+    _ml_pin() {
+        grep -E "^${1}=" "${COMPOSE_DIR}/.env.example" 2>/dev/null | head -n 1 | cut -d= -f2-
+    }
     _ml_suffix="$(grep -E '^IMMICH_ML_IMAGE_SUFFIX=' "${SB_ETC}/profile.env" 2>/dev/null \
                   | head -n 1 | cut -d= -f2-)"
-    if [[ -n $_ml_base ]]; then
-        printf 'IMMICH_ML_IMAGE=%s%s\n' "$_ml_base" "${_ml_suffix:-}"
-    fi
+    case "${_ml_suffix:-}" in
+        "")         _ml_ref="$(_ml_pin IMMICH_ML_IMAGE)" ;;
+        -cuda)      _ml_ref="$(_ml_pin IMMICH_ML_CUDA_IMAGE)" ;;
+        -openvino)  _ml_ref="$(_ml_pin IMMICH_ML_OPENVINO_IMAGE)" ;;
+        *)
+            # An unrecognised variant used to be concatenated on trust and
+            # became a 404 at pull time, with nothing to say why. CPU is a
+            # working answer; a reference nobody published is not.
+            warn "IMMICH_ML_IMAGE_SUFFIX='${_ml_suffix}' names no pinned variant"
+            warn "  known: '' (cpu), -cuda, -openvino. Falling back to CPU."
+            _ml_ref="$(_ml_pin IMMICH_ML_IMAGE)"
+            ;;
+    esac
+    [[ -n ${_ml_ref:-} ]] && printf 'IMMICH_ML_IMAGE=%s\n' "$_ml_ref"
 } | sb_atomic_write "$ENV_FILE" 0600
 
 ok "rendered ${ENV_FILE} (0600)"

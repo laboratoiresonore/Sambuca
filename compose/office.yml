@@ -9,7 +9,7 @@ services:
 
   blinko:
     restart: unless-stopped
-    image: ${BLINKO_IMAGE:-blinkospace/blinko:1.8.8}
+    image: ${BLINKO_IMAGE:-blinkospace/blinko:1.8.8@sha256:31c3bc9f4fc00c82328c098c0c1120fe7fe43152a9f3cbc04b0303c32a2e60d3}
     container_name: sambuca-blinko
     networks: [edge, ai, data]
     depends_on:
@@ -56,7 +56,7 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
-    image: ${POSTGRES_IMAGE:-postgres:16.15-alpine}
+    image: ${POSTGRES_IMAGE:-postgres:16.15-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685}
     container_name: sambuca-blinko-db
     networks: [data]
     secrets:
@@ -86,7 +86,7 @@ services:
   bentopdf:
     restart: unless-stopped
     # The `-simple` self-hosted build, not the commercial one — see .env.example.
-    image: ${BENTOPDF_IMAGE:-ghcr.io/alam00000/bentopdf-simple:v2.8.7}
+    image: ${BENTOPDF_IMAGE:-ghcr.io/alam00000/bentopdf-simple:v2.8.7@sha256:ba67d44f07ec0d2d636c945eef1c186f71bceda3d11b1e9809d7dbfbbaaacfa4}
     container_name: sambuca-bentopdf
     networks: [edge]
     environment:

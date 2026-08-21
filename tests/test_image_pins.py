@@ -15,11 +15,13 @@ only check pointed at the shadow.
 docs/IMAGES.md is the third copy: it carries the manifest digest for every
 reference, resolved from the live registries by tools/verify-images.py.
 
-WHAT THIS STILL DOES NOT CHECK: the digests are RECORDED but not APPLIED. Every
-reference ships as a bare tag, and a tag is mutable by whoever controls the
-repository — so the digest column is currently evidence, not enforcement.
-Applying them is task #14, and stating the gap here is the alternative to
-letting a passing test imply it is closed.
+THE DIGESTS ARE NOW APPLIED, not merely recorded. Every reference ships as
+`repo:tag@sha256:…`: the tag stays readable, the digest is what actually gets
+fetched, and a tag repointed at different bytes by whoever controls the
+repository no longer changes what installs.
+
+Two are deliberately not pinned, and both are named in EXCEPTED below with the
+reason. Nothing else may join them without one.
 """
 
 from __future__ import annotations
@@ -38,6 +40,18 @@ DOC_RE = re.compile(
 )
 
 MOVING = {"latest", "main", "master", "edge", "stable"}
+
+
+def _tag_of(ref: str) -> str:
+    """The tag, with any `@sha256:…` stripped first.
+
+    A pinned reference is `repo:tag@sha256:…`. Splitting on ":" without removing
+    the digest yields a "tag" of "sha256" for every pinned image — which would
+    quietly turn the moving-tag and looks-like-a-version checks into assertions
+    about nothing, at the exact moment pinning made them matter.
+    """
+    ref = ref.split("@", 1)[0]
+    return ref.rsplit(":", 1)[-1] if ":" in ref.rsplit("/", 1)[-1] else ""
 
 # Images allowed to float, each with the reason. A bare list becomes a dumping
 # ground; requiring a sentence means the next person justifies an entry rather
@@ -113,19 +127,43 @@ def test_every_compose_image_is_declared() -> None:
 
 def test_documented_versions_match_the_governing_file() -> None:
     env, doc = _env(), _doc()
-    drift = [
-        f"{var}: .env.example={env[var]} but IMAGES.md={ref}"
-        for var, (ref, _digest) in sorted(doc.items())
-        if var in env and env[var] != ref
-    ]
+    drift = []
+    for var, (ref, digest) in sorted(doc.items()):
+        if var not in env:
+            continue
+        env_ref, _, env_digest = env[var].partition("@")
+        if env_ref != ref:
+            drift.append(f"{var}: .env.example={env_ref} but IMAGES.md={ref}")
+        elif env_digest and digest and env_digest != digest:
+            # STRONGER NOW THAT PINNING IS REAL: the recorded digest must be
+            # the installed one. A table that documents different bytes from
+            # the ones that install is worse than no table — it is evidence,
+            # confidently, for the wrong thing.
+            drift.append(f"{var}: pinned {env_digest} but IMAGES.md records {digest}")
     assert not drift, "the digest table has drifted:\n  " + "\n  ".join(drift)
 
 
-def test_every_image_has_a_recorded_digest() -> None:
-    """The digest is not enforced yet, but losing it would be a step backwards.
+def test_every_image_is_actually_pinned_by_digest() -> None:
+    """A tag is mutable by whoever controls the repository.
 
-    Three ComfyUI images were missing from the table entirely, so nothing knew
-    what bytes they were supposed to be.
+    This is the check that makes pinning real rather than aspirational: it
+    fails if any reference falls back to a bare tag. update-guard.sh has held
+    a rule about changed digests since long before any digest existed — this
+    is what finally gives that rule something to guard.
+    """
+    env = _env()
+    unpinned = sorted(
+        var for var, ref in env.items()
+        if var not in EXCEPTED and "@sha256:" not in ref
+    )
+    assert not unpinned, f"still resolved by mutable tag: {unpinned}"
+
+
+def test_every_image_has_a_recorded_digest() -> None:
+    """The table must document every image, not most of them.
+
+    Three ComfyUI images were missing from it entirely, so nothing knew what
+    bytes they were supposed to be.
     """
     env, doc = _env(), _doc()
     missing = [
@@ -142,7 +180,7 @@ def test_no_image_floats_on_a_moving_tag() -> None:
     unexplained = {
         var: ref
         for var, ref in env.items()
-        if ref.rsplit(":", 1)[-1] in MOVING and var not in EXCEPTED
+        if _tag_of(ref) in MOVING and var not in EXCEPTED
     }
     assert not unexplained, (
         "these float on a moving tag with no recorded reason: "
@@ -219,7 +257,7 @@ def test_pinned_tags_look_like_versions() -> None:
     for var, ref in env.items():
         if var in EXCEPTED:
             continue
-        tag = ref.rsplit(":", 1)[-1] if ":" in ref else ""
+        tag = _tag_of(ref)
         if not tag:
             suspicious.append(f"{var} has no tag at all ({ref})")
         elif not re.search(r"\d", tag):

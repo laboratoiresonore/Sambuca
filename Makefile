@@ -109,27 +109,16 @@ check-upstreams: ## Probe every external coupling in docs/MAINTENANCE.md for dri
 
 .PHONY: pin-images
 pin-images: ## Rewrite .env.example with @sha256: digests
-	@command -v docker >/dev/null || { echo "pin-images needs docker"; exit 1; }
+	@# NO DOCKER. This used to shell out to `docker buildx imagetools inspect`,
+	@# which needs a running daemon - the exact dependency verify-images.py was
+	@# written to avoid, and a fair explanation for why nothing was ever pinned:
+	@# the release step only worked on a machine that happened to have Docker.
+	@# One implementation of resolution, reused, so the pin and the check can
+	@# never disagree about what a reference resolves to.
 	@echo "This rewrites compose/.env.example in place. Commit first."
 	@read -p "Continue? [y/N] " a; [ "$$a" = y ] || exit 1
-	@cp $(COMPOSE_DIR)/.env.example $(COMPOSE_DIR)/.env.example.bak
-	@: > $(COMPOSE_DIR)/.env.example.new
-	@while IFS= read -r line; do \
-		case "$$line" in \
-			*_IMAGE=*) \
-				key=$${line%%=*}; ref=$${line#*=}; base=$${ref%%@*}; \
-				digest=$$(docker buildx imagetools inspect "$$base" 2>/dev/null \
-					| awk '/^Digest:/{print $$2; exit}'); \
-				if [ -n "$$digest" ]; then \
-					echo "$$key=$$base@$$digest" >> $(COMPOSE_DIR)/.env.example.new; \
-				else \
-					echo "$$line" >> $(COMPOSE_DIR)/.env.example.new; \
-				fi;; \
-			*) echo "$$line" >> $(COMPOSE_DIR)/.env.example.new;; \
-		esac; \
-	done < $(COMPOSE_DIR)/.env.example
-	@mv $(COMPOSE_DIR)/.env.example.new $(COMPOSE_DIR)/.env.example
-	@echo "pinned. Review the diff before committing."
+	@python3 tools/verify-images.py $(COMPOSE_DIR)/.env.example --pin
+	@echo "Review the diff before committing."
 
 # ---------------------------------------------------------------------------
 # Artefacts

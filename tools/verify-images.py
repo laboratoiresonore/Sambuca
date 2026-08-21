@@ -139,6 +139,8 @@ def main() -> int:
     ap.add_argument("env_file", nargs="?", default="compose/.env.example", type=Path)
     ap.add_argument("--json", dest="json_out", type=Path,
                     help="write a machine-readable report here")
+    ap.add_argument("--pin", action="store_true",
+                    help="rewrite the env file, pinning each reference to its digest")
     args = ap.parse_args()
 
     if not args.env_file.is_file():
@@ -172,6 +174,43 @@ def main() -> int:
 
     resolved = len(refs) - len(broken) - len(unpublished)
     print(f"\n{resolved}/{len(refs)} resolved")
+
+    if args.pin:
+        # ONE implementation of resolution, reused. The Makefile target used to
+        # shell out to `docker buildx imagetools inspect`, which needs a running
+        # daemon — the exact dependency this tool exists to avoid, and a fair
+        # explanation for why nothing was ever pinned: the release step only
+        # worked on a machine that happened to have Docker.
+        #
+        # Only references that RESOLVED are rewritten. Pinning an unpublished
+        # or broken one to whatever a failed lookup returned would bake a lie
+        # into the file that installs the appliance.
+        text = args.env_file.read_text(encoding="utf-8")
+        pinned = 0
+        for key, info in report.items():
+            if info["status"] != "OK" or not str(info["detail"]).startswith("sha256:"):
+                continue
+            base = info["ref"].split("@", 1)[0]
+            # NEVER PIN A MOVING TAG. This needs no exception list, because it
+            # follows from the reference itself: a tag chosen for its mobility
+            # is one you must not freeze. The first run of --pin pinned
+            # nextcloud/all-in-one:latest, and that is the mastercontainer —
+            # an updater whose whole job is choosing versions for the
+            # containers it manages. Pinning it stops Nextcloud receiving
+            # updates while leaving it looking maintained.
+            if base.rsplit(":", 1)[-1] in {"latest", "main", "master", "edge", "stable"}:
+                continue
+            new = f"{key}={base}@{info['detail']}"
+            old_line = f"{key}={info['ref']}"
+            if old_line in text and new != old_line:
+                text = text.replace(old_line, new, 1)
+                pinned += 1
+        if pinned:
+            args.env_file.write_text(text, encoding="utf-8", newline="\n")
+        print(f"pinned {pinned} reference(s) in {args.env_file}")
+        skipped = sorted(set(broken) | set(unpublished))
+        if skipped:
+            print(f"  left unpinned (did not resolve): {', '.join(skipped)}")
 
     if unpublished:
         print("\nUNPUBLISHED (first-party, expected before release):")

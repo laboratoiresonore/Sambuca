@@ -82,7 +82,7 @@ services:
   # ─────────────────────────────────────────────────────────────────────────
   caddy:
     <<: *common
-    image: ${CADDY_IMAGE:-caddy:2.11.4-alpine}
+    image: ${CADDY_IMAGE:-caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648}
     container_name: sambuca-caddy
     networks: [edge]
     ports:
@@ -128,7 +128,7 @@ services:
   # ─────────────────────────────────────────────────────────────────────────
   pocket-id:
     <<: *common
-    image: ${POCKET_ID_IMAGE:-ghcr.io/pocket-id/pocket-id:v2.5.0}
+    image: ${POCKET_ID_IMAGE:-ghcr.io/pocket-id/pocket-id:v2.5.0@sha256:1549f31f76a6c158af0056a4f2c62a590627886a84e9da9bda76eb1e142a449a}
     container_name: sambuca-pocket-id
     networks: [edge]
     volumes:
@@ -168,7 +168,7 @@ services:
   # ─────────────────────────────────────────────────────────────────────────
   oauth2-proxy:
     <<: *common
-    image: ${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.14.2}
+    image: ${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.14.2@sha256:121cdc6520a02d7a2ddd181af6dbdc0f11f7d0c0d9353a999a69c3998cbfe37e}
     container_name: sambuca-oauth2-proxy
     networks: [edge]
     depends_on:
@@ -214,7 +214,7 @@ services:
   # ─────────────────────────────────────────────────────────────────────────
   uptime-kuma:
     <<: *common
-    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:1.23.17}
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:1.23.17@sha256:3d632903e6af34139a37f18055c4f1bfd9b7205ae1138f1e5e8940ddc1d176f9}
     container_name: sambuca-uptime-kuma
     networks: [edge]
     volumes:
@@ -240,7 +240,7 @@ services:
   # ─────────────────────────────────────────────────────────────────────────
   watchtower:
     <<: *common
-    image: ${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}
+    image: ${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1@sha256:6dd50763bbd632a83cb154d5451700530d1e44200b268a4e9488fefdfcf2b038}
     container_name: sambuca-watchtower
     networks: [edge]
     volumes:

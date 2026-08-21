@@ -7,7 +7,7 @@
 
 ## Verification status
 
-**Last verified 2026-08-21 against the live registries: 21 of 22 references
+**Last verified 2026-08-21 against the live registries: 23 of 24 references
 resolve.** The one exception is `ODYSSEUS_IMAGE`, which is first-party and not
 yet published — see below. Reproduce the check with:
 
@@ -21,17 +21,27 @@ an appliance would fail to pull it; **2** means only first-party images are
 unpublished, which is a known pre-release state. Collapsing those two into
 "failed" is how a check becomes something people click past.
 
-## Current status: TAGS, NOT DIGESTS
+## Current status: PINNED BY DIGEST
 
-Every image reference in `compose/.env.example` is currently a **mutable tag**.
-Tags can be reassigned by their publisher at any time, which means:
+Every image reference in `compose/.env.example` ships as
+`repo:tag@sha256:...` — the tag stays readable for a human, the digest is what
+actually gets fetched. A tag repointed at different bytes by whoever controls
+the repository no longer changes what installs, so two machines flashed a month
+apart from the same USB run the same software.
 
-- two machines flashed a month apart from the same USB can end up running
-  different software;
-- the GitOps sync has no stable artefact to validate against;
-- "zero-configuration, reproducible appliance" is not yet literally true.
+Two are deliberately not pinned:
 
-**Before tagging a sambuca release, pin every image to a digest.**
+- `NEXTCLOUD_AIO_IMAGE` floats on `:latest` **on purpose**. The mastercontainer
+  is an updater — it chooses and upgrades the versions of the containers it
+  manages. Pinning it would freeze the machinery that keeps Nextcloud patched
+  while leaving the stack looking maintained. `--pin` refuses to pin any moving
+  tag for exactly this reason, so no exception list is needed.
+- `ODYSSEUS_IMAGE` is first-party and not published yet, so there is nothing to
+  pin it to. It is the last blocker on a releasable v0.1.0.
+
+`engine/maintenance/update-guard.sh` HOLDS any update that changes a pinned
+digest: once pinned, changed bytes are a decision a person makes, and
+`sambuca-gitops apply --force` is how they make it.
 
 ```bash
 make verify-images
@@ -148,3 +158,5 @@ already pinned.
 | `COMFYUI_IMAGE` | `yanwk/comfyui-boot:cu126-slim-20260817` | `sha256:6bebfb60239eb396aaa40d3e612a19620a4e6f79cf13d7d1174e62b994bae315` |
 | `COMFYUI_ROCM_IMAGE` | `yanwk/comfyui-boot:rocm-20260814` | `sha256:3ff8b3b0d1a5168c581a77ef79b537a53a6b21c29215d7a7880987d0bd0c031a` |
 | `COMFYUI_CPU_IMAGE` | `yanwk/comfyui-boot:cpu-20260817` | `sha256:5929225fd5f3370c9f24cf9a47f0632e9cc0e607cc078cbab701634f44a545fe` |
+| `IMMICH_ML_CUDA_IMAGE` | `ghcr.io/immich-app/immich-machine-learning:v1.128.0-cuda` | `sha256:31f2603391fd79f8eabe478403758aad6c17d5cf10cf961e4bb524772c208201` |
+| `IMMICH_ML_OPENVINO_IMAGE` | `ghcr.io/immich-app/immich-machine-learning:v1.128.0-openvino` | `sha256:e70d5b0e98bcec9da2190a5c5534c38888f3fb729fd17cd3256cec81decb79e8` |

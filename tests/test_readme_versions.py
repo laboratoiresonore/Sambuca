@@ -83,6 +83,10 @@ def _compose_tags() -> dict[str, str]:
         m = re.match(r"^([A-Z0-9_]+_IMAGE)=(.+)$", line.strip())
         if m:
             ref = m.group(2).strip()
+            # Strip any `@sha256:…` BEFORE taking the tag, or every pinned
+            # reference reports a version of "sha256" and this check compares
+            # nonsense to nonsense while looking green.
+            ref = ref.split("@", 1)[0]
             tags[m.group(1)] = ref.rsplit(":", 1)[-1] if ":" in ref else ""
     return tags
 

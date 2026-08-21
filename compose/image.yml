@@ -38,7 +38,7 @@ services:
   # ─────────────────────────────────────────────────────────────────────────
   comfyui:
     restart: unless-stopped
-    image: ${COMFYUI_IMAGE:-yanwk/comfyui-boot:cu126-slim-20260817}
+    image: ${COMFYUI_IMAGE:-yanwk/comfyui-boot:cu126-slim-20260817@sha256:6bebfb60239eb396aaa40d3e612a19620a4e6f79cf13d7d1174e62b994bae315}
     container_name: sambuca-comfyui
     networks: [edge, ai]
     volumes:

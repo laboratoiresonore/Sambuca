@@ -13,7 +13,7 @@
 services:
 
   comfyui:
-    image: ${COMFYUI_ROCM_IMAGE:-yanwk/comfyui-boot:rocm-20260814}
+    image: ${COMFYUI_ROCM_IMAGE:-yanwk/comfyui-boot:rocm-20260814@sha256:3ff8b3b0d1a5168c581a77ef79b537a53a6b21c29215d7a7880987d0bd0c031a}
     environment:
       HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:-}
     devices:

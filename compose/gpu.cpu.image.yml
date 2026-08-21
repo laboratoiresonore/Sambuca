@@ -10,7 +10,7 @@
 services:
 
   comfyui:
-    image: ${COMFYUI_CPU_IMAGE:-yanwk/comfyui-boot:cpu-20260817}
+    image: ${COMFYUI_CPU_IMAGE:-yanwk/comfyui-boot:cpu-20260817@sha256:5929225fd5f3370c9f24cf9a47f0632e9cc0e607cc078cbab701634f44a545fe}
     environment:
       # --cpu is what stops ComfyUI probing for a card it will not find and
       # falling back through a 60-second timeout on every single request.
