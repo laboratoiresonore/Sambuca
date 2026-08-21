@@ -125,6 +125,70 @@ sb_retry() {
 }
 
 # sb_atomic_write <path> [mode] — content on stdin. Never leaves a torn file.
+sb_run_verified_script() {
+    # Fetch a remote script, check it against a pinned SHA-256, and only then
+    # run it. Usage: sb_run_verified_script <url> <sha256> [args...]
+    #
+    # NEVER PIPES. `curl … | bash` hands a shell whatever arrives, and bash
+    # starts executing what it has while the rest is still in flight — so a
+    # connection dropped mid-transfer can run half a script, with no error and
+    # no way to notice. A file cannot do that.
+    #
+    # Returns 0 only if the download succeeded, the digest matched, AND the
+    # script itself succeeded. Every other outcome is a refusal the caller must
+    # handle; nothing here decides that a failure is tolerable.
+    local url="$1" want="$2"; shift 2
+    local tmp got rc=1
+
+    [[ -n $url && -n $want ]] || { err "sb_run_verified_script: url and sha256 required"; return 2; }
+
+    tmp="$(mktemp -t sambuca-script.XXXXXX 2>/dev/null || echo "/tmp/sambuca-script.$$")"
+    if ! sb_retry 2 10 curl -fsSL --proto '=https' --tlsv1.2 "$url" -o "$tmp"; then
+        warn "could not download ${url}"
+        rm -f -- "$tmp" 2>/dev/null || true
+        return 1
+    fi
+
+    sb_verify_and_run "$tmp" "$want" "$@"
+    rc=$?
+    rm -f -- "$tmp" 2>/dev/null || true
+    return "$rc"
+}
+
+sb_verify_and_run() {
+    # The gate itself, split out so it can be TESTED without a network.
+    #
+    # Separated deliberately rather than for tidiness: testing the combined
+    # function meant either standing up local HTTPS, or adding a flag to relax
+    # --proto '=https' for tests — and a production security control with a
+    # test-only bypass is not a control. The download's https-only restriction
+    # is asserted by reading the source instead.
+    #
+    # Usage: sb_verify_and_run <file> <sha256> [args...]
+    #   0  ran, and the script succeeded
+    #   1  ran, and the script failed
+    #   2  called wrong
+    #   3  CHECKSUM MISMATCH — distinct, because a caller needs to tell
+    #      "upstream changed or someone tampered" apart from "it errored"
+    local file="$1" want="$2"; shift 2
+    local got
+
+    [[ -n $file && -n $want ]] || { err "sb_verify_and_run: file and sha256 required"; return 2; }
+    [[ -r $file ]] || { warn "sb_verify_and_run: cannot read ${file}"; return 2; }
+
+    got="$(sha256sum -- "$file" 2>/dev/null | cut -d' ' -f1)"
+    if [[ $got != "$want" ]]; then
+        # An upstream update and an attack look identical from here, which is
+        # the entire reason for the pin. It declines either way.
+        warn "checksum mismatch for ${file}"
+        warn "  expected ${want}"
+        warn "  got      ${got:-<none>}"
+        return 3
+    fi
+
+    bash "$file" "$@"
+}
+
 sb_atomic_write() {
     # WAS SILENTLY FAILING. Every step here was unchecked: cat, chmod and mv
     # could all fail and the function still returned 0. A profile that never

@@ -69,13 +69,37 @@ project.
 | Tailscale apt repo | `provision/50-network.sh` | ✅ `signed-by=` | key fetched at runtime |
 | Debian security updates | `provision/10-system.sh` | ✅ Debian archive keys | security-only by policy |
 
-### The CasaOS installer is the weakest link in the project
+### The CasaOS installer — was the weakest link, now pinned
 
-`curl -fsSL https://get.casaos.io | bash` runs unreviewed, unpinned, unsigned
-code as root. Whoever controls that URL controls every sambuca appliance at
-install time. It is the only remote-execution point in the repository that is
-not signature-verified, and it is called out here rather than buried because it
-is a real hole, not a theoretical one.
+**Fixed 2026-08-20 (option 1 below).** It is no longer piped into a shell. The
+installer is downloaded to a file, checked against a SHA-256 pinned in
+`engine/provision/50-network.sh`, and only then run — by `sb_verify_and_run`,
+which returns a distinct code for a checksum mismatch so a caller can tell
+"upstream changed or someone tampered" apart from "it errored".
+
+Piping was worse than it looked, separately from the trust problem: `bash`
+executes what has arrived while the rest is still downloading, so a connection
+cut mid-transfer can run half a script.
+
+**What this fixes and what it does not.** It pins the INSTALLER. The component
+tarballs that installer fetches are versioned GitHub release URLs baked into
+it — so pinning the script does fix those versions, but they are still fetched
+over TLS without checksums of our own. "Whoever controls that URL controls every
+appliance" becomes "whoever controls it can serve the exact bytes we reviewed,
+or nothing". A real improvement, not a complete one.
+
+**When upstream updates it, provisioning will decline and say so**, leaving the
+appliance working without a dashboard. Adopting a new version means REVIEWING it
+and updating the constant. `tools/check-upstreams.py` already reports the hash,
+so the drift shows up in the daily run rather than as a failed install.
+
+The original entry read:
+
+> `curl -fsSL https://get.casaos.io | bash` runs unreviewed, unpinned, unsigned
+> code as root. Whoever controls that URL controls every sambuca appliance at
+> install time. It is the only remote-execution point in the repository that is
+> not signature-verified, and it is called out here rather than buried because
+> it is a real hole, not a theoretical one.
 
 It is tolerated today because CasaOS has no packaged distribution and the
 dashboard is optional. **The fix, in preference order:**

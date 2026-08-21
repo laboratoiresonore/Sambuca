@@ -83,6 +83,7 @@ run "bash -n (engine)" bash -c 'bash -n engine/first-boot.sh && bash -n engine/h
 run "steward catalogue lint" python tools/steward-lint.py
 run "update guard" bash tests/test-update-guard.sh
 run "atomic write" bash tests/test-atomic-write.sh
+run "verified-script gate" bash tests/test-verified-script.sh
 run "compose yaml parses" python -c "import yaml,glob; [yaml.safe_load(open(f,encoding='utf-8')) for f in glob.glob('compose/*.yml')]"
 run "hardware profiler runs" bash engine/hardware-detect.sh --print --force-tier 1 --no-lock --quiet
 

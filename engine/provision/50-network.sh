@@ -75,15 +75,63 @@ ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
 # gateway BEFORE installing, otherwise the installer wins the port and Caddy
 # fails to start with an error that points nowhere useful.
 CASAOS_PORT="${CASAOS_PORT:-8095}"
+
+# The installer, pinned. Recorded here rather than in the manifest because the
+# engine runs on the appliance and must work from the card alone — it cannot
+# reach back to a manifest the flasher fetched.
+#
+# Verified byte-stable across repeated fetches on 2026-08-20 before pinning: an
+# endpoint that varies per request cannot be pinned at all, and finding that out
+# after shipping would have broken every install.
+#
+# tools/check-upstreams.py already reports this hash, so drift is visible in the
+# daily run rather than discovered by a failed provision.
+CASAOS_INSTALLER_URL="${CASAOS_INSTALLER_URL:-https://get.casaos.io}"
+CASAOS_INSTALLER_SHA256="${CASAOS_INSTALLER_SHA256:-a170016f3630d3c13f09fab05b0811ef5543a226ed36b12daecaaeb46303c343}"
 if ! sb_have casaos; then
     log "installing CasaOS (gateway pinned to :${CASAOS_PORT})"
     install -d -m 0755 /etc/casaos
     printf '[server]\nport = %s\n' "$CASAOS_PORT" | sb_atomic_write /etc/casaos/gateway.ini 0644
-    if sb_retry 2 10 bash -c 'curl -fsSL https://get.casaos.io | bash -s -- --no-color'; then
-        ok "CasaOS installed"
+    # DOWNLOADED, VERIFIED, THEN RUN — never piped into a shell.
+    #
+    # `curl … | bash` was the only remote-execution point in this repository
+    # that nothing verified: whoever controlled that URL controlled every
+    # sambuca appliance at install time, as root, at the moment the machine has
+    # the fewest defences up. docs/MAINTENANCE.md calls it the weakest link in
+    # the project, and it was right.
+    #
+    # Piping is also worse than it looks: bash executes what has arrived so far
+    # while the rest is still downloading, so a connection cut mid-transfer can
+    # run half a script. A file cannot do that.
+    #
+    # WHAT THIS FIXES AND WHAT IT DOES NOT. It pins the INSTALLER. The
+    # component tarballs that installer fetches are versioned GitHub release
+    # URLs baked into it — so pinning the script does fix those versions, but
+    # they are still fetched over TLS without checksums of our own. This turns
+    # "whoever controls the URL owns the appliance" into "whoever controls it
+    # can serve us the exact bytes we reviewed, or nothing". That is a real
+    # improvement, not a complete one.
+    casaos_ok=0
+    if sb_run_verified_script "$CASAOS_INSTALLER_URL" \
+            "$CASAOS_INSTALLER_SHA256" --no-color; then
+        casaos_ok=1
+    elif (($? == 3)); then
+        # A mismatch is worth more than "it failed". Upstream publishing a new
+        # installer is the likeliest cause and is not an attack — but this
+        # cannot tell the difference, which is the point, so it says so and
+        # leaves the appliance working without a dashboard.
+        warn "  Either upstream published a new installer, or the download was"
+        warn "  tampered with. This cannot tell which, so it ran neither."
+        warn "  To adopt a new version: REVIEW it, then update"
+        warn "  CASAOS_INSTALLER_SHA256 in engine/provision/50-network.sh."
+    fi
+
+    if ((casaos_ok)); then
+        ok "CasaOS installed (installer verified against its pinned checksum)"
     else
-        warn "CasaOS installation failed — the appliance is fully functional without it."
-        warn "  Caddy still serves every service; only the CasaOS tile view is missing."
+        warn "CasaOS was not installed — the appliance is fully functional without it."
+        warn "  Caddy still serves every service; only the CasaOS tile view is missing,"
+        warn "  and 'sambuca-flasher handover' bookmarks every address anyway."
     fi
 fi
 if [[ -f /etc/casaos/gateway.ini ]]; then

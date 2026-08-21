@@ -63,6 +63,7 @@ jobs:
       # inside it. Both are the kind of fault that only shows up as a
       # missing config file weeks later.
       - run: bash tests/test-atomic-write.sh
+      - run: bash tests/test-verified-script.sh
 
   compose:
     name: compose config
