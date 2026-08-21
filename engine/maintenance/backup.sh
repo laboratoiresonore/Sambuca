@@ -32,6 +32,40 @@ _SB_SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SB_SELF_DIR}/../lib/common.sh"
 sb_trap_err
 
+# HELP BEFORE PRIVILEGE. Asking somebody to become root just to find out what
+# the commands are is a small cruelty, and it is exactly the moment a novice is
+# already unsure they are allowed to be doing this at all.
+case "${1:-}" in
+    help|-h|--help)
+        cat <<'USAGE'
+sambuca-backup — encrypted backup, and proof that it restores.
+
+  sambuca-backup            take a backup, verify it, apply retention
+  sambuca-backup run        the same thing, said out loud
+  sambuca-backup verify     prove the LATEST snapshot restores. Makes no new
+                            backup and changes nothing — safe to run any time,
+                            and the only way to know your backup is real.
+  sambuca-backup init       create the repository and its password
+
+A backup nobody has restored is a hypothesis.
+USAGE
+        exit 0
+        ;;
+esac
+
+# A TYPO SHOULD NOT FIRST BE TOLD TO BECOME ROOT. Validating the verb here
+# means a mistyped verb says what is wrong, rather than sending
+# somebody to find sudo for a command that was never going to run.
+VERB="${1:-run}"
+case "$VERB" in
+    run|init|verify) ;;
+    *)
+        printf 'unknown command: %s\n' "$VERB" >&2
+        printf 'try: sambuca-backup {run|verify|init}\n' >&2
+        exit 2
+        ;;
+esac
+
 sb_require_root
 sb_single_instance "backup" 30
 sb_require restic
@@ -48,8 +82,65 @@ done
 : "${SAMBUCA_BACKUP_RETENTION_MONTHLY:=12}"
 
 PW_FILE="${SB_ETC}/secrets/restic_password"
+
+# ---------------------------------------------------------------------------
+# Verbs.
+#
+# THIS SCRIPT PROMISED TWO COMMANDS IT DID NOT HAVE. It told owners to run
+# `sambuca-backup init` when the password file was missing, and the health
+# banner told them to run `sambuca-backup verify` — while the script accepted
+# no arguments at all and simply ran a backup whatever you typed.
+#
+# NO ARGUMENT STILL MEANS "RUN THE BACKUP", because that is what the systemd
+# timer invokes and changing it would silently stop every appliance backing up.
+# ---------------------------------------------------------------------------
+if [[ $VERB == init ]]; then
+    if [[ -s $PW_FILE ]]; then
+        ok "a repository password already exists at ${PW_FILE}"
+    else
+        install -d -m 0700 "${SB_ETC}/secrets"
+        sb_secret 48 | tr -d '\n' | sb_atomic_write "$PW_FILE" 0600
+        ok "generated a repository password at ${PW_FILE}"
+    fi
+    export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE="$PW_FILE"
+    if restic cat config >/dev/null 2>&1; then
+        ok "repository already initialised at ${RESTIC_REPOSITORY}"
+    else
+        restic init || die "restic init failed"
+        ok "repository initialised at ${RESTIC_REPOSITORY}"
+    fi
+    exit 0
+fi
+
 [[ -s $PW_FILE ]] || die "no restic password at ${PW_FILE} — run: sambuca-backup init"
 export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE="$PW_FILE"
+
+if [[ $VERB == verify ]]; then
+    # PROVES A RESTORE, NOT A CONFIGURATION. Checking that settings look right
+    # is how people discover during a disaster that the repository lists files
+    # it cannot produce.
+    snap="$(restic snapshots --json --latest 1 2>/dev/null | jq -r '.[0].short_id // empty' || true)"
+    [[ -n $snap ]] || {
+        sb_health_set backup fail "no snapshot exists to verify — nothing has been backed up"
+        die "there is no snapshot to verify. Run: sambuca-backup"
+    }
+    n="$(restic ls "$snap" 2>/dev/null | wc -l || echo 0)"
+    log "snapshot ${snap} lists ${n} path(s)"
+
+    d="$(mktemp -d)"
+    # shellcheck disable=SC2064
+    trap "rm -rf -- '${d}'" EXIT
+    if restic restore "$snap" --target "$d" --include "${SB_ETC}/profile.env" >/dev/null 2>&1 \
+       && [[ -s "${d}${SB_ETC}/profile.env" ]]; then
+        sb_health_set backup ok
+        ok "snapshot ${snap} RESTORES (${n} paths listed, a known file round-tripped)"
+        exit 0
+    fi
+    sb_health_set backup fail \
+        "snapshot ${snap} lists ${n} paths but a test restore produced nothing"
+    err "snapshot ${snap} does NOT restore — it lists files it cannot produce"
+    exit 1
+fi
 
 DUMP_DIR="${SB_LIB}/dumps"
 install -d -m 0700 "$DUMP_DIR"
@@ -207,6 +298,11 @@ if restic restore "$snap_id" --target "$verify_dir" --include "${SB_ETC}/profile
    && [[ -s "${verify_dir}${SB_ETC}/profile.env" ]]; then
     ok "restore verification PASSED (${SB_ETC}/profile.env round-tripped)"
 else
+    # WORSE THAN A FAILED BACKUP. The repository lists files it cannot produce,
+    # which means every green report until now was describing a backup that
+    # would not have restored.
+    sb_health_set backup fail \
+        "restore verification FAILED — the snapshot lists files it cannot produce"
     err "restore verification FAILED — the snapshot lists files it cannot produce"
     exit 1
 fi

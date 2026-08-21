@@ -99,6 +99,49 @@ for job in backup snapraid-sync gitops-sync; do
         || bad_ "${job} can raise an alarm but never lower it"
 done
 
+
+echo
+echo "commands the appliance names actually exist"
+
+# --- 9. every `sambuca-backup <verb>` promised anywhere is real -------------
+# backup.sh told owners to run `sambuca-backup init` and the health banner told
+# them to run `sambuca-backup verify`, while the script accepted no arguments at
+# all. Right binary, nonexistent verb — which test_engine_promises.py cannot
+# see, because it only checks that the BINARY is installed.
+promised="$(grep -rhoE 'sambuca-backup [a-z-]+' engine/ | awk '{print $2}' | sort -u)"
+for verb in $promised; do
+    case "$verb" in
+        run|verify|init|help) ok_ "sambuca-backup ${verb} is a real verb" ;;
+        *)
+            if grep -qE "^\s+${verb}\)" engine/maintenance/backup.sh \
+               || grep -qE "VERB == ${verb}" engine/maintenance/backup.sh; then
+                ok_ "sambuca-backup ${verb} is a real verb"
+            else
+                bad_ "sambuca-backup ${verb} is named but does not exist"
+            fi
+            ;;
+    esac
+done
+
+# --- 10. help works WITHOUT root -------------------------------------------
+# Asking somebody to become root to find out what the commands are is a small
+# cruelty, at exactly the moment a novice is least sure they are allowed to be
+# doing this.
+out="$(bash engine/maintenance/backup.sh --help 2>&1)"
+if printf '%s' "$out" | grep -q "sambuca-backup verify"; then
+    ok_ "help works without root and lists the verbs"
+else
+    bad_ "help needs privileges or omits the verbs: ${out}"
+fi
+
+# --- 11. an unknown verb is refused, not silently treated as a backup -------
+# The dangerous default: a typo running a full backup instead of the read-only
+# thing somebody meant.
+out="$(bash engine/maintenance/backup.sh notaverb 2>&1)"
+printf '%s' "$out" | grep -qi "unknown command" \
+    && ok_ "an unknown verb is refused by name" \
+    || bad_ "an unknown verb was not refused: ${out}"
+
 echo
 printf '  %d passed, %d failed\n\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]
