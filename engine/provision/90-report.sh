@@ -191,6 +191,11 @@ EOF
 {
     printf '#!/bin/sh\n'
     printf 'cat %s 2>/dev/null || true\n' "$REPORT"
+    # OUTSTANDING PROBLEMS GO LAST, so they are what is left on screen rather
+    # than scrolled past. A failing backup writes a file for this to find; the
+    # journal it currently shouts into is not read on an appliance.
+    printf '[ -x /usr/local/bin/sambuca-health ] && /usr/local/bin/sambuca-health --brief 2>/dev/null\n'
+    printf 'true\n'
 } | sb_atomic_write /etc/update-motd.d/99-sambuca 0755
 rm -f /etc/motd 2>/dev/null || true
 

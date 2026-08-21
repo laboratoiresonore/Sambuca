@@ -151,6 +151,9 @@ set -e
 case $rc in
     0)
         ok "backup completed with no errors"
+        # Clears any previous warning: a stale alarm trains people to
+        # ignore alarms.
+        sb_health_set backup ok
         ;;
     3)
         # PARTIAL. Not a success. Name the files, do not bury it in a log.
@@ -162,8 +165,12 @@ case $rc in
             | head -n 20 | while read -r l; do err "  ${l}"; done
         n="$(grep -ciE "error|unable" "${SB_LOG_DIR}/restic-backup.out" || echo '?')"
         err "  ${n} error line(s) total — full log: ${SB_LOG_DIR}/restic-backup.out"
+        sb_health_set backup warn \
+            "last backup was INCOMPLETE (${n} unreadable file(s)) — see ${SB_LOG_DIR}/restic-backup.out"
         ;;
     *)
+        sb_health_set backup fail \
+            "backup FAILED (restic exit ${rc}) — no usable snapshot was produced"
         err "backup FAILED (restic exit ${rc})"
         tail -n 20 "${SB_LOG_DIR}/restic-backup.out" | while read -r l; do err "  ${l}"; done
         die "no usable snapshot was produced"
@@ -182,6 +189,11 @@ log "snapshot ${snap_id} contains ${file_count} path(s)"
 if ((file_count < 10)); then
     err "snapshot ${snap_id} contains only ${file_count} paths — that is not a real backup"
     err "  This is the failure mode where a wrapper reports success over 17 of 966 files."
+    # THE MOST IMPORTANT ONE TO SURFACE. restic exited 0 here — the exit code
+    # says success and the evidence says otherwise. Without this the machine
+    # would show a green backup while holding almost nothing.
+    sb_health_set backup fail \
+        "last snapshot held only ${file_count} paths — restic said OK and the readback disagrees"
     exit 1
 fi
 

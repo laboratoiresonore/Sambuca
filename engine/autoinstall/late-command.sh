@@ -73,6 +73,7 @@ systemctl enable sambuca-snapraid.timer          >/dev/null 2>&1 || true
 ln -sf "$INSTALL_ROOT/engine/first-boot.sh"                /usr/local/bin/sambuca-first-boot
 ln -sf "$INSTALL_ROOT/engine/hardware-detect.sh"           /usr/local/bin/sambuca-hardware
 ln -sf "$INSTALL_ROOT/engine/maintenance/backup.sh"        /usr/local/bin/sambuca-backup
+ln -sf "$INSTALL_ROOT/engine/maintenance/health.sh"        /usr/local/bin/sambuca-health
 ln -sf "$INSTALL_ROOT/engine/maintenance/gitops-sync.sh"   /usr/local/bin/sambuca-gitops
 ln -sf "$INSTALL_ROOT/engine/maintenance/snapraid-sync.sh" /usr/local/bin/sambuca-snapraid
 ln -sf "$INSTALL_ROOT/engine/maintenance/recovery-key.sh"  /usr/local/bin/sambuca-recovery

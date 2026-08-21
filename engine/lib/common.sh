@@ -125,6 +125,69 @@ sb_retry() {
 }
 
 # sb_atomic_write <path> [mode] — content on stdin. Never leaves a torn file.
+SB_HEALTH_DIR="${SB_HEALTH_DIR:-${SB_LIB:-/var/lib/sambuca}/health}"
+
+sb_health_set() {
+    # Record that a component is ok / warn / fail, in a place a HUMAN will see.
+    # Usage: sb_health_set <component> <ok|warn|fail> <one-line message>
+    #
+    # THE GAP THIS CLOSES. backup.sh already knows when it has failed — it
+    # handles restic's exit 3 explicitly and verifies the snapshot by reading it
+    # back, precisely because a wrapper once reported success over 17 of 966
+    # files. But it says so with err(), which lands in the journal, and NOBODY
+    # READS THE JOURNAL ON AN APPLIANCE. A backup can stop working for months
+    # and look exactly like one that is working.
+    #
+    # WHAT THIS IS NOT: push notification. It does not email, message or ring
+    # anybody. It makes the state impossible to miss ONCE YOU LOOK — the login
+    # banner, and `sambuca-health`. Claiming more than that would be the
+    # false-assurance failure this exists to prevent.
+    local component="$1" state="$2" message="${3:-}"
+    [[ -n $component && -n $state ]] || return 0
+
+    install -d -m 0755 -- "$SB_HEALTH_DIR" 2>/dev/null || return 0
+    local f="${SB_HEALTH_DIR}/${component}"
+
+    if [[ $state == ok ]]; then
+        # CLEARED ON SUCCESS, deliberately. A warning that outlives the problem
+        # trains people to ignore warnings, which is worse than never having
+        # shown one.
+        rm -f -- "$f" 2>/dev/null || true
+        return 0
+    fi
+
+    {
+        printf '%s\n' "$state"
+        printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '%s\n' "$message"
+    } >"${f}.tmp" 2>/dev/null && mv -f -- "${f}.tmp" "$f" 2>/dev/null
+    chmod 0644 -- "$f" 2>/dev/null || true
+    return 0
+}
+
+sb_health_report() {
+    # Print outstanding problems, or nothing at all when there are none.
+    # Silence is the correct output for a healthy machine: a banner that always
+    # says something is a banner nobody reads.
+    local f state when msg any=0
+    [[ -d $SB_HEALTH_DIR ]] || return 0
+    for f in "$SB_HEALTH_DIR"/*; do
+        [[ -f $f ]] || continue
+        state="$(sed -n 1p -- "$f" 2>/dev/null)"
+        when="$(sed -n 2p -- "$f" 2>/dev/null)"
+        msg="$(sed -n 3p -- "$f" 2>/dev/null)"
+        if ((any == 0)); then
+            printf '\n'
+            printf '  ATTENTION — something needs looking at\n'
+            any=1
+        fi
+        printf '    [%s] %-16s %s\n' "${state^^}" "$(basename -- "$f")" "$msg"
+        printf '                     since %s\n' "$when"
+    done
+    ((any == 0)) || printf '\n    details:  sambuca-health\n\n'
+    return 0
+}
+
 sb_run_verified_script() {
     # Fetch a remote script, check it against a pinned SHA-256, and only then
     # run it. Usage: sb_run_verified_script <url> <sha256> [args...]
