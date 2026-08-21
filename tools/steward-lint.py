@@ -40,6 +40,7 @@ Exit codes: 0 clean, 1 findings, 2 the catalogue could not be read.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -156,6 +157,81 @@ def lint(doc: dict) -> list[str]:
     for e in excluded:
         if not e.get("subject") or not e.get("reason"):
             findings.append(f"excluded entry {e!r} needs both a subject and a reason")
+
+    # ── NOTHING MAY EDIT ITS OWN GUARD ──────────────────────────────────────
+    #
+    # The catalogue already declares these out of reach — "This verb catalogue,
+    # and the Steward's own privileges", "The audit log", the CA private key,
+    # the LUKS key slots. Until now the lint checked only that the excluded
+    # list EXISTED, never that the verbs respected it. So a verb named
+    # steward.edit_catalogue, taking a 100,000-character string and rewriting
+    # verbs.yml, with confirm: none, passed as "18 verbs clean".
+    #
+    # CLAUDE.md states this property as already enforced here "in CI, not by
+    # good intentions". It was the good intentions.
+    #
+    # A guard that can be edited by the thing it guards is not a guard, and the
+    # only reason several of these verbs are safe to expose at all is that the
+    # catalogue bounding them cannot be rewritten from inside.
+    # UNAMBIGUOUS ARTEFACTS: naming one of these at all is the problem. There is
+    # no innocent reason for a verb to mention the file that bounds it.
+    SELF_REFERENTIAL = {
+        "verbs.yml": "its own catalogue file",
+        "engine/steward": "its own implementation",
+        "verb catalogue": "its own catalogue",
+        "own privileges": "its own privileges",
+    }
+
+    # SUBJECTS THAT APPEAR INNOCENTLY, so a mention is not a finding — only an
+    # ACTION on them is. Two real verbs say the "audit log records that a reset
+    # link was issued", which is the behaviour we want, and the first version of
+    # this check failed both of them. That is the "appears anywhere" fault this
+    # project has miscalibrated an audit with every single time.
+    GUARDED_SUBJECTS = {
+        "audit log": "the audit log",
+        "key slot": "the LUKS key slots",
+        "recovery key": "the recovery key",
+        "certificate authority": "the CA",
+        "private key": "a private key",
+    }
+    MUTATES = (
+        r"(edit|modif|chang|rewrit|alter|delet|clear|truncat|disabl|remov|"
+        r"purg|overwrit|revok|rotat|replac)"
+    )
+    # Namespaces the Steward administers the APPLIANCE with. It does not
+    # administer itself, so a verb in one of these namespaces is a category
+    # error before it is a security problem.
+    FORBIDDEN_NAMESPACES = ("steward.", "catalogue.", "audit.", "guard.")
+
+    for v in verbs:
+        name = str(v.get("name", "?"))
+        if name.startswith(FORBIDDEN_NAMESPACES):
+            findings.append(
+                f"{name}: verbs may not act on the Steward itself — the "
+                f"catalogue, its privileges and the audit log are declared out "
+                f"of reach, and a guard the guarded can edit is not a guard"
+            )
+        haystack = " ".join(
+            str(v.get(k, "")) for k in ("name", "summary", "notes")
+        ).lower()
+        for marker, what in SELF_REFERENTIAL.items():
+            if marker in haystack:
+                findings.append(
+                    f"{name}: names {what}, which the catalogue's own excluded "
+                    f"list places out of reach"
+                )
+        for marker, what in GUARDED_SUBJECTS.items():
+            # A mutating word within ~60 characters of the subject, either side.
+            # Mentioning that something is recorded in the audit log is fine;
+            # clearing it is not.
+            subj = re.escape(marker)
+            near = (rf"{MUTATES}\w*[^.]{{0,60}}{subj}"
+                    rf"|{subj}[^.]{{0,60}}\b{MUTATES}")
+            if re.search(near, haystack):
+                findings.append(
+                    f"{name}: appears to ACT ON {what}, which the catalogue's "
+                    f"own excluded list places out of reach"
+                )
 
     return findings
 
