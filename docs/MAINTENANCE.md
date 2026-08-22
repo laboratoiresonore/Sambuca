@@ -78,20 +78,42 @@ the flag because `image.yml` already sets it and compose APPENDS list values —
 repeating it would recreate the duplicate that broke every AMD-plus-image
 install.
 
-**AIO is exempt on purpose.** It is a mastercontainer driving the Docker socket
-and spawning its own children; upstream is specific about not adding options to
-it, and this repository already treats its requirements as given (fixed
-container name, fixed volume name). Hardening the one service that manages other
-containers, blind and untested, is not a trade worth making for a flag.
+**AIO is a KNOWN GAP, not a considered exemption** — corrected 2026-08-22, and
+the difference matters. This page used to say upstream "is specific about not
+adding options to it". Checked against upstream's actual `compose.yaml`: it sets
+no `security_opt` at all, and the only one it mentions anywhere is
+`label:disable` for SELinux, which loosens rather than tightens. There is no
+upstream instruction either way, so "exempt on purpose" was giving a guess the
+authority of a citation.
+
+What is true: it is a mastercontainer driving the Docker socket and spawning its
+own children, this repository already treats its requirements as given (fixed
+container name, fixed volume name), and hardening the one service that manages
+every other container — blind, untested, on a stack that has never booted — risks
+the file server not existing rather than a degraded feature. So it stays unset,
+named as a gap, with the test to run written above the service in
+`compose/cloud.yml`. `tests/test_axis3_properties.py` holds it as an explicit
+exception and fails if it is ever closed without the note being removed.
 
 **`cap_drop` and `read_only` are NOT set**, and that is a gap rather than a
-decision. Twenty-nine services lack them. Applying either blind would break
-things that legitimately write or need capabilities — Postgres, Ollama's model
-store, AIO — and it cannot be verified without running the stack on real
-hardware, which has not happened yet. Doing it properly means, per service:
-determine what it writes, mount that as a volume or tmpfs, then set `read_only`
-and drop capabilities, and TEST it. That is the remaining half of substrate
-hardening and it is honest to call it unstarted.
+decision. Measured 2026-08-22: **20 services, `cap_drop` on 0, `read_only` on 1**
+(`bentopdf`). This page previously said twenty-nine, which was never counted and
+which the task list had inherited.
+
+Applying either blind would break things that legitimately write or need
+capabilities — `cap_drop: [ALL]` removes the `CHOWN`/`SETUID`/`SETGID`/`FOWNER`
+the Postgres images use to drop privileges, Caddy's `NET_BIND_SERVICE` for :443,
+and Watchtower's socket access — and none of it is verifiable without running the
+stack on real hardware, which has not happened. Doing it properly means, per
+service: determine what it writes, mount that as a volume or tmpfs, then set
+`read_only` and drop capabilities, and TEST it.
+
+**A ratchet now holds whatever has been done.** `READ_ONLY_TODAY` and
+`CAP_DROP_TODAY` in `tests/test_axis3_properties.py` fail if a protection
+disappears, so hardening lands one verified service at a time and cannot regress
+between passes. Rule 7 of the update guard does the same job for nightly updates;
+nothing did it for development, which is where a protection would actually have
+gone missing.
 
 ---
 

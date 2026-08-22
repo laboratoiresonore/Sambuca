@@ -165,13 +165,22 @@ ships, that is a reason to look harder, not a reason to copy it.
 ## Mechanical checks — run these before claiming done
 
 ```bash
-bash tools/preflight.sh
+bash tools/preflight.sh          # or: make check
 ```
 
 That runs every CI check that does not need a Docker runner, and — this is the
 part that matters — **names the three it cannot run** rather than implying full
 coverage. It exits non-zero if any tool is merely MISSING, because a partial
 preflight that returns 0 reads as a pass.
+
+`make check` delegates to exactly this script rather than repeating the list.
+It had to be added: CONTRIBUTING.md opened by telling every contributor to run
+`make check`, and there was no such target — the first instruction in the file
+failed with "No rule to make target". `make test` meanwhile ran only the flasher
+tree and one shell suite, so every appliance test passed locally without being
+executed by it. **The Makefile is not exercised by CI**, which is how both
+survived; treat it as documentation that happens to be executable, and check it
+against `preflight.sh` rather than assuming they agree.
 
 The individual commands, if you want one of them alone:
 
@@ -278,7 +287,41 @@ without it.
 - **Windows:** the console is cp1252. `✗` in a lint tool crashes the tool that
   was supposed to report the finding. Use ASCII markers.
 - **Heredocs mangle `\\n`.** For Python-in-heredoc edits, use the Edit tool or
-  write the script to a file first.
+  write the script to a file first. And when a heredoc-driven edit *silently
+  fails to match*, the script exits cleanly and the next command reports on
+  unchanged code — so a mutation test "passes" while never having mutated
+  anything. **Assert the mutation landed before reading the verdict.** This has
+  now produced two false all-clears in one session.
+- **A script inside a heredoc is a string to every linter.** `80-identity.sh`
+  writes `/usr/local/bin/sambuca-identity` out of a quoted heredoc, so shellcheck
+  reads the generating file, sees a string, and says nothing about its contents.
+  One of the few commands an owner ever types had never been linted by anything,
+  and it named a container that does not exist. `tests/test-generated-scripts.sh`
+  extracts any heredoc whose body starts with a **shell** shebang and checks it
+  as the script it becomes.
+
+## Two recurring shapes, stated once
+
+**Wherever two programs must agree about a string, and only one of them is
+tested, the agreement is an assumption.** The flasher derives a recovery key and
+the installer enrols it; the flasher derives a backup password and the appliance
+opens a repository with it. Both were one-sided. The first held by luck — the key
+is hyphen-grouped and the appliance strips only whitespace. The second did not:
+nothing delivered the password at all, so `backup.sh` generated a random one and
+every archive was encrypted with a secret that existed only on the disk being
+backed up, while `derive-backup-key` printed one that opened nothing. Test the
+CHAIN, not either end.
+
+**Match the syntax of a USE, not a mention.** A check that greps for a name finds
+the comment explaining the check, the doc describing the bug, and the test
+asserting the fix. This repository has hit it six times now — a zram check
+matching a comment, steward-lint matching prose in a legitimate note, the Tk-root
+guard matching its own detection line, a shell-source count, and twice in one
+session: a "does the fallback promise a name" check that flagged the comment
+recording the old wording, and a generated-script detector that matched
+`#!/usr/sbin/nft -f` because it asked for `#!` instead of asking for a shell.
+The cure is always the same and it is never "add an exclusion": match a `warn`
+line, a `printf`, an import, an invocation — the thing the code *does*.
 
 ## Status honesty
 

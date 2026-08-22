@@ -6,9 +6,38 @@
 make check
 ```
 
-That runs shellcheck over every engine script, validates the compose chain for
-all three GPU overlays, lints the flasher and runs its tests. CI runs the same
-thing plus a Caddyfile validation and the flasher suite on Windows and macOS.
+That is `tools/preflight.sh`: ruff, **both test trees**, shellcheck over every
+engine script, `dash -n` over the installer scripts, every `tests/test-*.sh`
+suite, the steward catalogue lint, the compose YAML parse and the hardware
+profiler. It names the three checks it cannot run locally rather than implying
+full coverage, and it exits non-zero if a tool is merely MISSING — a partial
+preflight that returns 0 reads as a pass.
+
+If you have no `make`, the same thing:
+
+```bash
+bash tools/preflight.sh
+```
+
+**Then check CI, because local green is not CI green.** Three commits once went
+out reporting "89 tests pass" while the build was failing, and the failing step —
+ruff — was the one finding real bugs. `gh run list --limit 3` costs a second.
+Read the per-JOB results, not the run conclusion: a Windows job was red for hours
+while runs were reported green, and the macOS jobs were cancelled 17 times out of
+18 without ever completing while every report said "green except macOS still
+running".
+
+CI additionally validates the Caddyfile, runs `docker compose config` across
+every GPU profile × bundle subset, and builds the frozen binary on Windows and
+macOS. `make lint-compose` only renders the CPU overlays — the full matrix needs
+a Docker runner, and it is the check that caught `gpu.amd.image.yml` shipping
+broken.
+
+> `make check` did not exist until 2026-08-22. It was the first instruction in
+> this file and it failed with "No rule to make target". `make test` ran only the
+> flasher tree, so every appliance test passed locally without being executed by
+> it. Both are fixed, and `check` now delegates to preflight rather than keeping
+> a second list to drift against it.
 
 ## The bar for engine scripts
 

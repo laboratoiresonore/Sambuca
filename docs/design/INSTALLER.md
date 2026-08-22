@@ -135,8 +135,26 @@ and hands off to Caddy once the real stack is up.
 > `standard` task very likely provides it regardless, but an inherited
 > dependency is not a declared one.
 
-**Discovery is zero-config** via mDNS (`_sambuca._tcp.local`), so the desktop app
-finds the machine without anyone typing an IP address.
+**Discovery was to be zero-config** via mDNS (`_sambuca._tcp.local`), so the
+desktop app would find the machine without anyone typing an IP address.
+
+> **⬜ NOT BUILT — corrected 2026-08-22.** This paragraph described the intent in
+> the present tense for long enough to read as a shipped feature. Neither half
+> exists: no service-browse discovery is implemented in the flasher, and **no
+> mDNS responder is installed on the appliance at all** — not by the preseed's
+> `pkgsel/include`, not by `10-system.sh`, and not by Debian's `standard` task.
+> `50-network.sh` opens udp/5353 with a comment about `sambuca.local`, and
+> nothing answers on it.
+>
+> What DOES work is the address half: `sambuca-flasher watch` talks to the
+> beacon over an authenticated channel, so the machine reports its own progress
+> once you can reach it. What is missing is finding it without being told where.
+>
+> And installing a responder would not finish the job — every address the
+> handover hands out is a per-service SUBDOMAIN (`photos.sambuca.local`,
+> `vault.sambuca.local`), and mDNS publishes a host, not a zone. The naming
+> scheme and this mechanism are incompatible as designed. See ROADMAP.md; it is
+> a decision to take, not a package to add.
 
 **And it is authenticated**, which is where principles 1 and 2 pull against each
 other. An unauthenticated beacon broadcasting on the LAN would be simpler and is
@@ -259,11 +277,16 @@ moment they will ever be perfectly positioned to test it.
 
 ## Build order
 
-1. Boot guide + search launcher — pure data and a URL builder, no dependencies,
-   and it unblocks the step that defeats people first.
-2. Bookmarks export + verified link list — small, and it turns the moment of
-   completion into something usable.
-3. Beacon + mDNS discovery + pairing key.
-4. Account and avatar setup, with the invitations honestly labelled.
-5. The explanation layer at three depths.
-6. The unified control panel, once the companion substrate exists.
+~~1. Boot guide + search launcher~~ — ✅ built (`sambuca-flasher boot-guide`).
+~~2. Bookmarks export + verified link list~~ — ✅ built, and `handover` now also
+   offers to take the secrets back off the installer USB.
+3. **Beacon + pairing key ✅; mDNS discovery ⬜.** The beacon and its
+   authenticated pairing key ship; discovery does not, and cannot be finished
+   without the naming decision above.
+4. Account and avatar setup, with the invitations honestly labelled. ⬜
+5. The explanation layer at three depths. ⬜
+6. The unified control panel, once the companion substrate exists. ⬜
+
+*Status marked 2026-08-22. Items 1 and 2 had been built for some time while this
+list still read as though nothing had started — the same present-tense drift
+that made "discovery is zero-config" look like a feature.*

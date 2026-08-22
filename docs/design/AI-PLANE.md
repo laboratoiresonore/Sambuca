@@ -271,7 +271,10 @@ is not one.
 | FLUX workflow graph | **Written against documented node interfaces. No picture has come out of it yet.** |
 | Checkpoint fetch, digest-pinned and atomic | **Built.** Digest verified against the live HF LFS oid. Not yet run end to end. |
 | Verb catalogue + linter | **Built, in CI, mutation-tested.** |
-| Steward runtime — the thing that selects and executes verbs | **Not built.** This is the largest gap in this document. |
+| Image orchestrator — loads the graph, fills it, posts it, waits | **Built and installed as `sambuca-image`.** Placeholders are replaced inside an already-parsed graph, so a prompt cannot restructure the workflow. 23 tests against a stub speaking ComfyUI's protocol. **No picture has come out of a real ComfyUI.** |
+| Steward — **selecting** a verb | **Built and reachable.** The gate refuses anything outside the catalogue with no fuzzy matching, bounds parameters from the catalogue rather than the proposal, and refuses a disruptive verb carrying `confirm: none`. The parser treats two candidate objects as a refusal, never a tie-break, so a summarised email carrying its own `{"verb": …}` cannot win. The audit log is append-only and hash-chained, and `record()` has no parameter for the secret, so the secret cannot be logged. Joined by `sambuca-steward` — each stage is a separate process, so the gate cannot be talked into skipping the parser. 48 tests. |
+| Steward — **executing** a verb | **Not built, deliberately.** `sambuca-steward` has `explain` and no `apply`, and says "NOTHING WAS DONE" in as many words. An executor must remove a Pocket ID account, revoke a Tailscale device, restart a container — none of which can be written honestly before there is a machine to try it on. A command that offered `apply` and quietly did nothing would be the appliance claiming a capability, which is the one failure this project's status discipline exists to prevent. |
+| Steward — the model side | **Not built.** Blocked on publishing Odysseus. |
 | Odysseus integration for chat, pictures and the Steward | **Not built.** Blocked on publishing Odysseus. |
 | arm64 / Raspberry Pi | **Not built.** See the RAM floor below. |
 

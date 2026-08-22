@@ -16,6 +16,25 @@ the cloud half works.
 The system disk holds the OS, containers and models. Photos and files belong on
 the storage pool, which is separate — see below.
 
+### The 8 GB machine gets compressed swap, and the 64 GB machine does not
+
+`hardware-detect.sh` sizes a zram device from the RAM it finds: **half of RAM,
+floored at 1 GiB and capped at 8 GiB**, and **nothing at all above 32 GiB of
+RAM**. zram pages compress roughly 2–3×, so half of RAM is the useful figure and
+a larger device mostly buys metadata; the cap exists because compressed swap is
+not a second disk.
+
+The upper threshold matters more than it looks. On a machine with plenty of
+memory there is nothing for compressed swap to rescue, and an untouched zram
+device is a kernel thread and some accounting for no benefit. So it is not
+configured there, and the profiler says so in as many words rather than leaving
+you to wonder whether it failed.
+
+The practical effect: on an 8 GB machine — the minimum, and the most likely
+second-hand desktop — a photo import and a model load can overlap without the
+kernel reaching for the OOM killer. It is what makes the bottom of this table a
+real configuration rather than a technically-boots one.
+
 ## Which tier you land in
 
 `engine/hardware-detect.sh` decides. Check before you buy anything:

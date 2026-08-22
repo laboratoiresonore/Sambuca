@@ -144,6 +144,30 @@ an abnormal number of files were deleted, because syncing would overwrite the
 parity that could undo them. `restic prune` is opt-in. `WATCHTOWER_REMOVE_VOLUMES`
 is false.
 
+**Fatal is reserved for what is actually fatal** — added 2026-08-22, after
+getting it wrong. `first-boot.sh` runs the phases in order and stops on the first
+failure (`run_phase … || { rc=1; break; }`), which is right: provisioning half a
+machine and calling it done is how you get a file server with no certificates.
+The consequence is that **every `die` in a phase is a decision to abandon the
+whole appliance**, and that is a much higher bar than "this step did not work".
+
+`50-network.sh` failed it. Obtaining Tailscale had four `die`s — signing key, apt
+update, package install, daemon start — so a network that blocks
+`pkgs.tailscale.com` (corporate, school, some ISPs) meant the machine installed
+Debian, booted, died at phase 50, and never provisioned the stack, the
+certificates or the setup page. It powered on and did nothing, on exactly the
+networks least able to diagnose it. Meanwhile `tailscale up` failing twenty lines
+below was already a warning, every consumer downstream guarded on `sb_have
+tailscale`, and LAN-only was a documented mode. Only *acquiring* the optional
+thing was treated as life-or-death.
+
+So the test for a `die` is not "did this fail" but **"is the appliance worth
+having without it"**. A missing disk is fatal. A missing Docker is fatal. A
+missing remote-access convenience is a warning that names what was lost, what
+still works, and how to add it later — and, because a half-added apt repository
+breaks every subsequent `apt-get update`, it cleans up after itself on the way
+out.
+
 ## The CA private key never leaves the host
 
 Caddy's internal CA signs everything on the LAN, so its key is the most

@@ -42,18 +42,53 @@ lint-compose: ## Validate the compose chain renders
 		docker compose --env-file .env.example config --quiet
 	@echo "compose: valid"
 
+# ruff is configured ONCE at the repository root, and every path is named here.
+# Configured per-package, everything outside apps/flasher/ fell back to whatever
+# the installed ruff defaulted to — so the paths and the config have to agree.
 .PHONY: lint-python
-lint-python: ## ruff the flasher and the tools
-	@cd $(FLASHER_DIR) && ruff check src tests
-	@ruff check tools
+lint-python: ## ruff the flasher, the tools and the appliance tests
+	@ruff check apps/flasher/src apps/flasher/tests tools tests
 	@echo "python: clean"
 
-.PHONY: test
-test: test-flasher test-guard ## Run every test suite
+# ---------------------------------------------------------------------------
+# `check` IS THE ENTRY POINT, and it delegates rather than repeating itself.
+#
+# CONTRIBUTING.md told every contributor to run `make check` and there was no
+# such target — the first instruction in the file failed with "No rule to make
+# target". Adding one that re-listed the checks would have created a second
+# list to drift against tools/preflight.sh, which already IS the list, already
+# names the three things it cannot run locally, and already exits non-zero when
+# a tool is merely missing rather than reporting a partial pass as success.
+# ---------------------------------------------------------------------------
+.PHONY: check
+check: ## Everything CI runs that does not need a Docker runner (start here)
+	@bash tools/preflight.sh
 
+.PHONY: test
+test: test-flasher test-appliance test-shell ## Run every test suite, both trees
+
+# BOTH TREES, AND THIS IS WHY. `tests/` holds what tests the APPLIANCE;
+# apps/flasher/tests holds what tests the flasher. `make test` ran only the
+# second, so every appliance test — the beacon's, the recovery-key chain, the
+# backup-password chain, the hardening ratchet — passed locally without ever
+# being executed here. That is the same shape as the CI workflow that named one
+# tree and hid 21 passing tests from itself.
 .PHONY: test-flasher
 test-flasher: ## Run the flasher test suite
 	@cd $(FLASHER_DIR) && python -m pytest -q
+
+.PHONY: test-appliance
+test-appliance: ## Run the appliance test suite (tests/)
+	@python -m pytest tests -q -m "not slow"
+
+# BY GLOB, NEVER BY NAME. This used to run test-update-guard.sh alone, so a new
+# suite was invisible until somebody remembered to add it — and nobody would,
+# because nothing failed when they did not.
+.PHONY: test-shell
+test-shell: ## Run every tests/test-*.sh suite
+	@fail=0; for t in tests/test-*.sh; do \
+		printf '  %s\n' "$$t"; bash "$$t" >/dev/null || { echo "  FAILED: $$t"; fail=1; }; \
+	done; exit $$fail
 
 .PHONY: test-guard
 test-guard: ## Feed the update guard poisoned updates and assert it refuses them

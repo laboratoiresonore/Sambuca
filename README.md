@@ -524,6 +524,8 @@ close a door the software leaves open by default. None of it is hidden behind a
 | 31 | A failed backup, an aborted parity sync or a held update **says so at the login prompt** and via `sambuca-health` — and clears itself when fixed | `health.sh` | every login |
 | 32 | The **backup repository password is installed from your seed phrase**, onto the encrypted root — so the archive can be opened from the printed sheet alone, on a machine that has never seen this one | `late-command.sh` | install |
 | 33 | The installer USB is **offered up for erasure** once real services answer — it carries the disk passphrase, the recovery key and the backup password, and nothing else ever removed them | `sambuca-flasher handover` | after first boot, with your say-so |
+| 34 | A network that **blocks Tailscale no longer stops the install**. It used to be fatal four ways, and a failing phase halts provisioning — so on a school or office network the machine installed Debian, booted, and never provisioned the stack, the certificates or the setup page | `50-network.sh` | first boot |
+| 35 | A failed Tailscale install **removes its own apt source** — an unreachable repo left in `sources.list.d` makes every later `apt-get update` fail, including the security updates enabled two phases earlier | `50-network.sh` | first boot |
 
 **Made by the USB maker, on your own computer, before anything boots:** the
 24-word seed, the root passphrase, the disk recovery key, the recovery PDF and
@@ -709,10 +711,18 @@ sambuca/
 
 Early, but not vapour. **CI is green** — shellcheck, the flasher suite on
 Linux/macOS/Windows across Python 3.11 and 3.13, Caddyfile validation, compose
-rendering for all 48 GPU-profile × bundle-subset combinations, and live registry
-resolution of every container image — digests recorded in
-[docs/IMAGES.md](docs/IMAGES.md). 25 tests pass, including pinned derivation
-vectors for both seed-derived keys.
+rendering for **every GPU profile × bundle subset** (51 combinations as of
+2026-08-22 — the subsets are derived from the bundle files at runtime and CI
+prints the count, so this number follows the code rather than the other way
+round), and live registry resolution of every container image — digests recorded
+in [docs/IMAGES.md](docs/IMAGES.md).
+
+**433 tests** across both trees, including pinned derivation vectors for both
+seed-derived keys and the chains that carry them: the recovery key that is
+PRINTED must be the one ENROLLED, and the backup password the flasher DERIVES
+must be the one the appliance USES. Both are places where two programs must
+agree about a string, and until each was tested the agreement was an assumption —
+in the second case, a wrong one.
 
 ### Where the AI plane actually stands
 
