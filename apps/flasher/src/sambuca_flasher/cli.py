@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import sys
 import tempfile
 from pathlib import Path
@@ -356,6 +357,33 @@ def _cmd_write(args) -> int:
     if config.unattended:
         (staging / "luks-recovery.key").write_bytes(
             keys.luks_recovery_key.encode("ascii"))
+
+        # THE RESTIC REPOSITORY PASSWORD, and it was not reaching the machine.
+        #
+        # keys.py derives it from the seed and says why: "changing it silently
+        # would orphan every existing backup". `sambuca-flasher derive-backup-key`
+        # offers to recover it from the 24 words. Neither was true, because
+        # nothing ever put it on the appliance — backup.sh found no password
+        # file and generated a RANDOM 48-character one instead.
+        #
+        # So the backups were encrypted with a secret that existed only on the
+        # disk being backed up. Lose the machine — the exact event backups are
+        # for — and the archive is undecryptable, while the flasher confidently
+        # prints a password that opens nothing.
+        #
+        # It travels as its own file, like the LUKS key, and NOT inside
+        # provision.json: payload.py refuses to write a payload containing this
+        # value, and that refusal is correct. late-command.sh then writes it
+        # straight to the ENCRYPTED root, so unlike provision.json it never
+        # rests on the unencrypted boot partition at all.
+        #
+        # It does, however, remain on THIS STICK — as luks-recovery.key already
+        # did. first-boot.sh shreds provision.json and nothing else, so the
+        # stick keeps both secrets until somebody wipes it. That is a real
+        # exposure and it is the owner's to manage; see the warning printed at
+        # the end of `write`.
+        (staging / "restic-password.key").write_bytes(
+            keys.backup_password.encode("ascii"))
     else:
         # Interactive mode puts no secret on the stick, so there is nothing for
         # the installer to enrol. The owner enrols it from the running system.
@@ -447,8 +475,22 @@ def _cmd_write(args) -> int:
     print(f"  READY — key {keys.fingerprint}")
     print("=" * 70)
     if config.unattended:
-        print("  This USB now carries the disk passphrase. Treat it as a key until")
-        print("  installation finishes; the appliance erases it on first boot.")
+        # THIS USED TO SAY "the appliance erases it on first boot", AND THAT
+        # WAS FALSE. first-boot.sh shreds /boot/sambuca/provision.json — the
+        # copy on the INSTALLED machine. Nothing in the entire engine writes to
+        # /cdrom; all four references to the installation medium only read from
+        # it. So the stick keeps the disk passphrase, the LUKS recovery key and
+        # the backup password forever, while the owner had just been told it
+        # cleans itself up.
+        #
+        # The failure was not the sentence being wrong. It was telling somebody
+        # they could stop treating a key like a key.
+        print("  THIS USB IS NOW A KEY TO THE MACHINE. It carries the disk")
+        print("  passphrase, the recovery key and the backup password.")
+        print()
+        print("  Nothing erases it — not the installer, not the appliance. When")
+        print("  the install has finished, either reformat this USB or keep it")
+        print("  as safely as you would keep the machine itself.")
     else:
         print("  Interactive mode: no secret is on this USB. The installer will")
         print("  prompt once for the root passphrase from the recovery document.")
@@ -589,6 +631,19 @@ def _cmd_derive() -> int:
     print("\nrestic repository password:\n")
     print(f"  {password}\n")
     print("Use it with:  restic -r <repository> snapshots")
+    # STATE THE CONDITION. This password is the repository's password only
+    # because late-command.sh installs it during an UNATTENDED install. An
+    # interactive install stages no secret on the stick, so the appliance
+    # generates a random one and this string opens nothing. Printing it
+    # unconditionally is how the promise came to be false in the first place;
+    # a recovery tool that is right most of the time is worse than one that
+    # says which time it is.
+    print()
+    print("This is the password for an appliance installed the normal way")
+    print("(the guided, unattended install). If you chose --interactive, the")
+    print("machine generated its own password instead — look for it at")
+    print("  /etc/sambuca/secrets/restic_password")
+    print("on the appliance, and keep a copy somewhere else.")
     return 0
 
 
@@ -1297,6 +1352,19 @@ def _cmd_handover(args) -> int:
     _say("  Start here:")
     _say(f"    https://{domain}")
 
+    # TAKE THE KEY BACK. Same category as the watch file below, one order of
+    # magnitude more serious: the installer USB carries the disk passphrase,
+    # the recovery key and the backup password, and NOTHING ever removed them.
+    # Before this, the flasher told owners the appliance erased the stick on
+    # first boot — it does not; it shreds its own copy of provision.json.
+    #
+    # It happens HERE and not earlier because this is the first moment the
+    # stick is provably spent: real services answered on the network. At write
+    # time the install has not happened, and `watch` sees progress, not
+    # completion. Before the watch file is retired, because that file's name
+    # carries the fingerprint that says which stick is this appliance's.
+    _offer_stick_wipe(_fingerprint_from_watch_file())
+
     # CLEAN UP THE CREDENTIAL WE LEFT LYING AROUND. The watch file holds a
     # pairing key for a beacon that provisioning has already killed, so it is
     # now a secret with nothing to open — the worst kind to leave in a Downloads
@@ -1332,6 +1400,113 @@ def _retire_watch_file() -> None:
     _say()
     _say("  Tidied up: the install-progress key is no longer needed and has")
     _say("  been deleted.")
+
+
+def _fingerprint_from_watch_file() -> str:
+    """This appliance's fingerprint, from the watch file's NAME.
+
+    `write` names it sambuca-watch-<fingerprint>.json. Empty string if there is
+    no watch file, which is a normal case — and an empty fingerprint disables
+    the match filter rather than matching everything, so a stick belonging to
+    some other machine is never silently included.
+    """
+    path = _find_watch_file(None)
+    if path is None:
+        return ""
+    name = Path(path).stem
+    return name[len("sambuca-watch-"):] if name.startswith("sambuca-watch-") else ""
+
+
+def _mount_roots() -> list[Path]:
+    """Places a removable volume can appear, per platform."""
+    if platform.system() == "Windows":
+        from . import winvol
+        return [Path(f"{letter}:\\") for letter in winvol.lettered_volumes()]
+    roots: list[Path] = []
+    for parent in (Path("/Volumes"), Path("/media"), Path("/run/media"),
+                   Path("/mnt")):
+        if not parent.is_dir():
+            continue
+        try:
+            for child in parent.iterdir():
+                roots.append(child)
+                # /run/media/<user>/<label> and /media/<user>/<label>
+                if child.is_dir():
+                    try:
+                        roots.extend(c for c in child.iterdir() if c.is_dir())
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    return roots
+
+
+def _offer_stick_wipe(fingerprint: str) -> None:
+    """Offer to take the secrets back off the installer USB.
+
+    OFFER, NOT DO. This is the one place in the flow where doing it silently
+    would be wrong: erasing a volume nobody asked about is how somebody's
+    photo archive dies, and the owner may deliberately be keeping the stick as
+    a spare key. So the drive is named, the files are named, and the answer is
+    theirs — which is rule 2 applied to a genuinely human choice, not rule 1
+    dodged.
+    """
+    from . import stick as stickmod
+
+    try:
+        sticks = stickmod.find(_mount_roots(), fingerprint)
+    except OSError:
+        return
+    if not sticks:
+        # Silent. The usual reason is that the stick was already unplugged,
+        # and announcing "no installer USB found" at the end of a successful
+        # install reads as a fault.
+        return
+
+    for found in sticks:
+        _say()
+        _say("-" * 68)
+        _say("  THE INSTALLER USB IS STILL A KEY")
+        _say("-" * 68)
+        _say()
+        _say(f"  Found at:  {found.root}")
+        _say()
+        _say("  It still holds:")
+        for name in found.present:
+            _say(f"    {name:<22} {stickmod.SECRET_FILES[name]}")
+        _say()
+        _say("  Nothing erases these - not the installer, not the appliance.")
+        _say("  Your machine is up and no longer needs them.")
+        _say()
+        if not _ask_yes("  Remove them now?"):
+            _say()
+            _say("  Left alone. Keep that stick as safely as you keep the")
+            _say("  printed sheet - it opens this machine.")
+            continue
+
+        result = stickmod.neutralise(found)
+        remaining = stickmod.verify(found)
+        _say()
+        if remaining:
+            # SAY WHICH ONES SURVIVED. "Some files could not be removed" sends
+            # somebody away believing the stick is mostly safe.
+            _say("  COULD NOT REMOVE:")
+            for name in remaining:
+                why = dict(result.failed).get(name, "still present")
+                _say(f"    {name} - {why}")
+            _say()
+            _say("  That stick is still a key. Reformat it, or keep it safe.")
+        else:
+            _say(f"  Done - {len(result.removed)} files removed. That stick no")
+            _say("  longer opens anything.")
+            _say()
+            # THE HONEST LIMIT. Saying "securely erased" would be the same
+            # class of overclaim as the sentence this whole path exists to
+            # correct.
+            _say("  One caveat, plainly: on USB flash memory nothing can")
+            _say("  promise the old data is unrecoverable by a laboratory.")
+            _say("  For everyday purposes it is gone. If the threat you have")
+            _say("  in mind is that serious, destroy the stick.")
 
 
 def _cmd_boot_guide(args) -> int:

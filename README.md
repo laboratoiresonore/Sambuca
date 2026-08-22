@@ -522,6 +522,8 @@ close a door the software leaves open by default. None of it is hidden behind a
 | 29 | Update guard holds anything oversized, key-shaped, contacting a new host, touching how the machine boots — or **taking a defence away**: unpinning an image, or removing `no-new-privileges` / `cap_drop` / `read_only` from a service | `update-guard.sh` | every night |
 | 30 | The provisioning payload is **shredded** from the boot partition | `first-boot.sh` | end of first boot |
 | 31 | A failed backup, an aborted parity sync or a held update **says so at the login prompt** and via `sambuca-health` — and clears itself when fixed | `health.sh` | every login |
+| 32 | The **backup repository password is installed from your seed phrase**, onto the encrypted root — so the archive can be opened from the printed sheet alone, on a machine that has never seen this one | `late-command.sh` | install |
+| 33 | The installer USB is **offered up for erasure** once real services answer — it carries the disk passphrase, the recovery key and the backup password, and nothing else ever removed them | `sambuca-flasher handover` | after first boot, with your say-so |
 
 **Made by the USB maker, on your own computer, before anything boots:** the
 24-word seed, the root passphrase, the disk recovery key, the recovery PDF and
@@ -559,6 +561,13 @@ key are both derived from the 24-word seed with versioned HKDFs. With the
 printed sheet alone you can open the disk on a machine whose passphrase has been
 forgotten, and restore your data on a machine that has never heard of this
 project.
+
+> One fork, stated plainly: this holds for the normal guided install. If you
+> chose `--interactive`, no secret is written to the USB — so the appliance
+> generates its own backup password instead of receiving the derived one, and
+> the 24 words will not open that repository. It tells you so when it generates
+> it, and the password is at `/etc/sambuca/secrets/restic_password`. Copy it
+> somewhere off the machine.
 
 **No single point of failure that is one string on one sheet.** The disk has two
 independent keyslots — the root passphrase and the seed-derived recovery key.
@@ -610,6 +619,7 @@ sambuca/
 │   │   ├── payload.py               provision.json construction + the secret-leak guard
 │   │   ├── recovery_pdf.py          the printed recovery document
 │   │   ├── devices.py               removable-device enumeration (internal disks never listed)
+│   │   ├── stick.py                 takes the secrets back off the installer USB, by payload marker
 │   │   ├── writer.py                raw image write + readback verification
 │   │   └── cli.py                   the write flow, in the order it must happen
 │   └── tests/
@@ -619,7 +629,7 @@ sambuca/
 │   │   ├── preseed.cfg              full-disk LUKS, no hardcoded target disk
 │   │   ├── disk-select.sh           resolves the target, or REFUSES — never guesses
 │   │   ├── abort-countdown.sh       the 30-second fail-safe
-│   │   ├── late-command.sh          stages the engine into the installed system
+│   │   ├── late-command.sh          stages the engine + installs the seed-derived backup password
 │   │   ├── enroll-recovery-key.sh   adds the seed-derived SECOND LUKS keyslot, in the installer
 │   │   ├── luks-tpm-enroll.sh       optional TPM 2.0 auto-unlock (opt-in, with the tradeoff stated)
 │   │   └── build-iso.sh             rebuild a netinst ISO with the payload embedded

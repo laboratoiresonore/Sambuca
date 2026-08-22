@@ -101,6 +101,15 @@ if [[ $VERB == init ]]; then
         install -d -m 0700 "${SB_ETC}/secrets"
         sb_secret 48 | tr -d '\n' | sb_atomic_write "$PW_FILE" 0600
         ok "generated a repository password at ${PW_FILE}"
+        # SAY THE CONSEQUENCE OUT LOUD. A generated password exists in exactly
+        # one place: this disk — the one being backed up. Unattended installs
+        # get the seed-derived password staged by late-command.sh and never
+        # reach this branch; an interactive install does, and its owner has no
+        # way to recover the archive from the 24 words. Silence here is how the
+        # flasher came to promise a password that opened nothing.
+        warn "this password was GENERATED, not derived from your seed phrase"
+        warn "  the 24 words will NOT recover this repository"
+        warn "  copy ${PW_FILE} somewhere off this machine, or the backups die with it"
     fi
     export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE="$PW_FILE"
     if restic cat config >/dev/null 2>&1; then

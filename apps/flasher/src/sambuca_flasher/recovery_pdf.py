@@ -197,11 +197,17 @@ def _page_one(c: canvas.Canvas, keys: KeyMaterial, config: ApplianceConfig) -> N
 
     # --- the honest USB warning -------------------------------------------
     if config.unattended:
+        # THE CAPTION ABOVE SAYS "the honest USB warning" AND IT WAS THE ONE
+        # PARAGRAPH THAT WASN'T. It read "The appliance erases it on first
+        # boot", which is true of /boot/sambuca/provision.json on the INSTALLED
+        # machine and false of the stick: nothing in the engine writes to
+        # /cdrom at all. This sheet is the artefact an owner keeps, so the
+        # wrong version of this sentence outlives every other copy of it.
         _warning_box(c, y, [
-            "THE INSTALLER USB IS ALSO A KEY, UNTIL INSTALLATION FINISHES.",
-            "Unattended installation requires the disk passphrase to be on the stick.",
-            "The appliance erases it on first boot. Until then, treat the USB as this",
-            "sheet: do not leave it in the machine, do not lend it, do not post it.",
+            "THE INSTALLER USB IS ALSO A KEY, AND IT STAYS ONE.",
+            "It holds the disk passphrase, the recovery key and the backup password.",
+            "NOTHING ERASES IT. When the install has finished, either reformat the",
+            "stick or keep it exactly as safely as you keep this sheet.",
         ])
     else:
         _warning_box(c, y, [

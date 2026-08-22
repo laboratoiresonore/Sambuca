@@ -76,6 +76,35 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 2b. The backup repository password -> the encrypted root, NOT the boot part.
+#
+# THE BUG THIS EXISTS TO FIX: nothing ever delivered it, so backup.sh found no
+# password file and generated a random 48-character one. The archive was then
+# encrypted with a secret that existed in exactly one place — the disk being
+# backed up. Losing the machine, the event backups are FOR, lost the backups
+# too, while `sambuca-flasher derive-backup-key` cheerfully printed a
+# seed-derived password that opened nothing.
+#
+# This runs in-target, so /etc is already the encrypted root: the password
+# never touches the unencrypted boot partition the way provision.json does.
+# Normalised exactly like the LUKS key, because restic uses the file's entire
+# contents and a stray newline would make the derived password not match.
+#
+# NON-FATAL by the same reasoning as the keyslot: a machine that installs
+# without it is degraded (backup.sh generates one and warns), not broken.
+# ---------------------------------------------------------------------------
+if [ -f "$SRC/restic-password.key" ]; then
+    mkdir -p /etc/sambuca/secrets
+    chmod 0700 /etc/sambuca/secrets
+    tr -d '\r\n \t' < "$SRC/restic-password.key" > /etc/sambuca/secrets/restic_password
+    chmod 0600 /etc/sambuca/secrets/restic_password
+    printf 'sambuca: backup repository password installed from your seed phrase\n'
+else
+    printf 'sambuca: no seed-derived backup password staged; one will be generated\n'
+    printf 'sambuca:   (expected in --interactive mode — derive-backup-key will NOT match)\n'
+fi
+
+# ---------------------------------------------------------------------------
 # 3. Systemd units + convenience entrypoints.
 # ---------------------------------------------------------------------------
 cp "$INSTALL_ROOT"/engine/maintenance/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
