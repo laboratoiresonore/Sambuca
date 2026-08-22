@@ -151,15 +151,44 @@ machine and calling it done is how you get a file server with no certificates.
 The consequence is that **every `die` in a phase is a decision to abandon the
 whole appliance**, and that is a much higher bar than "this step did not work".
 
-`50-network.sh` failed it. Obtaining Tailscale had four `die`s — signing key, apt
-update, package install, daemon start — so a network that blocks
+**Three phases failed it**, and the audit that found them was one question asked
+of all thirty `die` calls: *is the appliance worth having without this?*
+
+`50-network.sh` — obtaining Tailscale had four `die`s, so a network that blocks
 `pkgs.tailscale.com` (corporate, school, some ISPs) meant the machine installed
 Debian, booted, died at phase 50, and never provisioned the stack, the
-certificates or the setup page. It powered on and did nothing, on exactly the
-networks least able to diagnose it. Meanwhile `tailscale up` failing twenty lines
+certificates or the setup page. Meanwhile `tailscale up` failing twenty lines
 below was already a warning, every consumer downstream guarded on `sb_have
-tailscale`, and LAN-only was a documented mode. Only *acquiring* the optional
-thing was treated as life-or-death.
+tailscale`, and LAN-only was a documented mode.
+
+`30-gpu-runtime.sh` — an NVIDIA driver that would not install ended the run
+before anything else existed. No file server, no photo library, no password
+manager, because of a graphics driver, and the usual causes are not the owner's
+fault: no route to the non-free mirror, Secure Boot refusing an unsigned DKMS
+module. The AMD branch **in the same file** already warned and continued.
+
+`70-models.sh` — the chat model is pulled after the entire stack is up and
+before the completion report, so a failed download discarded a finished
+appliance at the reporting step. Nine working services, and an owner told the
+install failed. The secondary models in that same file already tolerated
+failure.
+
+In every case only *acquiring the optional thing* was treated as life-or-death,
+while using it was already a warning.
+
+**Degrading correctly is more than warning.** `60-stack` selects its compose
+overlay from `SAMBUCA_GPU_PROFILE`, and an overlay naming a runtime that was
+never registered invalidates the entire compose project — so the GPU fallback
+rewrites the profile to `cpu` rather than merely printing a message, or the
+death simply moves to phase 60 where it is harder to read. The same applies to
+apt: a failed install removes the source it added, because an unreachable
+repository breaks every later `apt-get update`, including the security patches
+enabled two phases earlier.
+
+**And what is recorded has to be read.** Both fallbacks write a marker that
+`90-report.sh` gates on, so the owner is told what is missing, what still works
+and how to retry. A marker nobody reads would be no better than the `die` it
+replaced.
 
 So the test for a `die` is not "did this fail" but **"is the appliance worth
 having without it"**. A missing disk is fatal. A missing Docker is fatal. A

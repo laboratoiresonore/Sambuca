@@ -526,6 +526,8 @@ close a door the software leaves open by default. None of it is hidden behind a
 | 33 | The installer USB is **offered up for erasure** once real services answer — it carries the disk passphrase, the recovery key and the backup password, and nothing else ever removed them | `sambuca-flasher handover` | after first boot, with your say-so |
 | 34 | A network that **blocks Tailscale no longer stops the install**. It used to be fatal four ways, and a failing phase halts provisioning — so on a school or office network the machine installed Debian, booted, and never provisioned the stack, the certificates or the setup page | `50-network.sh` | first boot |
 | 35 | A failed Tailscale install **removes its own apt source** — an unreachable repo left in `sources.list.d` makes every later `apt-get update` fail, including the security updates enabled two phases earlier | `50-network.sh` | first boot |
+| 36 | A **graphics driver that will not install no longer ends the install**. It falls back to the processor, rewrites the profile so the container stack picks the matching configuration, and says so on the completion report — rather than costing you the file server because of a GPU | `30-gpu-runtime.sh` | first boot |
+| 37 | A **chat model that will not download no longer ends the install** either. It happens after everything else is already running, so the machine finishes, reports its addresses, and names the one part that is missing with the command to retry | `70-models.sh` | first boot |
 
 **Made by the USB maker, on your own computer, before anything boots:** the
 24-word seed, the root passphrase, the disk recovery key, the recovery PDF and
