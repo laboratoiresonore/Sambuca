@@ -225,3 +225,67 @@ def test_this_subverb_check_is_not_vacuous():
     gitops = parsed.get("sambuca-gitops") or set()
     assert {"help", "apply"} <= gitops, (
         f"the parser is reading only one case block again: {sorted(gitops)}")
+
+
+# ── and one level deeper still: the FLAGS an instruction names ──────────────
+#
+# The original bug in this family was `sambuca-gitops apply --force`, printed to
+# owners BY the held-update message as the way to release a held update. `apply`
+# did not exist, so following the instruction re-ran the sync, hit the same
+# guard, and printed the same instruction — a loop, on the one mechanism that
+# stops an appliance drifting years behind on security patches.
+#
+# The command check caught the command. The subverb check above caught the verb.
+# Neither would notice `sambuca-first-boot --form 40-storage-pool`, and the
+# recovery instructions printed at the worst moments are made almost entirely of
+# flags: --from, --only, --force. All 19 currently named are real; nothing was
+# checking that.
+
+_FLAGGED = re.compile(
+    r"(sambuca-[a-z-]+)((?: +(?!--)[a-z][a-z-]*)*)((?: +--[a-z-]+)+)")
+
+
+def _named_flags() -> list[tuple[str, str, str, int]]:
+    found = []
+    for f in ENGINE.rglob("*.sh"):
+        text = f.read_text(encoding="utf-8", errors="ignore")
+        for m in _FLAGGED.finditer(text):
+            line = text[:m.start()].count("\n") + 1
+            for flag in m.group(3).split():
+                found.append((m.group(1), flag, str(f.relative_to(ROOT)), line))
+    return found
+
+
+def test_every_flag_an_instruction_names_is_understood_by_that_command():
+    sources = _command_sources()
+    broken = []
+    for cmd, flag, f, n in _named_flags():
+        script = sources.get(cmd)
+        if script is None or not script.exists():
+            continue
+        if flag not in script.read_text(encoding="utf-8", errors="ignore"):
+            broken.append(f"{f}:{n}  {cmd} {flag}")
+    assert not broken, (
+        "instructions name flags the command does not understand — following "
+        "one prints an error at the moment somebody is trying to recover:\n  "
+        + "\n  ".join(sorted(set(broken))))
+
+
+def test_the_flag_check_is_not_vacuous():
+    """Zero findings is either good news or a regex matching nothing."""
+    named = _named_flags()
+    assert len(named) >= 10, f"almost no flags matched: {named}"
+
+    sources = _command_sources()
+    resolved = [1 for cmd, _, _, _ in named if cmd in sources]
+    assert len(resolved) >= 10, (
+        "flags were found but almost none belong to a command this test can "
+        "resolve to a script — the install mechanisms have moved")
+
+    # The instruction that motivated the whole family, still present and still
+    # checked. If the held-update message ever stops naming it, that is fine —
+    # but this assertion should be updated deliberately, not discovered.
+    assert any(c == "sambuca-first-boot" and f in ("--from", "--only")
+               for c, f, _, _ in named), \
+        "no first-boot recovery instruction found — the resume path may have " \
+        "stopped being printed to owners"
