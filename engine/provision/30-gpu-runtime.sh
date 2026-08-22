@@ -12,6 +12,48 @@ source "${SB_ETC}/profile.env" 2>/dev/null || true
 
 export DEBIAN_FRONTEND=noninteractive
 
+# ---------------------------------------------------------------------------
+# A GPU IS AN ACCELERATOR, NOT THE APPLIANCE — and this phase used to `die` when
+# one could not be set up, which threw the whole machine away over it.
+#
+# first-boot.sh stops the run on a failing phase, and this is phase 30. So an
+# NVIDIA card whose driver would not install — no non-free mirror reachable, an
+# unsupported card, Secure Boot refusing an unsigned DKMS module, which is common
+# and not the owner's fault — meant no file server, no photo library, no password
+# manager and no completion report. Because a graphics driver failed.
+#
+# The AMD branch in this same file already had it right: missing firmware warns
+# and continues, a missing /dev/kfd warns and continues. Only the NVIDIA path
+# treated an accelerator as life-or-death.
+#
+# DEMOTING RATHER THAN MERELY WARNING IS THE LOAD-BEARING PART. 60-stack picks
+# its compose overlay from SAMBUCA_GPU_PROFILE, and an overlay naming a runtime
+# that was never registered invalidates the entire compose project — so a bare
+# warning would move the death two phases later and make it harder to read.
+# ---------------------------------------------------------------------------
+demote_to_cpu() {
+    warn "$1"
+    warn "  Continuing on CPU. Everything else installs normally, and the AI"
+    warn "  half still works — slower, and only for the models that fit."
+    warn "  To retry after fixing it:  sambuca-first-boot --only 30-gpu-runtime --force"
+
+    # Rewrite the profile IN PLACE. Overwriting the file would discard the tier
+    # and the model catalogue that 70-models reads out of it.
+    if [[ -f "${SB_ETC}/profile.env" ]]; then
+        sed -i 's/^SAMBUCA_GPU_PROFILE=.*/SAMBUCA_GPU_PROFILE=cpu/' \
+            "${SB_ETC}/profile.env" 2>/dev/null || true
+        grep -q '^SAMBUCA_GPU_PROFILE=' "${SB_ETC}/profile.env" 2>/dev/null \
+            || printf 'SAMBUCA_GPU_PROFILE=cpu\n' >>"${SB_ETC}/profile.env"
+    fi
+    SAMBUCA_GPU_PROFILE=cpu
+    export SAMBUCA_GPU_PROFILE
+
+    # Recorded so the completion report can say WHY a machine with a graphics
+    # card in it is running on CPU. Without this the owner reads "runtime cpu"
+    # and reasonably concludes the profiler cannot see their GPU.
+    printf '%s\n' "$1" > "${SB_LIB}/gpu-degraded" 2>/dev/null || true
+}
+
 install_nvidia() {
     if sb_have nvidia-smi && nvidia-smi >/dev/null 2>&1; then
         log "NVIDIA driver already functional: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1)"
@@ -23,7 +65,7 @@ install_nvidia() {
             sb_retry 3 5 apt-get update -qq || warn "apt update after enabling non-free failed"
         fi
         sb_retry 2 10 apt-get install -y -qq nvidia-driver firmware-misc-nonfree \
-            || die "NVIDIA driver installation failed — install it manually and re-run --only 30-gpu-runtime"
+            || { demote_to_cpu "the NVIDIA driver would not install"; return 0; }
         warn "a REBOOT is required before the NVIDIA kernel module loads"
         touch "${SB_LIB}/reboot-required"
     fi
@@ -34,7 +76,8 @@ install_nvidia() {
         install -d -m 0755 /etc/apt/keyrings
         sb_retry 3 5 curl -fsSL --proto '=https' \
             https://nvidia.github.io/libnvidia-container/gpgkey \
-            -o /tmp/nvidia-container.gpg || die "could not fetch the NVIDIA container-toolkit key"
+            -o /tmp/nvidia-container.gpg \
+            || { demote_to_cpu "could not fetch the NVIDIA container-toolkit key"; return 0; }
         gpg --dearmor </tmp/nvidia-container.gpg >/etc/apt/keyrings/nvidia-container-toolkit.gpg
         chmod 0644 /etc/apt/keyrings/nvidia-container-toolkit.gpg
         rm -f /tmp/nvidia-container.gpg
@@ -43,14 +86,24 @@ install_nvidia() {
             | sed 's#deb https://#deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.gpg] https://#g' \
             | sb_atomic_write /etc/apt/sources.list.d/nvidia-container-toolkit.list 0644
 
-        sb_retry 3 5 apt-get update -qq || die "apt update failed after adding the container-toolkit repo"
+        # Remove the source again on the way out. An unreachable repository left
+        # in sources.list.d makes every later apt-get update fail, which would
+        # turn "no GPU acceleration" into "this machine can no longer install
+        # security updates" — the same trap the Tailscale fallback had to avoid.
+        if ! sb_retry 3 5 apt-get update -qq; then
+            rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list
+            apt-get update -qq >/dev/null 2>&1 || true
+            demote_to_cpu "the NVIDIA container-toolkit repository is unreachable"
+            return 0
+        fi
         sb_retry 2 10 apt-get install -y -qq nvidia-container-toolkit \
-            || die "nvidia-container-toolkit installation failed"
+            || { demote_to_cpu "nvidia-container-toolkit would not install"; return 0; }
     fi
 
     sb_run nvidia-ctk runtime configure --runtime=docker --set-as-default=false \
-        || die "nvidia-ctk could not register the Docker runtime"
-    sb_run systemctl restart docker || die "Docker failed to restart with the NVIDIA runtime"
+        || { demote_to_cpu "nvidia-ctk could not register the Docker runtime"; return 0; }
+    sb_run systemctl restart docker \
+        || { demote_to_cpu "Docker would not restart with the NVIDIA runtime"; return 0; }
 
     # Prove it, do not assume it.
     if docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then

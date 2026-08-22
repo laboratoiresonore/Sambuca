@@ -27,11 +27,24 @@ for _ in $(seq 1 60); do
     sleep 2
 done
 if ((ready == 0)); then
-    err "container '${OLLAMA_CONTAINER}' is not answering after 120s"
-    err "  logs: docker logs ${OLLAMA_CONTAINER} --tail 50"
-    die "cannot pull models without a running engine"
+    # SAME REASONING AS THE CHAT MODEL BELOW. The stack is already up; this is
+    # one container out of nineteen failing to answer. Killing the run here
+    # denies the owner the completion report for every service that IS working,
+    # and leaves them with no addresses to visit and no idea anything succeeded.
+    warn "container '${OLLAMA_CONTAINER}' is not answering after 120s"
+    warn "  logs: docker logs ${OLLAMA_CONTAINER} --tail 50"
+    warn "  No models can be pulled without it, so the AI assistant will be"
+    warn "  missing. Everything else on this machine is unaffected."
+    warn "  Retry once it is healthy:  sambuca-first-boot --only 70-models --force"
+    printf 'inference engine unreachable\n' > "${SB_LIB}/chat-model-missing" 2>/dev/null || true
+    # NOT `exit 0`. The image plane further down is ComfyUI, which never speaks
+    # to Ollama — exiting here would let an unreachable chat engine silently
+    # take picture generation with it. Skip what depends on Ollama; run the rest.
+    OLLAMA_OK=0
+else
+    OLLAMA_OK=1
+    ok "inference engine reachable"
 fi
-ok "inference engine reachable"
 
 # --- pull -------------------------------------------------------------------
 pull_model() {
@@ -63,16 +76,55 @@ pull_model() {
     return 0
 }
 
-pull_model "$SAMBUCA_MODEL_CHAT"   "chat"   || die "the primary chat model could not be provisioned"
-pull_model "$SAMBUCA_MODEL_EMBED"  "embed"
-pull_model "$SAMBUCA_MODEL_CODE"   "code"
-pull_model "$SAMBUCA_MODEL_VISION" "vision"
+# NOT FATAL, AND IT USED TO BE — `|| die "the primary chat model could not be
+# provisioned"`.
+#
+# This is phase 70. By the time it runs, 60-stack has brought the ENTIRE
+# appliance up: the file server, the photo library, the password manager, the
+# calendar, the certificates. 90-report has not run yet. So a chat model that
+# would not download — a registry outage, a network blip, a full disk, any of
+# which is nobody's fault and all of which are temporary — threw away a finished
+# machine at the reporting step. The owner got no addresses, no bookmarks, no
+# completion report, and a screen saying the install failed, while nine working
+# services sat there unmentioned.
+#
+# The README is unambiguous that this is the wrong trade: "None of that depends
+# on the AI... If you came here to stop paying Google, you can stop reading at
+# this table." The secondary models in this very file already return 0 on
+# failure. Only the chat model was treated as the appliance itself.
+#
+# So it is recorded and surfaced, and provisioning continues to the report.
+if ((OLLAMA_OK == 0)); then
+    log "skipping model downloads — the inference engine is not answering"
+elif ! pull_model "$SAMBUCA_MODEL_CHAT" "chat"; then
+    warn "the primary chat model (${SAMBUCA_MODEL_CHAT}) could not be provisioned."
+    warn "  EVERYTHING ELSE ON THIS MACHINE IS UP AND WORKING — files, photos,"
+    warn "  passwords, calendar and chat between people. Only the AI assistant"
+    warn "  is missing, and it can be added at any time with:"
+    warn "    sambuca-first-boot --only 70-models --force"
+    printf '%s\n' "$SAMBUCA_MODEL_CHAT" > "${SB_LIB}/chat-model-missing" 2>/dev/null || true
+fi
+if ((OLLAMA_OK == 1)); then
+    pull_model "$SAMBUCA_MODEL_EMBED"  "embed"
+    pull_model "$SAMBUCA_MODEL_CODE"   "code"
+    pull_model "$SAMBUCA_MODEL_VISION" "vision"
+fi
 
 # --- warm + smoke test ------------------------------------------------------
 # Load the chat model once so the owner's first message is not a 60-second wait,
 # and prove end-to-end that generation actually works on this hardware.
-log "smoke-testing generation on ${SAMBUCA_MODEL_CHAT}"
-if docker exec "$OLLAMA_CONTAINER" \
+if [[ -f "${SB_LIB}/chat-model-missing" ]]; then
+    # SKIP THE TEST, NOT THE PHASE. The first version of this guard was
+    # `exit 0`, which would also have skipped the image-model block below —
+    # and the image plane is ComfyUI, which does not go anywhere near Ollama.
+    # A missing chat model would have silently taken picture generation with
+    # it, which is precisely the over-broad failure this whole pass is about,
+    # committed while fixing it.
+    #
+    # Do not smoke-test a model that is known to be absent either: a second
+    # warning about one fact buries the first.
+    log "skipping the generation smoke test — no chat model to test"
+elif docker exec "$OLLAMA_CONTAINER" \
         ollama run "$SAMBUCA_MODEL_CHAT" --keepalive 5m 'Reply with the single word: ready' \
         >"${SB_LOG_DIR}/model-smoketest.txt" 2>&1; then
     ok "generation verified — $(tr -d '\n' <"${SB_LOG_DIR}/model-smoketest.txt" | head -c 80)"
@@ -84,8 +136,10 @@ else
     warn "  detail: $(tail -n 3 "${SB_LOG_DIR}/model-smoketest.txt" | tr '\n' ' ')"
 fi
 
-installed="$(docker exec "$OLLAMA_CONTAINER" ollama list 2>/dev/null | awk 'NR>1{print $1}' | tr '\n' ' ' || true)"
-ok "models installed: ${installed:-none}"
+if ((OLLAMA_OK == 1)); then
+    installed="$(docker exec "$OLLAMA_CONTAINER" ollama list 2>/dev/null | awk 'NR>1{print $1}' | tr '\n' ' ' || true)"
+    ok "models installed: ${installed:-none}"
+fi
 
 # ---------------------------------------------------------------------------
 # IMAGE PLANE

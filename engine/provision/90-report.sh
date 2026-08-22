@@ -172,6 +172,41 @@ REBOOT REQUIRED
 EOF
 fi
 
+# THE PARTS THAT DID NOT WORK, SAID PLAINLY.
+#
+# Both of these used to be `die` — the machine simply stopped, and the owner got
+# no report at all. Now provisioning finishes and these say what is missing. A
+# marker nobody reads would be no better than the die it replaced, so this is
+# the other half of that change rather than a nicety.
+if [[ -f "${SB_LIB}/gpu-degraded" ]]; then
+cat <<EOF
+GRAPHICS CARD NOT IN USE
+  $(head -n1 "${SB_LIB}/gpu-degraded" 2>/dev/null)
+
+  Your machine has a graphics card, and everything below is running on the
+  processor instead. Nothing is broken — it is slower for the AI half only, and
+  the rest of the appliance is unaffected.
+
+  Most often this is a driver that needs a reboot, a machine with Secure Boot
+  on, or no route to the driver repository. To retry:
+      sambuca-first-boot --only 30-gpu-runtime --force
+
+EOF
+fi
+
+if [[ -f "${SB_LIB}/chat-model-missing" ]]; then
+cat <<EOF
+THE AI ASSISTANT IS NOT INSTALLED
+  $(head -n1 "${SB_LIB}/chat-model-missing" 2>/dev/null)
+
+  Everything else on this page is up and working. The chat model did not
+  download — usually a temporary network or registry problem, occasionally a
+  full disk. To try again:
+      sambuca-first-boot --only 70-models --force
+
+EOF
+fi
+
 cat <<EOF
 MAINTENANCE (already scheduled)
   nightly 02:00   configuration sync from github.com/laboratoiresonore/Sambuca
