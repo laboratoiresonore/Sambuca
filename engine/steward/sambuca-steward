@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#
+# sambuca :: sambuca-steward — the one way in to the Steward's parts.
+#
+# THREE PIECES EXISTED AND NOTHING COULD REACH ANY OF THEM.
+#
+#   steward-parse.py    a model's reply -> a proposal
+#   steward-resolve.py  a proposal -> a plan, or a refusal
+#   steward-audit.py    a plan + an outcome -> an append-only, chained record
+#
+# Each was built because it could be verified without a model or hardware, and
+# each was correct in isolation and reachable from nowhere. That is the exact
+# shape this project keeps finding in itself — a module with no callers, a rule
+# guarding nothing, a test CI never ran — and three of them had accumulated
+# here in three days.
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# THERE IS NO `apply`, AND THAT ABSENCE IS DELIBERATE.
+#
+# Nothing executes a plan yet. The executor has to remove a Pocket ID account,
+# revoke a Tailscale device, restart a container — none of which can be written
+# honestly until there is a machine to try it on.
+#
+# A command that offered `apply` and quietly did nothing would be worse than no
+# command: it would be the appliance claiming a capability, which is the single
+# failure this project's status discipline exists to prevent. So `explain`
+# shows what WOULD happen and says plainly that nothing has.
+# ═══════════════════════════════════════════════════════════════════════════
+#
+set -euo pipefail
+
+_here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PY="${SAMBUCA_PYTHON:-python3}"
+
+usage() {
+    cat <<'USAGE'
+sambuca-steward — inspect what the Steward would do
+
+  sambuca-steward explain <file>    read a model's reply and show the plan
+  sambuca-steward explain -         the same, from standard input
+  sambuca-steward log [-n 20]       recent entries from the audit log
+  sambuca-steward verify-log        check the audit log has not been altered
+
+NOTHING HERE EXECUTES ANYTHING. `explain` shows what a reply WOULD become and
+what would be recorded; no operation is performed, and there is deliberately no
+command that performs one yet.
+USAGE
+}
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift || true
+
+case "$cmd" in
+    explain)
+        src="${1:--}"
+        if [ "$src" = "-" ]; then reply="$(cat)"; else reply="$(cat -- "$src")"; fi
+
+        # Each stage is a separate process on purpose. The gate must not be able
+        # to be talked into skipping the parser, and neither can reach the audit
+        # log's writer — a pipeline of small refusals, not one program holding
+        # every capability at once.
+        if ! proposal="$("$PY" "${_here}/steward-parse.py" "$reply")"; then
+            exit 1
+        fi
+        if ! plan="$("$PY" "${_here}/steward-resolve.py" "$proposal")"; then
+            exit 1
+        fi
+
+        printf '\n'
+        printf '  it would ask you to approve:\n'
+        printf '    %s\n' "$("$PY" -c 'import json,sys; print(json.load(sys.stdin)["sentence"])' <<<"$plan")"
+        printf '\n'
+        confirm="$("$PY" -c 'import json,sys; print(json.load(sys.stdin)["confirm"])' <<<"$plan")"
+        blast="$("$PY" -c 'import json,sys; print(json.load(sys.stdin)["blast_radius"])' <<<"$plan")"
+        secret="$("$PY" -c 'import json,sys; print(json.load(sys.stdin)["returns_secret"])' <<<"$plan")"
+        printf '  confirmation: %s        effect: %s\n' "$confirm" "$blast"
+        [ "$secret" = "True" ] && \
+            printf '  it hands back a secret, shown once on screen and never logged\n'
+        printf '\n'
+        printf '  the audit log would record the verb, who asked, and when —\n'
+        printf '  never the value handed back.\n'
+        printf '\n'
+        printf '  NOTHING WAS DONE. No operation has been performed, and this\n'
+        printf '  appliance has no way to perform one yet.\n'
+        printf '\n'
+        ;;
+    log)
+        exec "$PY" "${_here}/steward-audit.py" show "$@"
+        ;;
+    verify-log)
+        exec "$PY" "${_here}/steward-audit.py" verify "$@"
+        ;;
+    ""|-h|--help|help)
+        usage
+        ;;
+    *)
+        printf 'unknown command: %s\n' "$cmd" >&2
+        printf 'try: sambuca-steward {explain|log|verify-log}\n' >&2
+        exit 2
+        ;;
+esac

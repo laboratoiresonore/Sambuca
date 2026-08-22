@@ -95,6 +95,7 @@ ln -sf "$INSTALL_ROOT/engine/maintenance/gitops-sync.sh"   /usr/local/bin/sambuc
 ln -sf "$INSTALL_ROOT/engine/maintenance/snapraid-sync.sh" /usr/local/bin/sambuca-snapraid
 ln -sf "$INSTALL_ROOT/engine/maintenance/recovery-key.sh"  /usr/local/bin/sambuca-recovery
 ln -sf "$INSTALL_ROOT/engine/image/sambuca-image"           /usr/local/bin/sambuca-image
+ln -sf "$INSTALL_ROOT/engine/steward/sambuca-steward"     /usr/local/bin/sambuca-steward
 
 # ---------------------------------------------------------------------------
 # 4. TPM enrolment is deferred, on purpose.
