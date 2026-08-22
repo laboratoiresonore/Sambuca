@@ -129,6 +129,13 @@ fi
 set -euo pipefail
 SB_ETC="${SB_ETC:-/etc/sambuca}"
 COMPOSE_DIR="${SAMBUCA_COMPOSE_DIR:-/opt/sambuca/compose}"
+# The same default as the script that GENERATES this one. Below, the container
+# was named as the literal "pocket-id", and it is called sambuca-pocket-id — so
+# the recovery instruction printed by the one attended step of the whole install
+# failed with "No such container", at the exact moment somebody needed it. The
+# three uses in the generating script all went through a variable and were
+# right; the one that got copied into this heredoc did not.
+POCKET_ID_CONTAINER="${POCKET_ID_CONTAINER:-sambuca-pocket-id}"
 
 case "${1:-}" in
   set-client)
@@ -148,7 +155,8 @@ case "${1:-}" in
       printf 'Open it once, register your passkey, and it is spent.\n' >&2
     else
       printf 'No one-time link stored. Pocket ID may already be configured.\n' >&2
-      printf 'On a fresh install:  docker logs pocket-id 2>&1 | grep -i setup\n' >&2
+      printf 'On a fresh install:  docker logs %s 2>&1 | grep -i setup\n' \
+        "$POCKET_ID_CONTAINER" >&2
       exit 1
     fi
     ;;
