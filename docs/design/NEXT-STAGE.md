@@ -359,6 +359,42 @@ That paragraph ships with the feature. A privacy tool that overstates itself is
 worse than no privacy tool, because people calibrate their behaviour to what
 they were told.
 
+#### What this needs before anyone starts — checked 2026-08-22
+
+**Verified upstream, so the build does not begin by guessing:**
+
+- The signing identity is **Tor Browser Developers (signing key)
+  `<torbrowser@torproject.org>`**, fingerprint
+  `EF6E286DDA85EA2A4BA7DE684E2C6E8793298290`. Pin the fingerprint, not the
+  key file: a key fetched at build time and trusted because it was fetched is
+  not verification, it is a longer download.
+- Every download is accompanied by a detached `.asc` with the same name, on the
+  same page. So the verify step is `gpg --verify <file>.asc <file>` against that
+  fingerprint — the same shape as the CasaOS installer pin, which this project
+  already got wrong once by piping an unverified script into a shell.
+
+**The gap the design does not close, and it is the actual blocker:** Tor Browser
+is a GUI application, and nothing here says what puts it in front of the owner.
+"Delivered over the tailnet" describes the transport, not the mechanism. Every
+other service on this appliance is web-native; this one is not, so it needs a
+remote-display layer — KasmVNC, Selkies, xpra or similar — and that component,
+not the browser, is what has to be chosen and maintained.
+
+Two constraints narrow it, and they come from decisions already made above:
+
+1. **A third-party "Tor Browser in a container" image is disqualified by this
+   design's own rule.** "The official binary… not a repackage, not a fork, not a
+   patch" means the browser must be fetched and verified by us. So the thing to
+   wrap is the DISPLAY, and the browser rides inside it.
+2. **Axis 3 rejects unmaintained dependencies** — no tagged releases and no
+   commits in seven months disqualifies a component from an appliance meant to
+   run untouched for years. Whichever display layer is chosen must be checked
+   against that bar and registered in MAINTENANCE.md as an external coupling
+   before a line of it is written, not after.
+
+Until that choice is made and justified, this item is **not ready to build** —
+which is worth stating, because everything else about it reads as settled.
+
 ### Lean by default; spare memory becomes storage
 
 - **Nothing idles that was not asked for** — on-demand start for heavy, rarely
