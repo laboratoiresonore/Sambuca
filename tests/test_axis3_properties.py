@@ -119,3 +119,101 @@ def test_the_auth_backend_reports_its_own_health() -> None:
         "oauth2-proxy has no healthcheck — a misconfigured gate would look "
         "identical to a working one until someone tried to log in"
     )
+
+
+# ── the per-service hardening posture ───────────────────────────────────────
+#
+# "Read-only wherever the service does not need to write" and "hardened
+# variants, never stock" are axis-3 claims, and nothing counted them per
+# service. Measured today: 20 services, no-new-privileges on 19, cap_drop on 0,
+# read_only on 1.
+#
+# These do NOT assert the hardening this project eventually wants — adding
+# cap_drop or read_only to a service that needs the capability turns a running
+# appliance into a stopped one, and that cannot be verified from here. They
+# assert the posture that EXISTS, so it can only be added to, never quietly
+# lost. Rule 7 of the update guard does the same job for nightly updates; this
+# does it for development, which is where these were going to disappear from.
+
+
+def _all_services() -> dict[str, dict]:
+    """Every service definition, merged the way a later file overrides an
+    earlier one for the keys we care about."""
+    out: dict[str, dict] = {}
+    for path in sorted(COMPOSE.glob("*.yml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for name, svc in (doc.get("services") or {}).items():
+            if isinstance(svc, dict):
+                out.setdefault(name, {}).update(svc)
+    return out
+
+
+def _has_nnp(svc: dict) -> bool:
+    return any("no-new-privileges" in str(x) for x in (svc.get("security_opt") or []))
+
+
+# Named, with the reason, because an unexplained absence reads as an oversight
+# and gets "fixed" blind by whoever notices it next. The reason lives in full in
+# compose/cloud.yml above the service.
+NO_NNP_EXCEPTIONS = {
+    "nextcloud-aio": "holds the docker socket and spawns the Nextcloud "
+                     "deployment; unverified, and upstream sets no security_opt "
+                     "at all. Needs hardware to close.",
+}
+
+
+def test_every_service_refuses_privilege_escalation() -> None:
+    missing = sorted(n for n, s in _all_services().items()
+                     if not _has_nnp(s) and n not in NO_NNP_EXCEPTIONS)
+    assert not missing, (
+        "these services allow setuid privilege escalation and are not listed as "
+        f"known exceptions: {missing}. Add no-new-privileges, or add it to "
+        f"NO_NNP_EXCEPTIONS with the reason.")
+
+
+def test_the_exception_list_has_not_gone_stale() -> None:
+    """An exception for a service that no longer exists is a hole waiting for a
+    name collision — and it hides the fact that the gap was closed."""
+    services = _all_services()
+    gone = sorted(n for n in NO_NNP_EXCEPTIONS if n not in services)
+    assert not gone, f"NO_NNP_EXCEPTIONS names services that do not exist: {gone}"
+
+    closed = sorted(n for n in NO_NNP_EXCEPTIONS
+                    if n in services and _has_nnp(services[n]))
+    assert not closed, (
+        f"{closed} now sets no-new-privileges — remove it from the exception "
+        f"list and delete the explanation in compose/, so the next reader is "
+        f"not told about a gap that is closed")
+
+
+# A RATCHET, not a target. Whatever is hardened today must still be hardened
+# tomorrow; adding to these sets is how hardening lands, and a name disappearing
+# from a compose file is what this catches.
+READ_ONLY_TODAY = {"bentopdf"}
+CAP_DROP_TODAY: set[str] = set()      # none yet — see task #1
+
+
+def test_read_only_rootfs_is_never_quietly_removed() -> None:
+    services = _all_services()
+    lost = sorted(n for n in READ_ONLY_TODAY
+                  if not (services.get(n) or {}).get("read_only"))
+    assert not lost, (
+        f"{lost} lost read_only. If a service genuinely needs to write, say so "
+        f"in the compose file and remove it from READ_ONLY_TODAY deliberately.")
+
+
+def test_dropped_capabilities_are_never_quietly_removed() -> None:
+    services = _all_services()
+    lost = sorted(n for n in CAP_DROP_TODAY if not (services.get(n) or {}).get("cap_drop"))
+    assert not lost, f"{lost} lost cap_drop"
+
+
+def test_this_posture_check_can_still_see_the_services() -> None:
+    """The failure this repository keeps rediscovering: a moved directory or a
+    changed key turns the whole check into zero checks, and it reports green."""
+    services = _all_services()
+    assert len(services) >= 15, f"found almost no services: {sorted(services)}"
+    hardened = sum(1 for s in services.values() if _has_nnp(s))
+    assert hardened >= 15, (
+        f"only {hardened} services carry no-new-privileges — either a real "
+        f"regression, or this check has stopped reading security_opt")

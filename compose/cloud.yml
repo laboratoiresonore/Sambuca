@@ -70,6 +70,25 @@ services:
     # exception rather than becoming the habit.
     image: ${NEXTCLOUD_AIO_IMAGE:-nextcloud/all-in-one:latest}
     container_name: nextcloud-aio-mastercontainer   # fixed name: AIO requires it
+    # THE ONE SERVICE WITHOUT no-new-privileges, and it is a KNOWN GAP rather
+    # than a decision. Every other service in this project carries it.
+    #
+    # It is not set here because it has not been verified, and this container is
+    # the worst one to guess at: it holds the docker socket and spawns the whole
+    # Nextcloud deployment, so getting it wrong does not degrade a feature — it
+    # stops the file server existing. Upstream's own compose.yaml sets no
+    # security_opt at all, and the only one it mentions is `label:disable` for
+    # SELinux, which loosens rather than tightens. So there is no upstream
+    # answer to copy either way.
+    #
+    # TO CLOSE IT (needs hardware, not reading): add
+    #   security_opt: ["no-new-privileges:true"]
+    # then confirm AIO still completes first-time setup AND can start, update
+    # and stop its managed containers. If it cannot, replace this comment with
+    # what broke — an unexplained gap invites somebody to "fix" it blind.
+    #
+    # tests/test_axis3_properties.py holds this as a named exception, so the
+    # gap is asserted rather than merely absent.
     networks: [edge]
     volumes:
       - nextcloud_aio_mastercontainer:/mnt/docker-aio-config   # fixed: AIO requires it
