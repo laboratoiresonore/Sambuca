@@ -247,7 +247,36 @@ built.
 4. **Phase 5 on real hardware** — the largest unverified claim in the project,
    and now the single blocker under four separate items.
 
-The ordering changed because the forks were the cliff and are no longer. What is
-left divides cleanly: one decision to take (naming), one build that does not need
-hardware (the Steward runtime), and everything else waiting on one machine being
-installed once.
+The ordering changed because the forks were the cliff and are no longer.
+
+### Readiness of everything still open — audited 2026-08-22
+
+Each remaining item was checked against one question: **does it have what it
+needs, uphill and downhill, to be started today?** Almost none of them do, and
+the reasons fall into exactly three groups. This is worth stating because the
+list reads as though there is plenty of unblocked work on it, and there is not.
+
+| Item | Ready? | What it is waiting for |
+|---|---|---|
+| LAN-only naming | **decision** | mDNS cannot serve per-service subdomains; the scheme and the mechanism are incompatible. Three options are written up above. Nothing else can be decided for it. |
+| Substrate hardening (`cap_drop`, `read_only`) | **hardware** | 20 services measured; the ratchet holds what exists. Applying either blind stops a running appliance, and there is no running appliance. |
+| First boot on real hardware | **hardware** | The largest unverified claim in the project, and the single blocker under four other items. |
+| ComfyUI producing a picture | **hardware** | Orchestrator built and installed, 23 tests against a protocol stub. It has never met the real service. |
+| Steward executor | **hardware** | Selecting a verb is built and reachable. Executing one must remove an account, revoke a device, restart a container — none writable honestly without a machine to try it on. |
+| arm64 / Raspberry Pi | **hardware** | — |
+| v0.1.0 release | **both** | Odysseus publication, plus one real install. |
+| **Tor Browser** | **decision** | Design is decided and specific everywhere except the one thing that determines the size of the job: what renders a GUI browser remotely. Its own "not a repackage" rule disqualifies third-party Tor images, so the *display layer* is the component to choose and maintain. |
+| **Mail stack** | **decision** | mbsync, Dovecot and the App Password flow are all specified. The **webmail client is never named**, and the "curated shortlist with honest notes" of providers does not exist yet. Both are choices, not code. |
+| **Graduated response ladder** | **design→build** | The ladder itself is unusually well specified (confidence → response, isolate at the top, never shutdown). But **none of its detectors exist** — authorized_keys, LUKS keyslots, nftables drift, new outbound hosts, engine-tree modification — and **`isolate` is implemented nowhere**. health.sh surfaces state that other jobs write; it detects nothing itself. This is the largest genuinely-buildable item left, and it is a build, not a decision. |
+| **Rescue mode on the USB** | **no design** | Zero references anywhere in docs. It is a line on a list, not a plan. |
+| Accounts, avatars, control panel | **depends on #8** | Design is clear and its dependencies are named (the existing gate, no second auth system). The companion substrate it sits on is a static page so far. |
+| Per-session containers | **hardware** | zram and tmpfs are done. The disposable-container model is specified in detail; verifying it needs Docker on a real machine. |
+
+**So: one build is genuinely startable today** — the response ladder's detectors
+and the `isolate` action, both of which are shell against a filesystem and a
+firewall and both testable without hardware. Everything else needs either a
+decision from the owner or a machine that has actually booted.
+
+The three decisions are small and independent: a webmail client, a remote-display
+layer, and how LAN-only names services. None of them require writing anything to
+answer.
