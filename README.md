@@ -123,8 +123,9 @@ Three things. The third one is the one nobody else offers, and it is the reason 
 > service, the FLUX workflow, the verb catalogue and its linter are built and
 > tested, and the orchestrator that posts a picture request now exists. What is
 > missing is the part that connects them to you: Odysseus is unpublished, the
-> Steward runtime is not built, and no picture has yet come out of a real
-> ComfyUI — every piece is connected, none has met the actual service.
+> Steward can inspect a proposal but cannot perform one, and no picture has yet
+> come out of a real ComfyUI. Every piece is connected; none has met the actual
+> service.
 >
 > [**Where the AI plane actually stands**](#where-the-ai-plane-actually-stands)
 > sets out each piece and its state. That table is the honest one, and it is
@@ -314,7 +315,7 @@ Under the hood, Sambuca orchestrates a robust, open-source stack that prioritize
 * **The Hardware Profiler:** A dynamic auto-scaling daemon that detects your CPU, RAM, and GPU VRAM on first boot, automatically pulling the optimal quantized models to prevent out-of-memory crashes.
 * **The AI Engine:** Ollama as the local inference backend, paired with **Odysseus** as the web frontend. The model set is chosen per hardware tier from a catalogue held as data, not code — see [`engine/profiles/`](engine/profiles/).
 * **The Image Plane:** ComfyUI running headless behind a shipped workflow, with **FLUX.1-schnell** (Apache-2.0). Weights mounted read-only, generated pictures held on a tmpfs so they never touch the disk, embedded prompt metadata stripped, and the custom-node installer unreachable. Present only on hardware that can actually run it.
-* **The Steward:** natural-language administration over a **closed, typed catalogue of operations** ([`engine/steward/verbs.yml`](engine/steward/verbs.yml)). The model selects and fills a verb; it never emits shell. Every operation declares its blast radius, and the safety rules are enforced by [`tools/steward-lint.py`](tools/steward-lint.py) in CI rather than asserted in a comment.
+* **The Steward:** natural-language administration over a **closed, typed catalogue of operations** ([`engine/steward/verbs.yml`](engine/steward/verbs.yml)). The model selects and fills a verb; it never emits shell. Every operation declares its blast radius, the safety rules are enforced by [`tools/steward-lint.py`](tools/steward-lint.py) in CI rather than asserted in a comment, and a verb outside the catalogue simply does not exist — there is no fuzzy match to fall into, so injected text can at worst cause an *existing* verb to be proposed, which is what the confirmation sentence is for. **It cannot yet perform anything:** `sambuca-steward explain` shows what a reply would become and says so plainly.
 * **The Application Mesh:** A CasaOS graphical dashboard managing a pre-wired Docker Compose ecosystem.
 * **The Sovereign SaaS Suite:** Pre-configured self-hosted alternatives, including Vaultwarden (passwords), Nextcloud AIO (files/calendars), Immich (local ML photo backup), and encrypted IRC/Matrix servers.
 * **Zero-Config Networking:** Tailscale is baked directly into the core, creating a secure peer-to-peer mesh network. No opening router ports, no complex firewall rules.
@@ -721,7 +722,11 @@ The section near the top describes this as though it were finished. It is not:
 | Checkpoint fetch — resumable, digest-pinned, atomic | **Built.** Digest verified against the live upstream. Not yet run end to end. |
 | GPU handoff decision | **Built.** The unload/reload protocol it describes is **not implemented**. |
 | The verb catalogue and its linter | **Built, in CI, mutation-tested** against five injected regressions. |
-| **The Steward runtime** — the thing that selects and executes verbs | **Not built.** This is the largest gap on this page. |
+| **The Steward gate** — decides whether a proposal may become an operation | **Built.** A verb outside the catalogue does not exist, with no fuzzy match; parameters are bounded from the catalogue, not the proposal. 22 tests. |
+| **The proposal extractor** — a model's reply becomes a proposal | **Built.** Two candidate objects is a refusal, not a tie-break — a summarised email carrying its own `{"verb": …}` cannot win. 16 tests. |
+| **The audit log** — append-only, hash-chained | **Built.** The secret cannot be logged because `record()` has no parameter for it. 10 tests. |
+| **The executor** — the thing that actually performs a verb | **Not built, and this is now the gap.** `sambuca-steward explain` shows what a reply would become and says plainly that nothing was done. There is deliberately no `apply`, and a test fails if one appears. |
+| A model wired to any of it | **Not built.** Nothing calls Ollama; proposals are read from a file or a pipe. |
 | Odysseus integration for chat, pictures and the Steward | **Not built.** Blocked on publishing Odysseus. |
 
 **The earlier binaries did not work, and that is worth stating plainly.**
