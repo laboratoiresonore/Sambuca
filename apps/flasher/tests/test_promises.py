@@ -26,7 +26,7 @@ REPO = pathlib.Path(__file__).resolve().parents[3]
 # short, explicit list: anything not here has to be a real command.
 PROSE = {"needs", "requires", "is", "was", "will", "can", "does", "and", "to"}
 
-SEARCH_DIRS = ["apps/flasher/src", "engine", "docs"]
+SEARCH_DIRS = ["apps", "engine", "docs"]
 SEARCH_FILES = ["README.md"]
 SUFFIXES = {".py", ".sh", ".md", ".txt"}
 
