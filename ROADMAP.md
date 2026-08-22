@@ -60,26 +60,44 @@ possible moment: a finished machine that cannot be found.
 | Where they are | What Sambuca does | Status |
 |---|---|---|
 | **Tailscale here, signed in** | Detect it, name the tailnet back to them, open the key page, accept and validate the key. | ✅ |
-| **Tailscale here, NOT signed in** | Today: tells them to sign in and re-run. **Should:** run `tailscale up` and let their browser handle it, then continue in the same session. | 🟡 |
+| **Tailscale here, NOT signed in** | Runs `tailscale up`, waits for the browser, and continues in the SAME session. `cli.py` calls `tailnet.sign_in()`; a timeout says so and offers to carry on. | ✅ |
 | **Tailscale not installed** | Offer to install via winget/brew/apt, then fall through to the case above. | ✅ |
-| **No Tailscale ACCOUNT** | **Not handled.** Should say it is free for personal use, that signing in uses an account they already have (Google, Microsoft, GitHub) with no new password, and open the signup page. | ⬜ |
+| **No Tailscale ACCOUNT** | Named out loud - free for personal use, an account they already have, no new password - and answered by the SAME sign-in action, because `tailscale up` opens a page that creates one. A separate `open_signup()` existed for this and had zero callers; it was deleted rather than wired, since a second browser tab is not a second answer. | ✅ |
 | **Declines Tailscale** | Continue LAN-only, and say what that costs: you must find the address yourself, and it can change. | ✅ |
-| **Tailscale blocked** (corporate, school, some ISPs) | **Not handled.** Should detect the failure at first boot and fall back rather than appearing broken. | ⬜ |
-| **Offline entirely** | **Not handled.** The card can still be written; enrolment must be deferrable to later. | ⬜ |
+| **Tailscale blocked** (corporate, school, some ISPs) | Obtaining tailscale is no longer fatal. It used to `die` four ways in `50-network.sh`, and first-boot stops on a failing phase - so a blocked repo meant the stack, the certificates and the setup page never provisioned at all. Now it warns, removes the unreachable apt source, and continues. | ✅ *(never run on hardware)* |
+| **Offline entirely** | Enrolment IS deferrable - the key prompt takes an empty answer, and the appliance warns and carries on without one. But `write` still needs a Debian netinst ISO, so a fully offline run only works if that file is already on disk. | 🟡 |
 
 ### The LAN-only fallback needs to be real ⬜
 
 If someone declines or cannot use a tailnet, "find the address yourself" is not
-good enough. What is needed:
+good enough. Still true, and the shape of the problem is now known precisely.
 
-- **mDNS**: the appliance answers to `sambuca.local`, so there is a name even
-  without a tailnet.
-- **The install beacon** (already designed in `docs/design/INSTALLER.md`, not
-  built): machine A watches for machine B appearing, so the address is found
-  *for* them.
+**Nothing publishes `sambuca.local`.** There is no mDNS responder in any package
+list — not the preseed's `pkgsel/include`, not `10-system.sh`'s `PKGS`, and
+Debian's `standard` task does not bring one. `50-network.sh` opens udp/5353 with
+a comment about `sambuca.local` discovery, `SAMBUCA_DOMAIN` defaults to it, Caddy
+serves it, and the handover writes a bookmarks file full of it. The name resolves
+nowhere.
 
-Without these, declining Tailscale means the guidance quietly stops — which is
-the failure this whole document exists to prevent.
+**And installing avahi would not be enough**, which is the part worth knowing
+before anyone tries: every link the handover hands out is a SUBDOMAIN —
+`photos.sambuca.local`, `cloud.sambuca.local`, `vault.sambuca.local`. mDNS
+publishes a host, not a zone; it cannot serve wildcard subdomains. So the naming
+scheme and the fallback mechanism are incompatible as designed, and this is a
+decision to take rather than a package to add:
+
+- a resolver on the appliance that the owner's router or devices point at, or
+- path-based routing for LAN-only mode (`https://<address>/photos`) instead of
+  per-service names, or
+- writing a hosts-file block for the owner — which works and is ugly, and
+  breaks the moment DHCP moves the machine.
+
+- **The install beacon** is built (`engine/beacon/`, `beaconclient.py`), so the
+  ADDRESS half is answered: machine A watches for machine B appearing. Service
+  browsing is not built.
+
+Until the naming half is decided, declining Tailscale means the guidance stops
+at an IP address — better than nothing, and not what this document promises.
 
 ---
 
@@ -214,16 +232,22 @@ built.
 
 ## What to build next, in order
 
-1. **Phase 1 forks** — no account, not signed in, blocked, offline. Step 1
-   currently assumes a happy path that many people are not on.
-2. **The LAN-only fallback** — mDNS plus the beacon, so declining a tailnet does
-   not mean the guidance stops.
-3. **G2** — pre-select device and OS, the last two screens still answered by hand.
-4. **Phase 7 handover** — cheap to build, and it is what the whole thing is
-   judged on.
-5. **The Steward runtime** — the AI plane's headline claim.
-6. **ComfyUI polish** — after a picture has come out of it once.
-7. **Phase 5 on real hardware** — the largest unverified claim in the project.
+~~1. **Phase 1 forks**~~ — done. Not signed in, no account and blocked are all
+   answered; offline is partial (the key is deferrable, the Debian ISO is not).
+~~3. **G2**~~ — done, device and OS are pre-selected.
+~~4. **Phase 7 handover**~~ — done, and it now also offers to take the secrets
+   back off the installer USB.
 
-Item 1 first because the fork is where people actually are. Everything after
-the happy path is currently a cliff.
+1. **The LAN-only naming decision** — the beacon answers "what address", nothing
+   answers "what name", and mDNS cannot answer it for per-service subdomains.
+   See the section above: this needs a choice made, not a package installed.
+2. **The Steward runtime** — the AI plane's headline claim. The gate, parser and
+   audit log are built and joined; the executor and the model side are not.
+3. **ComfyUI polish** — after a picture has come out of it once.
+4. **Phase 5 on real hardware** — the largest unverified claim in the project,
+   and now the single blocker under four separate items.
+
+The ordering changed because the forks were the cliff and are no longer. What is
+left divides cleanly: one decision to take (naming), one build that does not need
+hardware (the Steward runtime), and everything else waiting on one machine being
+installed once.

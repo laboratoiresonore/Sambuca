@@ -134,7 +134,6 @@ def open_key_page() -> bool:
         return False
 
 
-SIGNUP = "https://login.tailscale.com/start"
 
 
 def sign_in(timeout: int = 300) -> bool:
@@ -168,16 +167,6 @@ def sign_in(timeout: int = 300) -> bool:
     if proc.returncode != 0:
         return False
     return status().ready
-
-
-def open_signup() -> bool:
-    """Open the page that creates an account."""
-    import webbrowser
-
-    try:
-        return webbrowser.open(SIGNUP)
-    except Exception:  # noqa: BLE001
-        return False
 
 
 def valid_key(key: str) -> bool:

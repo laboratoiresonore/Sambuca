@@ -26,25 +26,73 @@
 export DEBIAN_FRONTEND=noninteractive
 
 # --- tailscale --------------------------------------------------------------
+#
+# NOT FATAL, AND IT USED TO BE. Four `die`s lived in this block — the signing
+# key, the apt update, the install, and starting the daemon. On a network that
+# BLOCKS pkgs.tailscale.com (corporate, school, a few ISPs) the first one fires,
+# and first-boot.sh stops the whole run there (`run_phase … || { rc=1; break; }`).
+# The machine installs Debian, boots, dies at phase 50 and never provisions the
+# stack, the certificates or the setup page. The owner sees a box that powers on
+# and does nothing — on precisely the networks least able to diagnose it.
+#
+# The asymmetry gave it away: `tailscale up` failing was already a warn-and-
+# continue twenty lines below, and everything downhill already copes with
+# Tailscale being absent (60-stack.sh guards on `sb_have tailscale`, 90-report
+# prints "remote NOT CONFIGURED"). Only getting it INSTALLED was treated as
+# life-or-death, and the project already documents LAN-only as a supported mode.
+#
+# So a failure here costs remote access, which is a real loss stated plainly —
+# not the whole appliance.
+ts_ok=1
 if ! sb_have tailscale; then
     log "installing tailscale"
     install -d -m 0755 /etc/apt/keyrings
     codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-bookworm}")"
-    sb_retry 3 5 curl -fsSL --proto '=https' \
-        "https://pkgs.tailscale.com/stable/debian/${codename}.noarmor.gpg" \
-        -o /etc/apt/keyrings/tailscale-archive-keyring.gpg \
-        || die "could not fetch the tailscale signing key"
-    chmod 0644 /etc/apt/keyrings/tailscale-archive-keyring.gpg
-    printf 'deb [signed-by=/etc/apt/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian %s main\n' \
-        "$codename" | sb_atomic_write /etc/apt/sources.list.d/tailscale.list 0644
-    sb_retry 3 5 apt-get update -qq || die "apt update failed after adding the tailscale repo"
-    sb_retry 2 10 apt-get install -y -qq tailscale || die "tailscale installation failed"
+    if sb_retry 3 5 curl -fsSL --proto '=https' \
+            "https://pkgs.tailscale.com/stable/debian/${codename}.noarmor.gpg" \
+            -o /etc/apt/keyrings/tailscale-archive-keyring.gpg; then
+        chmod 0644 /etc/apt/keyrings/tailscale-archive-keyring.gpg
+        printf 'deb [signed-by=/etc/apt/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian %s main\n' \
+            "$codename" | sb_atomic_write /etc/apt/sources.list.d/tailscale.list 0644
+        sb_retry 3 5 apt-get update -qq || ts_ok=0
+        [[ $ts_ok == 1 ]] && { sb_retry 2 10 apt-get install -y -qq tailscale || ts_ok=0; }
+    else
+        ts_ok=0
+    fi
+    if [[ $ts_ok == 0 ]]; then
+        # LEAVE NO BROKEN APT SOURCE BEHIND. An unreachable repo in
+        # sources.list.d makes every later `apt-get update` fail, which would
+        # turn one blocked host into a machine that cannot install anything —
+        # including the security updates 10-system.sh just enabled.
+        rm -f /etc/apt/sources.list.d/tailscale.list
+        apt-get update -qq >/dev/null 2>&1 || true
+    fi
 fi
 
-sb_run systemctl enable --now tailscaled || die "tailscaled failed to start"
+if [[ $ts_ok == 1 ]] && sb_have tailscale; then
+    sb_run systemctl enable --now tailscaled || ts_ok=0
+else
+    ts_ok=0
+fi
+
+if [[ $ts_ok == 0 ]]; then
+    warn "tailscale is not available on this network — continuing WITHOUT remote access."
+    warn "  Everything else installs normally. Reach this machine by its ADDRESS"
+    warn "  on your own network — the address is printed at the end of this"
+    warn "  install, and again by: sambuca-health"
+    warn "  Private remote access can be added later with:"
+    warn "    tailscale up --hostname=${SAMBUCA_HOSTNAME} --ssh"
+    # NOT "reachable by name". That was the first wording here, and it would
+    # have been this cycle's own false promise: nothing on the appliance
+    # publishes ${SAMBUCA_DOMAIN} — there is no mDNS responder in any package
+    # list — and mDNS could not serve the per-service SUBDOMAINS the handover
+    # hands out in any case. The address is the only thing that is true today.
+fi
 
 ts_state="$(tailscale status --json 2>/dev/null | jq -r '.BackendState // "Unknown"' || echo Unknown)"
-if [[ $ts_state == "Running" ]]; then
+if [[ $ts_ok == 0 ]]; then
+    : # nothing to join; the warning above already said so
+elif [[ $ts_state == "Running" ]]; then
     log "tailscale already connected as $(tailscale status --json | jq -r '.Self.DNSName // "?"')"
 elif [[ -n $SAMBUCA_TS_AUTHKEY ]]; then
     log "joining the tailnet with the provisioned auth key"
